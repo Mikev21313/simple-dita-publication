@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
+<topic id="welcome">
+    <title>Welcome to My Simple DITA Publication</title>
+    <body>
+        <section>
+            <title>Introduction</title>
+            <p>This is a simple one-page DITA publication deployed to GitHub Pages.</p>
+            <p>DITA (Darwin Information Typing Architecture) is an XML-based format for authoring and publishing technical content.</p>
+        </section>
+        
+        <section>
+            <title>Key Features</title>
+            <ul>
+                <li><b>Structured Content:</b> DITA helps organize content in a structured way.</li>
+                <li><b>Reusability:</b> Content can be reused across multiple documents.</li>
+                <li><b>Separation of Content and Presentation:</b> Content is separate from its formatting.</li>
+            </ul>
+        </section>
+        
+        <section>
+            <title>About This Example</title>
+            <p>This example demonstrates:</p>
+            <ol>
+                <li>How to structure a simple DITA publication</li>
+                <li>How to transform DITA to HTML using GitHub Actions</li>
+                <li>How to publish the result to GitHub Pages</li>
+            </ol>
+            <p>Feel free to use this as a template for your own DITA publications!</p>
+        </section>
+    </body>
+</topic>
