@@ -1,4 +1,4 @@
-name: Publish DITA to GitHub Pages
+name: DITA Publishing
 
 on:
   push:
@@ -11,7 +11,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Set up Java
@@ -26,399 +26,68 @@ jobs:
           unzip -q dita-ot-3.6.1.zip
           chmod +x dita-ot-3.6.1/bin/dita
 
-      # Find all DITA map and topic files
-      - name: Find DITA files
-        id: find_dita
-        run: |
-          echo "Locating DITA files..."
-          
-          # Find DITA maps
-          mapfiles=$(find . -name "*.ditamap" -type f | sort)
-          if [ -z "$mapfiles" ]; then
-            echo "No DITA maps found. Creating a basic one."
-            mkdir -p dita-source/maps
-            
-            cat > dita-source/maps/simple-guide.ditamap << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
-<map>
-  <title>Documentation</title>
-</map>
-EOF
-            
-            mapfiles="dita-source/maps/simple-guide.ditamap"
-          fi
-          
-          # Find primary map (use first one found if multiple exist)
-          primary_map=$(echo "$mapfiles" | head -1)
-          echo "Primary map: $primary_map"
-          echo "primary_map=$primary_map" >> $GITHUB_OUTPUT
-          
-          # Find topic files
-          topicfiles=$(find . -name "*.dita" -type f | sort)
-          if [ -z "$topicfiles" ]; then
-            echo "No DITA topics found. Creating a sample one."
-            mkdir -p dita-source/topics
-            
-            cat > dita-source/topics/sample.dita << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
-<topic id="sample">
-  <title>Sample Topic</title>
-  <body>
-    <p>This is a sample topic. Replace this content with your documentation.</p>
-  </body>
-</topic>
-EOF
-            
-            topicfiles="dita-source/topics/sample.dita"
-          fi
+      - name: Create output directory
+        run: mkdir -p docs
 
-      - name: Prepare DITA Map with all topics
+      - name: Build single-page HTML from existing content
         run: |
-          # Determine primary map path
-          primary_map="${{ steps.find_dita.outputs.primary_map }}"
-          if [ -z "$primary_map" ]; then
-            primary_map="dita-source/maps/simple-guide.ditamap"
-          fi
+          # Find a DITA map file
+          DITA_MAP=$(find . -name "*.ditamap" | head -1)
           
-          # Create directory for map if needed
-          map_dir=$(dirname "$primary_map")
-          mkdir -p "$map_dir"
+          if [ -z "$DITA_MAP" ]; then
+            echo "No DITA map found - creating simple HTML page"
+            
+            # Create a simple HTML page
+            cat > docs/index.html << 'ENDHTML'
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DITA Documentation</title>
+  <style>
+    body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    h1 { color: #0066cc; }
+  </style>
+</head>
+<body>
+  <h1>DITA Documentation</h1>
+  <p>No DITA content was found to process. Please add DITA content to your repository.</p>
+</body>
+</html>
+ENDHTML
           
-          # Create beginning of map file
-          cat > "$primary_map" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
-<map>
-  <title>Documentation</title>
-EOF
-          
-          # Add each topic to the map
-          find . -name "*.dita" -type f | while read -r topic; do
-            # Skip template files if they exist
-            if [[ "$topic" == *"/template"* ]]; then
-              continue
+          else
+            echo "Found DITA map: $DITA_MAP"
+            
+            # Run DITA-OT
+            ./dita-ot-3.6.1/bin/dita \
+            --input="$DITA_MAP" \
+            --format=html5 \
+            --output=docs \
+            --verbose
+            
+            # If transformation failed, create a fallback page
+            if [ $? -ne 0 ]; then
+              echo "DITA-OT transformation failed - creating fallback page"
+              
+              cat > docs/index.html << 'ENDHTML'
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DITA Documentation</title>
+  <style>
+    body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    h1 { color: #0066cc; }
+  </style>
+</head>
+<body>
+  <h1>DITA Documentation</h1>
+  <p>DITA transformation failed. Please check your DITA content for errors.</p>
+</body>
+</html>
+ENDHTML
             fi
-            
-            # Get relative path
-            rel_path=$(realpath --relative-to="$map_dir" "$topic")
-            
-            # Extract title and ID
-            title=$(grep -o "<title>.*</title>" "$topic" | head -1 | sed 's/<title>\(.*\)<\/title>/\1/')
-            topic_id=$(grep -o 'id="[^"]*"' "$topic" | head -1 | sed 's/id="\([^"]*\)"/\1/')
-            
-            # Use filename if title not found
-            if [ -z "$title" ]; then
-              filename=$(basename "$topic" .dita)
-              title=$(echo "$filename" | sed 's/_/ /g' | sed 's/\b\(.\)/\u\1/g')
-            fi
-            
-            # Add to map
-            echo "  <topicref href=\"$rel_path\" navtitle=\"$title\"/>" >> "$primary_map"
-          done
-          
-          # Close the map
-          echo "</map>" >> "$primary_map"
-          
-          echo "Updated DITA map:"
-          cat "$primary_map"
-
-      - name: Create custom CSS for stacked layout
-        run: |
-          mkdir -p css
-          
-          cat > css/custom.css << 'EOF'
-/* Base styles */
-body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  line-height: 1.6;
-  color: #333;
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 20px;
-}
-
-/* Headings */
-h1, h2, h3 {
-  color: #0066cc;
-}
-
-/* Links */
-a {
-  color: #0066cc;
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
-}
-
-/* Navigation */
-.header-container {
-  background-color: #0066cc;
-  color: white;
-  padding: 15px 20px;
-  margin-bottom: 20px;
-  border-radius: 5px;
-}
-
-.header-container h1 {
-  margin: 0;
-  color: white;
-}
-
-/* Main navigation list */
-.main-nav {
-  background-color: #f5f5f5;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  padding: 15px;
-  margin-bottom: 20px;
-}
-
-.main-nav h2 {
-  margin-top: 0;
-  color: #0066cc;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 10px;
-}
-
-.main-nav ul {
-  list-style-type: none;
-  padding-left: 0;
-}
-
-.main-nav li {
-  margin-bottom: 8px;
-}
-
-.main-nav a {
-  display: block;
-  padding: 5px 10px;
-  border-radius: 3px;
-}
-
-.main-nav a:hover {
-  background-color: #e9e9e9;
-}
-
-.main-nav a.active {
-  background-color: #0066cc;
-  color: white;
-}
-
-/* Topic sections */
-.topic-section {
-  margin-bottom: 40px;
-  padding: 20px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  background-color: #fff;
-}
-
-.topic-section h2 {
-  color: #0066cc;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 10px;
-  margin-top: 0;
-}
-
-/* Footer */
-.footer {
-  margin-top: 40px;
-  padding-top: 10px;
-  border-top: 1px solid #eee;
-  color: #666;
-  font-size: 0.9em;
-  text-align: center;
-}
-EOF
-
-      # Transform DITA to HTML
-      - name: Transform DITA to HTML
-        run: |
-          # Determine primary map path
-          primary_map="${{ steps.find_dita.outputs.primary_map }}"
-          if [ -z "$primary_map" ]; then
-            primary_map="dita-source/maps/simple-guide.ditamap"
           fi
-          
-          echo "Using map: $primary_map"
-          
-          # Create output directory
-          mkdir -p docs
-          
-          # Copy custom CSS
-          mkdir -p docs/css
-          cp css/custom.css docs/css/
-          
-          # Run DITA-OT transformation
-          ./dita-ot-3.6.1/bin/dita \
-          --input="$primary_map" \
-          --format=html5 \
-          --output=docs \
-          --args.copycss=yes \
-          --args.css=custom.css \
-          --args.cssroot=css \
-          --verbose
 
-      # Create stacked view of all topics
-      - name: Create stacked view of all topics
-        run: |
-          echo "Creating stacked view of all topics..."
-          
-          # Get titles and content from HTML files
-          echo "<!DOCTYPE html>" > docs/index.html
-          echo "<html lang=\"en\">" >> docs/index.html
-          echo "<head>" >> docs/index.html
-          echo "  <meta charset=\"UTF-8\">" >> docs/index.html
-          echo "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">" >> docs/index.html
-          echo "  <title>DITA Documentation</title>" >> docs/index.html
-          echo "  <link rel=\"stylesheet\" type=\"text/css\" href=\"css/custom.css\">" >> docs/index.html
-          echo "</head>" >> docs/index.html
-          echo "<body>" >> docs/index.html
-          
-          # Add header
-          echo "  <div class=\"header-container\">" >> docs/index.html
-          echo "    <h1>DITA Documentation</h1>" >> docs/index.html
-          echo "  </div>" >> docs/index.html
-          
-          # Create navigation
-          echo "  <div class=\"main-nav\">" >> docs/index.html
-          echo "    <h2>Table of Contents</h2>" >> docs/index.html
-          echo "    <ul>" >> docs/index.html
-          
-          # Find all HTML files (excluding index.html)
-          html_files=$(find docs -name "*.html" -not -name "index.html" | sort)
-          
-          # Create navigation entries
-          topic_id=1
-          for html_file in $html_files; do
-            # Get relative path and title
-            file_name=$(basename "$html_file")
-            title=$(grep -o "<title>.*</title>" "$html_file" | head -1 | sed 's/<title>\(.*\)<\/title>/\1/' | sed 's/ - .*$//')
-            
-            # If title not found, use filename
-            if [ -z "$title" ]; then
-              title=$(basename "$file_name" .html | sed 's/_/ /g' | sed 's/\b\(.\)/\u\1/g')
-            fi
-            
-            # Add to navigation
-            echo "      <li><a href=\"#topic-$topic_id\">$title</a></li>" >> docs/index.html
-            
-            # Increment topic counter
-            topic_id=$((topic_id + 1))
-          done
-          
-          echo "    </ul>" >> docs/index.html
-          echo "  </div>" >> docs/index.html
-          
-          # Add each topic content
-          topic_id=1
-          for html_file in $html_files; do
-            file_name=$(basename "$html_file")
-            title=$(grep -o "<title>.*</title>" "$html_file" | head -1 | sed 's/<title>\(.*\)<\/title>/\1/' | sed 's/ - .*$//')
-            
-            # If title not found, use filename
-            if [ -z "$title" ]; then
-              title=$(basename "$file_name" .html | sed 's/_/ /g' | sed 's/\b\(.\)/\u\1/g')
-            fi
-            
-            # Extract content
-            content=$(grep -A 1000 "<body" "$html_file" | grep -B 1000 "</body>" | sed '/<body/d;/<\/body>/d')
-            
-            # Clean up content - remove navigation elements
-            content=$(echo "$content" | sed '/<nav/,/<\/nav>/d')
-            
-            # Add to stacked view
-            echo "  <div id=\"topic-$topic_id\" class=\"topic-section\">" >> docs/index.html
-            echo "    <h2>$title</h2>" >> docs/index.html
-            echo "$content" >> docs/index.html
-            echo "  </div>" >> docs/index.html
-            
-            # Increment topic counter
-            topic_id=$((topic_id + 1))
-          done
-          
-          # Add footer
-          echo "  <div class=\"footer\">" >> docs/index.html
-          echo "    <p>Generated with DITA-OT | Published with GitHub Pages</p>" >> docs/index.html
-          echo "  </div>" >> docs/index.html
-          
-          # Add script for navigation highlighting
-          cat >> docs/index.html << 'EOF'
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      // Highlight active section in navigation
-      function highlightNav() {
-        const sections = document.querySelectorAll('.topic-section');
-        const navLinks = document.querySelectorAll('.main-nav a');
-        
-        // Find which section is in view
-        let currentSection = 0;
-        const scrollPosition = window.scrollY;
-        
-        sections.forEach((section, index) => {
-          const sectionTop = section.offsetTop;
-          const sectionHeight = section.offsetHeight;
-          
-          if (scrollPosition >= sectionTop - 100 && 
-              scrollPosition < sectionTop + sectionHeight - 100) {
-            currentSection = index;
-          }
-        });
-        
-        // Remove active class from all links
-        navLinks.forEach(link => {
-          link.classList.remove('active');
-        });
-        
-        // Add active class to current section link
-        navLinks[currentSection].classList.add('active');
-      }
-      
-      // Initial highlight
-      highlightNav();
-      
-      // Highlight on scroll
-      window.addEventListener('scroll', highlightNav);
-      
-      // Smooth scroll for navigation links
-      document.querySelectorAll('.main-nav a').forEach(link => {
-        link.addEventListener('click', function(e) {
-          e.preventDefault();
-          
-          const targetId = this.getAttribute('href');
-          const targetElement = document.querySelector(targetId);
-          
-          window.scrollTo({
-            top: targetElement.offsetTop - 20,
-            behavior: 'smooth'
-          });
-        });
-      });
-    });
-  </script>
-EOF
-          
-          echo "</body>" >> docs/index.html
-          echo "</html>" >> docs/index.html
-
-      # Fix any broken links
-      - name: Fix links in HTML files
-        run: |
-          echo "Fixing any broken links in HTML files..."
-          
-          find docs -name "*.html" -type f | while read -r file; do
-            # Fix .dita extensions
-            sed -i 's/href="\([^"]*\)\.dita"/href="\1.html"/g' "$file"
-            
-            # Fix relative paths
-            sed -i 's/href="\.\.\/topics\//href="/g' "$file"
-          done
-
-      # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
