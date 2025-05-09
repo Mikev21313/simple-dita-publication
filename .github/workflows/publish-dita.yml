@@ -27,39 +27,33 @@ jobs:
           unzip dita-ot-3.6.1.zip
           chmod +x dita-ot-3.6.1/bin/dita
 
-      - name: Verify DITA files
+      # Transform DITA to HTML
+      - name: Transform DITA to HTML
         run: |
-          echo "Checking if DITA files exist:"
-          ls -la dita-source/maps/
-          ls -la dita-source/topics/
-          ls -la dita-source/css/
-
-      - name: Create simple HTML directly
-        if: always()
-        run: |
-          mkdir -p docs
-          echo "<html><head><title>Simple DITA Publication</title><link rel='stylesheet' href='css/custom.css'></head><body>" > docs/index.html
-          echo "<h1>Welcome to My Simple DITA Publication</h1>" >> docs/index.html
-          echo "<p>This is a simple one-page DITA publication deployed to GitHub Pages.</p>" >> docs/index.html
-          echo "<p>DITA (Darwin Information Typing Architecture) is an XML-based format for authoring and publishing technical content.</p>" >> docs/index.html
-          echo "<h2>Key Features</h2><ul>" >> docs/index.html
-          echo "<li><b>Structured Content:</b> DITA helps organize content in a structured way.</li>" >> docs/index.html
-          echo "<li><b>Reusability:</b> Content can be reused across multiple documents.</li>" >> docs/index.html
-          echo "<li><b>Separation of Content and Presentation:</b> Content is separate from its formatting.</li>" >> docs/index.html
-          echo "</ul>" >> docs/index.html
-          echo "<h2>About This Example</h2>" >> docs/index.html
-          echo "<p>This example demonstrates how to publish DITA content to GitHub Pages.</p>" >> docs/index.html
-          echo "</body></html>" >> docs/index.html
-          mkdir -p docs/css
-          cp dita-source/css/custom.css docs/css/
-
-      - name: Try DITA-OT transformation
+          ./dita-ot-3.6.1/bin/dita \
+          --input=dita-source/maps/simple-guide.ditamap \
+          --format=html5 \
+          --output=docs \
+          --args.xhtml.toc=toc \
+          --nav-toc=full \
+          --args.outext=.html \
+          --verbose
         continue-on-error: true
-        run: |
-          ./dita-ot-3.6.1/bin/dita -i dita-source/maps/simple-guide.ditamap -o docs/dita-output -f html5
 
+      # Add CSS file for styling
+      - name: Add CSS file
+        run: |
+          mkdir -p docs/css
+          echo "body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }" > docs/css/style.css
+          echo "a { color: #0066cc; }" >> docs/css/style.css
+          
+          # Add link to CSS in all HTML files
+          find docs -name "*.html" -type f -exec sed -i 's/<\/head>/<link rel="stylesheet" href="css\/style.css"><\/head>/' {} \;
+
+      # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: docs
           branch: gh-pages
+          clean: true

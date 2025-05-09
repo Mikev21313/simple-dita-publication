@@ -1,7 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
 <map>
-    <title>DITA Structure Testing</title>
-    <topicref href="../topics/top.dita"/>
-    <topicref href="../topics/Second-topic.dita"/>
+    <title>Documentation</title>
+    
+    <!-- This generates a table of contents -->
+    <topicmeta>
+        <navtitle>Documentation</navtitle>
+        <searchtitle>Documentation Guide</searchtitle>
+        <shortdesc>Documentation with automatic TOC</shortdesc>
+    </topicmeta>
+    
+    <!-- Reference to welcome topic -->
+    <topicref href="topics/welcome.dita" navtitle="Welcome to DITA">
+        <topicmeta>
+            <navtitle>Welcome to DITA</navtitle>
+            <shortdesc>An introduction to DITA publishing and its key features.</shortdesc>
+        </topicmeta>
+    </topicref>
+    
+    <!-- Reference to second topic -->
+    <topicref href="topics/second-topic.dita" navtitle="Second Topic">
+        <topicmeta>
+            <navtitle>Second Topic</navtitle>
+            <shortdesc>Information about using multiple topics in DITA.</shortdesc>
+        </topicmeta>
+    </topicref>
+    
+    <!-- Add more topicrefs here for additional topics -->
+    
 </map>
