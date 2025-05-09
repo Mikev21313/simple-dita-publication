@@ -16,6 +16,8 @@
             <navtitle>Welcome to DITA</navtitle>
             <shortdesc>An introduction to DITA publishing and its key features.</shortdesc>
         </topicmeta>
+        <topicref href="topics/lala%20land%20task.dita"/>
+        <topicref href="topics/lala%20land%20task.dita"/>
     </topicref>
     
     <!-- second test -->
@@ -24,6 +26,8 @@
             <navtitle>Second Topic</navtitle>
             <shortdesc>Information about using multiple topics in DITA.</shortdesc>
         </topicmeta>
+        <topicref href="topics/untitled3.dita"/>
+        <topicref href="topics/untitled3.dita"/>
     </topicref>
     <!-- third test -->
     <topicref href="topics/Top.dita" navtitle="third Topic">
@@ -31,6 +35,8 @@
             <navtitle>Third Topic</navtitle>
             <shortdesc>Information about using multiple topics in DITA.</shortdesc>
         </topicmeta>
+        <topicref href="topics/test_2171_manual.dita"/>
+        <topicref href="topics/test_2171_manual.dita"/>
     </topicref>
     <!---->
     <!---->
