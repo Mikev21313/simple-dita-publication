@@ -29,37 +29,50 @@ jobs:
 
       - name: Verify DITA files
         run: |
-          echo "Checking if DITA files exist:"
-          ls -la dita-source/maps/
-          ls -la dita-source/topics/
-          ls -la dita-source/css/
+          echo "Checking DITA map and topics:"
+          ls -la dita-source/maps/ || echo "Maps directory not found"
+          ls -la dita-source/topics/ || echo "Topics directory not found"
+          echo "Content of DITA map:"
+          cat dita-source/maps/simple-guide.ditamap || echo "DITA map not found"
 
-      - name: Create simple HTML directly
-        if: always()
-        run: |
-          mkdir -p docs
-          echo "<html><head><title>Simple DITA Publication</title><link rel='stylesheet' href='css/custom.css'></head><body>" > docs/index.html
-          echo "<h1>Welcome to My Simple DITA Publication</h1>" >> docs/index.html
-          echo "<p>This is a simple one-page DITA publication deployed to GitHub Pages.</p>" >> docs/index.html
-          echo "<p>DITA (Darwin Information Typing Architecture) is an XML-based format for authoring and publishing technical content.</p>" >> docs/index.html
-          echo "<h2>Key Features</h2><ul>" >> docs/index.html
-          echo "<li><b>Structured Content:</b> DITA helps organize content in a structured way.</li>" >> docs/index.html
-          echo "<li><b>Reusability:</b> Content can be reused across multiple documents.</li>" >> docs/index.html
-          echo "<li><b>Separation of Content and Presentation:</b> Content is separate from its formatting.</li>" >> docs/index.html
-          echo "</ul>" >> docs/index.html
-          echo "<h2>About This Example</h2>" >> docs/index.html
-          echo "<p>This example demonstrates how to publish DITA content to GitHub Pages.</p>" >> docs/index.html
-          echo "</body></html>" >> docs/index.html
-          mkdir -p docs/css
-          cp dita-source/css/custom.css docs/css/
-
-      - name: Try DITA-OT transformation
+      - name: Transform DITA to HTML
         continue-on-error: true
         run: |
-          ./dita-ot-3.6.1/bin/dita -i dita-source/maps/simple-guide.ditamap -o docs/dita-output -f html5
+          ./dita-ot-3.6.1/bin/dita -i dita-source/maps/simple-guide.ditamap -o docs -f html5 \
+          --args.copycss=yes \
+          --args.css=custom.css \
+          --args.cssroot=dita-source/css \
+          --args.xhtml.toc=toc \
+          --nav-toc=full \
+          --args.outext=.html
+
+      - name: Verify output
+        run: |
+          echo "Checking output files:"
+          ls -la docs/ || echo "Output directory empty or not found"
+          find docs -type f | sort || echo "No files found in output"
+
+      # Fallback: create simple HTML if DITA-OT fails
+      - name: Create simple HTML (fallback)
+        if: ${{ failure() }}
+        run: |
+          mkdir -p docs
+          echo "<html><head><title>Simple DITA Publication</title></head><body>" > docs/index.html
+          echo "<h1>Simple DITA Publication</h1>" >> docs/index.html
+          echo "<p>This is a simple DITA publication.</p>" >> docs/index.html
+          
+          # List available topics from DITA map
+          echo "<h2>Available Topics:</h2><ul>" >> docs/index.html
+          grep -o 'href="[^"]*"' dita-source/maps/simple-guide.ditamap | sed 's/href="//g' | sed 's/"//g' | while read -r topic; do
+            echo "<li>$topic</li>" >> docs/index.html
+          done
+          echo "</ul>" >> docs/index.html
+          
+          echo "</body></html>" >> docs/index.html
 
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: docs
           branch: gh-pages
+          clean: true
