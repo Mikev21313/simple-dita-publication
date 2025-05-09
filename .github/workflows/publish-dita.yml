@@ -32,7 +32,18 @@ jobs:
           ./dita-ot-3.7.4/bin/dita -i dita-source/maps/simple-guide.ditamap -o docs -f html5 \
           --args.copycss=yes \
           --args.css=custom.css \
-          --args.cssroot=dita-source/css
+          --args.cssroot=dita-source/css \
+          --args.xhtml.toc=toc \
+          --nav-toc=full \
+          --args.breadcrumbs=yes \
+          --args.outext=.html
+
+      - name: List generated files
+        run: |
+          echo "Generated files in docs directory:"
+          ls -la docs/
+          echo "Content of docs directory and subdirectories:"
+          find docs -type f | sort
 
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
