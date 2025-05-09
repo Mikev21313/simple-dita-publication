@@ -462,17 +462,22 @@ EOF
         run: |
           echo "Checking for index.html..."
           
-          # Get the TOC HTML and descriptions HTML
-          toc_html=$(cat toc_html.txt)
-          descriptions_html=$(cat descriptions_html.txt)
-          
           # Ensure docs directory exists
           mkdir -p docs
+          mkdir -p docs/css
+          
+          # Copy CSS file
+          cp dita-source/css/custom.css docs/css/custom.css
           
           if [ ! -f "docs/index.html" ]; then
             echo "Creating index.html with TOC..."
             
-            cat > docs/index.html << 'EOF'
+            # Get the TOC HTML and descriptions HTML 
+            toc_html=$(cat toc_html.txt)
+            descriptions_html=$(cat descriptions_html.txt)
+            
+            # Create the index.html file
+            cat > docs/index.html << EOF
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -482,44 +487,50 @@ EOF
     <link rel="stylesheet" type="text/css" href="css/custom.css">
 </head>
 <body>
+    <div class="toc-container">
+        ${toc_html}
+    </div>
+    
+    <div class="content">
+        <div class="header">
+            <h1>DITA Documentation</h1>
+        </div>
+        
+        <h1>Welcome to the DITA Documentation</h1>
+        
+        <p>This documentation is generated from DITA source files using DITA-OT and published to GitHub Pages.</p>
+        
+        <p>Please select a topic from the table of contents to learn more:</p>
+        
+        ${descriptions_html}
+        
+        <p>DITA (Darwin Information Typing Architecture) is an XML-based format for authoring and publishing technical content.</p>
+        
+        <div class="footer">
+            <p>Generated with DITA-OT | Published with GitHub Pages</p>
+        </div>
+    </div>
+    
+    <script>
+        // Highlight the current page in the TOC
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get the current page URL
+            var currentPageUrl = window.location.pathname.split('/').pop();
+            if (!currentPageUrl) currentPageUrl = 'index.html';
+            
+            // Find the matching link in the TOC and add 'active' class to its parent li
+            var tocLinks = document.querySelectorAll('.toc a');
+            tocLinks.forEach(function(link) {
+                if (link.getAttribute('href') === currentPageUrl) {
+                    link.parentElement.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
 EOF
-            
-            # Add TOC container and TOC
-            echo "<div class=\"toc-container\">" >> docs/index.html
-            cat toc_html.txt >> docs/index.html
-            echo "</div>" >> docs/index.html
-            
-            # Add content container
-            echo "<div class=\"content\">" >> docs/index.html
-            
-            # Add header
-            echo "<h1>Welcome to the DITA Documentation</h1>" >> docs/index.html
-            echo "<p>This documentation is generated from DITA source files using DITA-OT and published to GitHub Pages.</p>" >> docs/index.html
-            echo "<p>Please select a topic from the table of contents to learn more:</p>" >> docs/index.html
-            
-            # Add topic descriptions
-            cat descriptions_html.txt >> docs/index.html
-            
-            # Add additional content
-            echo "<p>DITA (Darwin Information Typing Architecture) is an XML-based format for authoring and publishing technical content.</p>" >> docs/index.html
-            
-            # Close content div
-            echo "</div>" >> docs/index.html
-            
-            # Add footer from template
-            cat dita-source/templates/footer.xml >> docs/index.html
-            
-            # Close HTML
-            echo "</body>" >> docs/index.html
-            echo "</html>" >> docs/index.html
           fi
-
-      # Ensure CSS is available
-      - name: Ensure CSS is available
-        run: |
-          echo "Ensuring CSS is available..."
-          mkdir -p docs/css
-          cp dita-source/css/custom.css docs/css/custom.css
 
       # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
