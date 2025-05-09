@@ -1,46 +1,10 @@
-/* Simple stylesheet for DITA output */
-body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  line-height: 1.6;
-  color: #333;
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 20px;
-}
-
-h1 {
-  color: #0066cc;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 10px;
-}
-
-h2 {
-  color: #0066cc;
-  margin-top: 25px;
-}
-
-ul, ol {
-  margin-left: 20px;
-}
-
-li {
-  margin-bottom: 8px;
-}
-
-.footer {
-  margin-top: 40px;
-  padding-top: 10px;
-  border-top: 1px solid #eee;
-  font-size: 0.9em;
-  color: #666;
-  text-align: center;
-}
-
-/* Add a little styling for code blocks */
-pre, code {
-  background-color: #f5f5f5;
-  border: 1px solid #ddd;
-  border-radius: 3px;
-  padding: 2px 5px;
-  font-family: 'Courier New', Courier, monospace;
-}
+/* Basic styles */
+body { font-family: Arial, sans-serif; display: flex; flex-wrap: wrap; max-width: 1200px; margin: 0 auto; padding: 20px; }
+nav[role="toc"] { width: 250px; padding-right: 20px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 5px; padding: 15px; }
+nav[role="toc"] h2 { margin-top: 0; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+nav[role="toc"] ul { list-style-type: none; padding-left: 0; }
+nav[role="toc"] ul ul { padding-left: 20px; }
+nav[role="toc"] li { margin-bottom: 8px; }
+nav[role="toc"] a { color: #0066cc; text-decoration: none; }
+main { flex: 1; min-width: 0; }
+@media (max-width: 768px) { body { display: block; } nav[role="toc"] { width: auto; margin-bottom: 20px; } }
