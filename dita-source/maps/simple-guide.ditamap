@@ -10,7 +10,7 @@
         <shortdesc>Documentation with automatic TOC</shortdesc>
     </topicmeta>
     
-    <!-- Reference to welcome topic -->
+    <!-- First test-->
     <topicref href="topics/welcome.dita" navtitle="Welcome to DITA">
         <topicmeta>
             <navtitle>Welcome to DITA</navtitle>
@@ -18,13 +18,22 @@
         </topicmeta>
     </topicref>
     
-    <!-- Reference to second topic -->
+    <!-- second test -->
     <topicref href="topics/second-topic.dita" navtitle="Second Topic">
         <topicmeta>
             <navtitle>Second Topic</navtitle>
             <shortdesc>Information about using multiple topics in DITA.</shortdesc>
         </topicmeta>
     </topicref>
+    <!-- third test -->
+    <topicref href="topics/Top.dita" navtitle="third Topic">
+        <topicmeta>
+            <navtitle>Third Topic</navtitle>
+            <shortdesc>Information about using multiple topics in DITA.</shortdesc>
+        </topicmeta>
+    </topicref>
+    <!---->
+    <!---->
     
     <!-- Add more topicrefs here for additional topics -->
     
