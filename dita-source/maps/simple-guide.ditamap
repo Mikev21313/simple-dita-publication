@@ -2,6 +2,6 @@
 <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
 <map>
     <title>DITA Structure Testing</title>
-    <topicref href="../topics/welcome.dita"/>
+    <topicref href="../topics/top.dita"/>
     <topicref href="../topics/Second-topic.dita"/>
 </map>
