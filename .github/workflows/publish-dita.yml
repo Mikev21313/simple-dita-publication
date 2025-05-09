@@ -132,18 +132,22 @@ jobs:
           </script>
           EOF
           
-      # Create custom CSS
+      # Create custom CSS with Figtree font
       - name: Create CSS
         run: |
           mkdir -p custom-templates/css
           cat > custom-templates/css/custom.css << 'EOF'
+          /* Import Figtree font */
+          @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap');
+          
           /* Base styles */
           body {
-            font-family: Arial, sans-serif;
+            font-family: 'Figtree', sans-serif;
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
             line-height: 1.5;
+            font-weight: 400;
           }
           
           /* Header and navigation */
@@ -152,13 +156,13 @@ jobs:
           }
           
           .site-title {
-            font-size: 24px;
-            font-weight: bold;
+            font-size: 26px;
+            font-weight: 600;
             margin-bottom: 10px;
           }
           
           .site-title a {
-            color: #333;
+            color: #2d3748;
             text-decoration: none;
           }
           
@@ -167,37 +171,39 @@ jobs:
             list-style: none;
             padding: 0;
             margin: 0;
-            background-color: #f5f5f5;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 10px;
+            background-color: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 12px;
           }
           
           .main-nav li {
-            margin: 5px 0;
+            margin: 6px 0;
             position: relative;
           }
           
           .main-nav a {
-            color: #0066cc;
+            color: #3182ce;
             text-decoration: none;
             display: block;
-            padding: 5px 10px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
           }
           
           .main-nav a:hover {
-            background-color: #e8e8e8;
-            border-radius: 3px;
+            background-color: #ebf4ff;
+            color: #2c5282;
           }
           
           .main-nav a.active {
-            font-weight: bold;
-            background-color: #e0e0e0;
-            border-radius: 3px;
+            font-weight: 500;
+            background-color: #ebf4ff;
+            color: #2c5282;
           }
           
           .main-nav li.current > a {
-            font-weight: bold;
+            font-weight: 600;
           }
           
           .main-nav ul ul {
@@ -215,20 +221,73 @@ jobs:
           /* Content area */
           .topictitle1 {
             font-size: 1.8em;
-            border-bottom: 1px solid #ddd;
-            padding-bottom: 5px;
-            margin-bottom: 15px;
+            font-weight: 600;
+            color: #2d3748;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 8px;
+            margin-bottom: 20px;
           }
           
           .topictitle2 {
             font-size: 1.5em;
+            font-weight: 500;
+            color: #2d3748;
+          }
+          
+          /* Improve readability of content */
+          .p, p {
+            color: #4a5568;
+            line-height: 1.6;
+          }
+          
+          /* Links in content */
+          .xref, a:not(.main-nav a) {
+            color: #3182ce;
+            text-decoration: none;
+            border-bottom: 1px solid #bee3f8;
+            transition: border-color 0.2s ease;
+          }
+          
+          .xref:hover, a:not(.main-nav a):hover {
+            border-bottom-color: #3182ce;
           }
           
           /* Footer */
           #site-footer {
-            margin-top: 30px;
-            color: #666;
+            margin-top: 40px;
+            color: #718096;
             font-size: 0.9em;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 16px;
+          }
+          
+          #site-footer a {
+            color: #4299e1;
+            text-decoration: none;
+          }
+          
+          /* Lists */
+          ul, ol {
+            padding-left: 24px;
+          }
+          
+          li {
+            margin-bottom: 4px;
+          }
+          
+          /* Code and pre */
+          pre, code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            background-color: #f7fafc;
+            border-radius: 4px;
+            padding: 2px 4px;
+            font-size: 0.9em;
+          }
+          
+          pre {
+            padding: 12px;
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
           }
           EOF
           
@@ -266,11 +325,20 @@ jobs:
           mkdir -p docs/js
           cp custom-templates/set-title.js docs/js/
           
-          # Add script to all HTML files
+          # Fix the script path in HTML files with proper relative path
           find docs -name "*.html" -type f -exec sed -i 's/<\/head>/<script src="\/js\/set-title.js"><\/script><\/head>/' {} \;
           
           # Set HTML title tags directly as a fallback
           find docs -name "*.html" -type f -exec sed -i "s/<title>.*<\/title>/<title>$DOCS_TITLE<\/title>/" {} \;
+          
+      # Fix the JavaScript path for GitHub Pages
+      - name: Fix JavaScript paths for GitHub Pages
+        run: |
+          # Get the repository name for proper path prefixing
+          REPO_NAME=$(echo "$GITHUB_REPOSITORY" | cut -d '/' -f 2)
+          
+          # Update script paths to work with GitHub Pages
+          find docs -name "*.html" -type f -exec sed -i "s|/js/set-title.js|/$REPO_NAME/js/set-title.js|g" {} \;
           
       # Add timestamp to show when the site was built
       - name: Add build timestamp
