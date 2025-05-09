@@ -26,6 +26,19 @@ jobs:
           unzip dita-ot-3.6.1.zip
           chmod +x dita-ot-3.6.1/bin/dita
 
+      # List DITA files to debug structure
+      - name: Debug - List DITA files
+        run: |
+          echo "DITA Source Structure:"
+          find dita-source -type f | sort
+          
+          if [ -f "dita-source/maps/simple-guide.ditamap" ]; then
+            echo "Content of DITA Map:"
+            cat "dita-source/maps/simple-guide.ditamap"
+          else
+            echo "WARNING: simple-guide.ditamap not found"
+          fi
+
       # Transform DITA to HTML
       - name: Transform DITA to HTML
         run: |
@@ -36,8 +49,149 @@ jobs:
           ./dita-ot-3.6.1/bin/dita \
           --input=dita-source/maps/simple-guide.ditamap \
           --format=html5 \
-          --output=docs
+          --output=docs \
+          --args.copycss=yes \
+          --args.css=custom.css \
+          --args.cssroot=dita-source/css \
+          --args.xhtml.toc=toc \
+          --nav-toc=partial \
+          --args.breadcrumbs=yes \
+          --args.hide-parent-link=no \
+          --args.outext=.html \
+          --verbose
         continue-on-error: true
+
+      # List generated files to debug output structure
+      - name: Debug - List generated files
+        run: |
+          echo "Generated HTML Structure:"
+          find docs -type f | sort
+          
+          echo "Checking for 404-prone links in HTML files:"
+          find docs -name "*.html" -exec grep -l "href=\".*\.dita\"" {} \;
+
+      # Fix any incorrect links in HTML files
+      - name: Fix HTML links
+        run: |
+          echo "Fixing links in HTML files..."
+          
+          # Find all HTML files
+          find docs -name "*.html" -type f | while read -r file; do
+            echo "Processing $file"
+            
+            # Create a temporary file
+            temp_file=$(mktemp)
+            
+            # Replace .dita extensions with .html in href attributes
+            sed 's/href="\([^"]*\)\.dita"/href="\1.html"/g' "$file" > "$temp_file"
+            
+            # Replace any relative paths that might be incorrect
+            sed -i 's/href="\.\.\/topics\//href="/g' "$temp_file"
+            
+            # Replace the original file with the modified one
+            mv "$temp_file" "$file"
+          done
+
+      # Create a simple CSS file if not present
+      - name: Create basic CSS
+        run: |
+          mkdir -p docs/css
+          
+          if [ ! -f "docs/css/custom.css" ]; then
+            cat > docs/css/custom.css << 'EOF'
+            body {
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              max-width: 1000px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            
+            h1, h2, h3 {
+              color: #0066cc;
+            }
+            
+            a {
+              color: #0066cc;
+              text-decoration: none;
+            }
+            
+            a:hover {
+              text-decoration: underline;
+            }
+            
+            .topictitle1 {
+              font-size: 2em;
+              color: #0066cc;
+            }
+            
+            .toc {
+              background-color: #f5f5f5;
+              border: 1px solid #ddd;
+              border-radius: 5px;
+              padding: 15px;
+              margin-bottom: 20px;
+            }
+            
+            .toc a {
+              display: block;
+              padding: 3px 0;
+            }
+            
+            .ullinks {
+              list-style-type: none;
+              padding-left: 20px;
+            }
+            EOF
+          fi
+
+      # Create a simple index redirect if needed
+      - name: Create index redirect
+        run: |
+          if [ ! -f "docs/index.html" ]; then
+            echo "Creating index.html with redirect to main topic..."
+            
+            # Find the first HTML file to use as the main page
+            MAIN_PAGE=$(find docs -name "*.html" -not -name "index.html" | head -1)
+            
+            if [ -n "$MAIN_PAGE" ]; then
+              MAIN_PAGE_NAME=$(basename "$MAIN_PAGE")
+              
+              cat > docs/index.html << EOF
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <meta charset="UTF-8">
+                <meta http-equiv="refresh" content="0; url=$MAIN_PAGE_NAME">
+                <title>Redirect</title>
+              </head>
+              <body>
+                <p>If you are not redirected automatically, follow this <a href="$MAIN_PAGE_NAME">link</a>.</p>
+              </body>
+              </html>
+              EOF
+              
+              echo "Created redirect to $MAIN_PAGE_NAME"
+            else
+              echo "No HTML files found to link to. Creating a basic index."
+              
+              cat > docs/index.html << 'EOF'
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <meta charset="UTF-8">
+                <title>DITA Documentation</title>
+                <link rel="stylesheet" type="text/css" href="css/custom.css">
+              </head>
+              <body>
+                <h1>DITA Documentation</h1>
+                <p>No content was generated. Please check your DITA source files.</p>
+              </body>
+              </html>
+              EOF
+            fi
+          fi
 
       # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
