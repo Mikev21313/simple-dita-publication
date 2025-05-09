@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+    <meta>
+        <filters directoryPatterns="" filePatterns="\Qsimpe dita project.xpr\E" positiveFilePatterns="" showHiddenFiles="false"/>
+        <options/>
+    </meta>
+    <projectTree name="simpe%20dita%20project.xpr">
+        <folder path="."/>
+        <file name="dita-source/maps/simple-guide.ditamap"/>
+    </projectTree>
+</project>
