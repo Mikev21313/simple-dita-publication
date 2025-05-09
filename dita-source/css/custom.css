@@ -1,46 +1,278 @@
-/* Simple stylesheet for DITA output */
+/* Evangelion Interface Theme for DITA - Safe Version */
+
+/* Import the Share Tech Mono font for the tech look */
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+/* Root variables for easy theme customization */
+:root {
+  /* Main colors from the Evangelion interface */
+  --eva-black: #000000;
+  --eva-dark-gray: #111111;
+  --eva-gray: #333333;
+  --eva-neon-green: #00ff99;
+  --eva-neon-blue: #00ffff;
+  --eva-neon-red: #ff3300;
+  --eva-orange: #ff6600;
+  --eva-yellow: #ffcc00;
+  --eva-white: #ffffff;
+  
+  /* Grid background for tech feel */
+  --eva-grid-bg: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAGElEQVQIW2NkYGD4z8DAwMgAI0AMDQlACQAFUAEPCm5jYAAAAABJRU5ErkJggg==');
+}
+
+/* Base styles - safe for DITA */
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Share Tech Mono', monospace;
+  color: var(--eva-neon-green);
+  background-color: var(--eva-black);
+  background-image: var(--eva-grid-bg);
   line-height: 1.6;
-  color: #333;
-  max-width: 800px;
-  margin: 0 auto;
+  margin: 0;
   padding: 20px;
+  max-width: 100%;
 }
 
-h1 {
-  color: #0066cc;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 10px;
+/* Headings - safe for DITA */
+h1, h2, h3, h4, h5, h6, 
+.title, .topictitle1, .topictitle2, .topictitle3, .topictitle4, .topictitle5, .topictitle6 {
+  color: var(--eva-white);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  border-bottom: 2px solid var(--eva-neon-green);
+  padding-bottom: 5px;
+  text-shadow: 0 0 5px var(--eva-neon-green);
 }
 
-h2 {
-  color: #0066cc;
-  margin-top: 25px;
+/* Add decorative element before headings */
+h1::before, h2::before, 
+.title::before, .topictitle1::before, .topictitle2::before {
+  content: "//";
+  color: var(--eva-neon-red);
+  margin-right: 10px;
 }
 
-ul, ol {
+/* Links - safe for DITA */
+a, .xref, .link {
+  color: var(--eva-neon-blue);
+  text-decoration: none;
+  transition: all 0.3s;
+  padding: 0 2px;
+}
+
+a:hover, .xref:hover, .link:hover {
+  color: var(--eva-white);
+  background-color: var(--eva-neon-red);
+  text-shadow: 0 0 5px var(--eva-white);
+}
+
+/* Table styling - safe for DITA */
+table, .table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 15px 0;
+  border: 1px solid var(--eva-neon-green);
+}
+
+th, td, .thead, .row, .stentry {
+  border: 1px solid var(--eva-neon-green);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+th, .thead, .sthead {
+  background-color: var(--eva-gray);
+  color: var(--eva-neon-green);
+  text-transform: uppercase;
+}
+
+/* Alternating row colors */
+tr:nth-child(even), .row:nth-child(even) {
+  background-color: rgba(0, 255, 153, 0.05);
+}
+
+/* Code blocks - safe for DITA */
+pre, code, .codeblock, .syntaxdiagram {
+  font-family: 'Share Tech Mono', monospace;
+  background-color: var(--eva-dark-gray);
+  border: 1px solid var(--eva-neon-blue);
+  color: var(--eva-neon-blue);
+  padding: 10px;
+  margin: 15px 0;
+  border-radius: 0;
+  position: relative;
+}
+
+/* Lists - safe for DITA */
+ul, ol, .ul, .ol {
   margin-left: 20px;
+  padding-left: 0;
 }
 
-li {
+li, .li {
   margin-bottom: 8px;
+  position: relative;
 }
 
-.footer {
-  margin-top: 40px;
-  padding-top: 10px;
-  border-top: 1px solid #eee;
+/* Navigation / TOC - DITA compatible */
+.navtitle, .toc {
+  color: var(--eva-neon-blue);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--eva-neon-blue);
+}
+
+nav, .nav, .toc {
+  background-color: var(--eva-gray);
+  border: 1px solid var(--eva-neon-green);
+  border-left: 4px solid var(--eva-neon-green);
+  padding: 15px;
+  box-shadow: 0 0 10px rgba(0, 255, 153, 0.3);
+  margin-bottom: 20px;
+}
+
+/* Notes and warnings - DITA compatible */
+.note, .attention, .caution, .danger, .warning, .tip {
+  background-color: rgba(0, 255, 153, 0.1);
+  border-left: 4px solid var(--eva-neon-green);
+  padding: 15px;
+  margin: 15px 0;
+  position: relative;
+}
+
+.warning, .caution, .danger {
+  background-color: rgba(255, 51, 0, 0.1);
+  border-left: 4px solid var(--eva-neon-red);
+}
+
+/* Add more visual emphasis to note titles */
+.notetitle, .cautiontitle, .dangertitle, .warningtitle, .tiptitle {
+  color: var(--eva-neon-red);
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+/* Main content area - DITA compatible */
+.body, main, article, .section {
+  background-color: rgba(0, 0, 0, 0.7);
+  border: 1px solid var(--eva-neon-blue);
+  padding: 20px;
+  position: relative;
+  margin-top: 20px;
+}
+
+/* Add top border decoration to main content areas */
+.body::before, main::before, article::before, .section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, 
+    var(--eva-neon-red) 0%, 
+    var(--eva-neon-red) 25%, 
+    var(--eva-neon-green) 25%, 
+    var(--eva-neon-green) 50%, 
+    var(--eva-neon-red) 50%, 
+    var(--eva-neon-red) 75%, 
+    var(--eva-neon-green) 75%, 
+    var(--eva-neon-green) 100%);
+  background-size: 100px 100%;
+}
+
+/* Footer styling - DITA compatible */
+footer, .footer {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 4px solid var(--eva-neon-red);
   font-size: 0.9em;
-  color: #666;
+  color: var(--eva-neon-green);
   text-align: center;
+  position: relative;
 }
 
-/* Add a little styling for code blocks */
-pre, code {
-  background-color: #f5f5f5;
-  border: 1px solid #ddd;
-  border-radius: 3px;
-  padding: 2px 5px;
-  font-family: 'Courier New', Courier, monospace;
+/* Add striped border effect to footer */
+footer::before, .footer::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, 
+    var(--eva-neon-green) 0%, 
+    var(--eva-neon-green) 25%, 
+    var(--eva-neon-red) 25%, 
+    var(--eva-neon-red) 50%, 
+    var(--eva-neon-green) 50%, 
+    var(--eva-neon-green) 75%, 
+    var(--eva-neon-red) 75%, 
+    var(--eva-neon-red) 100%);
+  background-size: 100px 100%;
+}
+
+/* Images - DITA compatible */
+img, .image {
+  border: 1px solid var(--eva-neon-blue);
+  padding: 2px;
+  max-width: 100%;
+}
+
+/* Figure captions - DITA compatible */
+.fig, figure, figcaption {
+  color: var(--eva-neon-blue);
+  font-style: italic;
+  text-align: center;
+  margin-top: 5px;
+}
+
+/* Navigation bar at top - DITA compatible */
+.navbar, .header {
+  background-color: var(--eva-black);
+  color: var(--eva-white);
+  text-align: center;
+  padding: 20px;
+  margin-bottom: 20px;
+  position: relative;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  font-weight: bold;
+  border: 2px solid var(--eva-neon-green);
+  box-shadow: 0 0 15px rgba(0, 255, 153, 0.3);
+}
+
+/* Add side decorative elements to navbar/header */
+.navbar::before, .navbar::after, .header::before, .header::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 50px;
+  height: 100%;
+  background-image: linear-gradient(to right, 
+    var(--eva-neon-green), var(--eva-neon-green) 10px, 
+    transparent 10px, transparent 20px);
+  background-size: 20px 100%;
+}
+
+.navbar::before, .header::before {
+  left: 0;
+}
+
+.navbar::after, .header::after {
+  right: 0;
+  transform: scaleX(-1);
+}
+
+/* Mobile responsiveness - DITA compatible */
+@media (max-width: 768px) {
+  body {
+    padding: 10px;
+  }
+  
+  .navbar, .header {
+    padding: 15px 10px;
+  }
+  
+  .navbar::before, .navbar::after, .header::before, .header::after {
+    width: 20px;
+  }
 }
