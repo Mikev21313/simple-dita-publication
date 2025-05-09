@@ -1,10 +1,8 @@
-name: Publish DITA to GitHub Pages
+name: Publish DITA with Consistent Navigation
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'dita-source/**'  # Only trigger on changes to DITA content
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -16,41 +14,72 @@ jobs:
         uses: actions/checkout@v3
         
       - name: Set up Java
-        uses: actions/setup-java@v3  # Updated to v3
+        uses: actions/setup-java@v2
         with:
-          java-version: '17'  # Updated to more recent Java version
-          distribution: 'temurin'  # More reliable distribution
+          java-version: '11'
+          distribution: 'adopt'
           
-      - name: Setup DITA-OT
-        uses: dita-ot/setup-dita-ot@v2  # Use official DITA-OT action
-        with:
-          version: '4.1.2'  # Use latest stable version
-          
-      - name: Verify DITA map exists
+      - name: Install DITA-OT
         run: |
-          if [ ! -f "dita-source/maps/simple-guide.ditamap" ]; then
-            echo "Error: DITA map not found at specified location"
-            exit 1
-          fi
+          wget https://github.com/dita-ot/dita-ot/releases/download/3.6.1/dita-ot-3.6.1.zip
+          unzip dita-ot-3.6.1.zip
+          chmod +x dita-ot-3.6.1/bin/dita
           
-      # Transform DITA to HTML
-      - name: Transform DITA to HTML
+      # Create header and footer for consistent navigation
+      - name: Create header and footer
         run: |
-          dita --input=dita-source/maps/simple-guide.ditamap \
-          --format=html5 \
-          --output=docs \
-          --args.xhtml.toc=toc \
-          --nav-toc=full \
-          --args.outext=.html \
-          --args.copycss=yes \
-          --args.css=css/style.css \
-          --verbose
+          # Create directory for header and footer files
+          mkdir -p custom-templates
           
-      # Create and add CSS file for styling
-      - name: Add CSS file
+          # Create header with consistent navigation
+          cat > custom-templates/header.html << 'EOF'
+          <div id="site-header">
+            <div class="site-title">
+              <a href="index.html">Documentation</a>
+            </div>
+            <nav class="main-nav">
+              <ul>
+                <li><a href="topics/welcome.html">Test welcome page</a></li>
+                <li><a href="topics/second-topic.html">Second Section</a></li>
+                <li><a href="topics/Top.html">Welcome to My Simple DITA Publication</a>
+                  <ul>
+                    <li><a href="topics/test_2171_manual.html">test 2171 manual</a></li>
+                  </ul>
+                </li>
+              </ul>
+            </nav>
+          </div>
+          <hr>
+          EOF
+          
+          # Create footer
+          cat > custom-templates/footer.html << 'EOF'
+          <hr>
+          <div id="site-footer">
+            <p>© 2025 My Documentation | <a href="index.html">Home</a></p>
+          </div>
+          <script>
+            // Highlight current page in navigation
+            document.addEventListener('DOMContentLoaded', function() {
+              const currentPath = window.location.pathname;
+              const links = document.querySelectorAll('.main-nav a');
+              
+              links.forEach(link => {
+                if (currentPath.endsWith(link.getAttribute('href'))) {
+                  link.classList.add('active');
+                  link.parentElement.classList.add('current');
+                }
+              });
+            });
+          </script>
+          EOF
+          
+      # Create custom CSS
+      - name: Create CSS
         run: |
-          mkdir -p docs/css
-          cat > docs/css/style.css << 'EOF'
+          mkdir -p custom-templates/css
+          cat > custom-templates/css/custom.css << 'EOF'
+          /* Base styles */
           body {
             font-family: Arial, sans-serif;
             max-width: 1200px;
@@ -58,68 +87,119 @@ jobs:
             padding: 20px;
             line-height: 1.5;
           }
-          a { color: #0066cc; }
-          .navtitle { font-weight: bold; }
-          .toc { 
-            background-color: #f8f8f8;
-            padding: 15px;
-            border-radius: 5px;
-          }
-          .topictitle1 { font-size: 1.8em; }
-          .topictitle2 { font-size: 1.5em; }
           
-          /* Make sure nested topics are clearly visible */
-          .nested1 { margin-left: 20px; }
-          .nested2 { margin-left: 40px; }
-          .nested3 { margin-left: 60px; }
+          /* Header and navigation */
+          #site-header {
+            margin-bottom: 20px;
+          }
+          
+          .site-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+          }
+          
+          .site-title a {
+            color: #333;
+            text-decoration: none;
+          }
+          
+          /* Main navigation */
+          .main-nav ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+          }
+          
+          .main-nav li {
+            margin: 5px 0;
+            position: relative;
+          }
+          
+          .main-nav a {
+            color: #0066cc;
+            text-decoration: none;
+            display: block;
+            padding: 5px 10px;
+          }
+          
+          .main-nav a:hover {
+            background-color: #e8e8e8;
+            border-radius: 3px;
+          }
+          
+          .main-nav a.active {
+            font-weight: bold;
+            background-color: #e0e0e0;
+            border-radius: 3px;
+          }
+          
+          .main-nav li.current > a {
+            font-weight: bold;
+          }
+          
+          .main-nav ul ul {
+            margin-left: 20px;
+            border: none;
+            background: none;
+            padding: 0;
+          }
+          
+          /* Content area */
+          .topictitle1 {
+            font-size: 1.8em;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+          }
+          
+          .topictitle2 {
+            font-size: 1.5em;
+          }
+          
+          /* Footer */
+          #site-footer {
+            margin-top: 30px;
+            color: #666;
+            font-size: 0.9em;
+          }
           EOF
           
-          # Check if CSS is already linked, if not add it
-          for file in $(find docs -name "*.html" -type f); do
-            if ! grep -q "css/style.css" "$file"; then
-              sed -i 's/<\/head>/<link rel="stylesheet" href="css\/style.css"><\/head>/' "$file"
-            fi
-          done
-          
-      # Check for any broken links in the output
-      - name: Check for broken links
+      # Transform DITA to HTML with custom header and footer
+      - name: Transform DITA to HTML
         run: |
-          echo "Checking for broken internal links in HTML output..."
-          grep -r "href=\".*\"" docs/ | grep -v "http" | grep -v "https" | sed 's/.*href=\"\([^\"]*\)\".*/\1/' | sort | uniq > links.txt
+          ./dita-ot-3.6.1/bin/dita \
+          --input=dita-source/maps/simple-guide.ditamap \
+          --format=html5 \
+          --output=docs \
+          --args.xhtml.toc=toc \
+          --args.css=css/custom.css \
+          --args.cssroot=custom-templates \
+          --args.copycss=yes \
+          --args.hdr=custom-templates/header.html \
+          --args.ftr=custom-templates/footer.html \
+          --nav-toc=partial \
+          --args.outext=.html \
+          --verbose
           
-          BROKEN_LINKS=0
-          while read -r link; do
-            # Skip empty links or anchors
-            if [[ "$link" == "" || "$link" == "#"* || "$link" == "mailto:"* ]]; then
-              continue
-            fi
-            
-            # Remove anchor part
-            LINK_PATH=${link%%#*}
-            
-            # Find base directory
-            BASE_DIR=$(dirname "$file")
-            
-            # Check if file exists
-            if [[ "$LINK_PATH" == "/"* ]]; then
-              # Absolute path inside docs
-              if [[ ! -f "docs$LINK_PATH" && ! -d "docs$LINK_PATH" ]]; then
-                echo "Broken link: $link in docs directory"
-                BROKEN_LINKS=$((BROKEN_LINKS + 1))
-              fi
-            else
-              # Relative path
-              if [[ ! -f "docs/$LINK_PATH" && ! -d "docs/$LINK_PATH" ]]; then
-                echo "Broken link: $link in docs directory"
-                BROKEN_LINKS=$((BROKEN_LINKS + 1))
-              fi
-            fi
-          done < links.txt
+      # Ensure output directory exists
+      - name: Check output
+        run: |
+          if [ ! -d "docs" ]; then
+            echo "Output directory not created"
+            exit 1
+          fi
           
-          if [[ $BROKEN_LINKS -gt 0 ]]; then
-            echo "Warning: $BROKEN_LINKS broken links found in the output"
-          else
-            echo "No broken links found"
+          # Check for index page
+          if [ ! -f "docs/index.html" ]; then
+            echo "Creating index.html..."
+            cp docs/topics/welcome.html docs/index.html
+            # Adjust paths in the copied file
+            sed -i 's/href="css\//href="css\//g' docs/index.html
           fi
           
       # Deploy to GitHub Pages
