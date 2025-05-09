@@ -1,5 +1,5 @@
 # File: .github/workflows/publish-dita.yml
-name: Publish DITA to GitHub Pages
+name: Publish DITA to GitHub Pages with Auto TOC
 
 on:
   push:
@@ -27,39 +27,373 @@ jobs:
           unzip dita-ot-3.6.1.zip
           chmod +x dita-ot-3.6.1/bin/dita
 
-      - name: Verify DITA files
+      # Transform DITA to HTML with TOC
+      - name: Transform DITA to HTML
         run: |
-          echo "Checking if DITA files exist:"
-          ls -la dita-source/maps/
-          ls -la dita-source/topics/
-          ls -la dita-source/css/
-
-      - name: Create simple HTML directly
-        if: always()
-        run: |
-          mkdir -p docs
-          echo "<html><head><title>Simple DITA Publication</title><link rel='stylesheet' href='css/custom.css'></head><body>" > docs/index.html
-          echo "<h1>Welcome to My Simple DITA Publication</h1>" >> docs/index.html
-          echo "<p>This is a simple one-page DITA publication deployed to GitHub Pages.</p>" >> docs/index.html
-          echo "<p>DITA (Darwin Information Typing Architecture) is an XML-based format for authoring and publishing technical content.</p>" >> docs/index.html
-          echo "<h2>Key Features</h2><ul>" >> docs/index.html
-          echo "<li><b>Structured Content:</b> DITA helps organize content in a structured way.</li>" >> docs/index.html
-          echo "<li><b>Reusability:</b> Content can be reused across multiple documents.</li>" >> docs/index.html
-          echo "<li><b>Separation of Content and Presentation:</b> Content is separate from its formatting.</li>" >> docs/index.html
-          echo "</ul>" >> docs/index.html
-          echo "<h2>About This Example</h2>" >> docs/index.html
-          echo "<p>This example demonstrates how to publish DITA content to GitHub Pages.</p>" >> docs/index.html
-          echo "</body></html>" >> docs/index.html
-          mkdir -p docs/css
-          cp dita-source/css/custom.css docs/css/
-
-      - name: Try DITA-OT transformation
+          ./dita-ot-3.6.1/bin/dita \
+          --input=dita-source/maps/simple-guide.ditamap \
+          --format=html5 \
+          --output=docs \
+          --args.xhtml.toc=toc \
+          --nav-toc=full \
+          --verbose
         continue-on-error: true
-        run: |
-          ./dita-ot-3.6.1/bin/dita -i dita-source/maps/simple-guide.ditamap -o docs/dita-output -f html5
 
+      # Create a TOC CSS file for left-side navigation
+      - name: Create TOC CSS
+        run: |
+          mkdir -p docs/css
+          cat > docs/css/toc-style.css << 'EOL'
+          /* Left-side TOC styles */
+          body {
+            display: flex;
+            flex-wrap: wrap;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+
+          /* Header should be full width */
+          .header {
+            width: 100%;
+            margin-bottom: 20px;
+          }
+
+          /* TOC container */
+          .toc-column {
+            width: 250px;
+            padding-right: 20px;
+            position: sticky;
+            top: 20px;
+            align-self: flex-start;
+            height: calc(100vh - 40px);
+            overflow-y: auto;
+          }
+
+          /* Main content area */
+          .content-column {
+            flex: 1;
+            min-width: 0; /* Prevents flex items from overflowing */
+          }
+
+          /* Style the TOC */
+          nav[role="toc"] {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+          }
+
+          nav[role="toc"] ul {
+            list-style-type: none;
+            padding-left: 0;
+          }
+
+          nav[role="toc"] ul ul {
+            padding-left: 20px;
+          }
+
+          nav[role="toc"] li {
+            margin-bottom: 8px;
+          }
+
+          nav[role="toc"] a {
+            color: #0066cc;
+            text-decoration: none;
+            display: block;
+            padding: 3px 0;
+          }
+
+          nav[role="toc"] a:hover {
+            text-decoration: underline;
+          }
+
+          /* Content styling */
+          .content-column h1 {
+            color: #0066cc;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+          }
+
+          .content-column h2 {
+            color: #0066cc;
+            margin-top: 25px;
+          }
+
+          /* Footer styling */
+          footer {
+            width: 100%;
+            margin-top: 40px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+            font-size: 0.9em;
+            color: #666;
+            text-align: center;
+          }
+
+          /* Responsive design */
+          @media (max-width: 768px) {
+            body {
+              display: block;
+            }
+            
+            .toc-column {
+              width: 100%;
+              position: static;
+              height: auto;
+              margin-bottom: 20px;
+            }
+          }
+          EOL
+
+      # Extract and modify HTML files
+      - name: Extract TOC and modify HTML structure
+        run: |
+          # Look for files with TOC
+          find docs -name "*.html" -type f | while read -r file; do
+            echo "Processing $file..."
+            
+            # Create temporary files
+            temp_file=$(mktemp)
+            
+            # Add CSS link
+            sed -i '/<\/head>/ i\    <link rel="stylesheet" href="css/toc-style.css">' "$file"
+            
+            # Extract TOC if it exists and wrap content in flex layout
+            if grep -q '<nav role="toc"' "$file"; then
+              # File has TOC, we need to move it to the left side
+              awk '
+              BEGIN { in_body = 0; toc_found = 0; toc_content = ""; in_toc = 0; in_content = 0; header_content = ""; }
+              
+              # Capture header content
+              /<header/ { in_header = 1; header_content = header_content $0 "\n"; next; }
+              in_header == 1 && /<\/header>/ { in_header = 0; header_content = header_content $0 "\n"; next; }
+              in_header == 1 { header_content = header_content $0 "\n"; next; }
+              
+              # Find body tag
+              /<body/ { 
+                in_body = 1; 
+                print $0;
+                if (header_content != "") {
+                  print "<div class=\"header\">";
+                  printf "%s", header_content;
+                  print "</div>";
+                }
+                print "<div class=\"toc-column\">";
+                next;
+              }
+              
+              # Extract TOC
+              /<nav role="toc"/ { in_toc = 1; toc_found = 1; }
+              in_toc == 1 { toc_content = toc_content $0 "\n"; }
+              in_toc == 1 && /<\/nav>/ { in_toc = 0; }
+              
+              # When we find TOC, dont print it yet
+              in_toc == 1 { next; }
+              
+              # Start content column after TOC is found
+              toc_found == 1 && in_content == 0 && in_toc == 0 { 
+                print toc_content;
+                print "</div>"; # Close toc-column
+                print "<div class=\"content-column\">";
+                in_content = 1;
+                toc_found = 2; # Mark as processed
+              }
+              
+              # Close content div before body end
+              /<\/body>/ {
+                if (in_content == 1) {
+                  print "</div>"; # Close content-column
+                }
+                print $0;
+                next;
+              }
+              
+              # Print all other lines
+              in_body == 1 && in_toc == 0 { print $0; }
+              ' "$file" > "$temp_file"
+              
+              # Replace original with modified file
+              mv "$temp_file" "$file"
+            else
+              # No TOC in this file, just add flex layout
+              awk '
+              BEGIN { in_body = 0; header_found = 0; header_content = ""; in_header = 0; }
+              
+              # Capture header content
+              /<header/ { in_header = 1; header_content = header_content $0 "\n"; next; }
+              in_header == 1 && /<\/header>/ { in_header = 0; header_content = header_content $0 "\n"; next; }
+              in_header == 1 { header_content = header_content $0 "\n"; next; }
+              
+              # Find body tag
+              /<body/ { 
+                in_body = 1; 
+                print $0;
+                if (header_content != "") {
+                  print "<div class=\"header\">";
+                  printf "%s", header_content;
+                  print "</div>";
+                }
+                print "<div class=\"content-column\">"; 
+                next; 
+              }
+              
+              # Close content div before body end
+              /<\/body>/ {
+                print "</div>"; # Close content-column
+                print $0;
+                next;
+              }
+              
+              # Print all other lines
+              in_body == 1 { print $0; }
+              ' "$file" > "$temp_file"
+              
+              # Replace original with modified file
+              mv "$temp_file" "$file"
+            fi
+          done
+
+      # Try to extract TOC from the index file and copy to other files if needed
+      - name: Distribute TOC to all pages if needed
+        run: |
+          # Look for a TOC in index.html
+          main_toc=""
+          if [ -f "docs/index.html" ] && grep -q '<nav role="toc"' "docs/index.html"; then
+            main_toc=$(grep -A 1000 '<nav role="toc"' "docs/index.html" | grep -B 1000 '</nav>' | head -n 1000)
+          fi
+          
+          if [ -n "$main_toc" ]; then
+            echo "Found TOC in index.html, copying to other pages if needed..."
+            
+            # Copy to files without TOC
+            find docs -name "*.html" -type f | while read -r file; do
+              if ! grep -q '<nav role="toc"' "$file"; then
+                echo "Adding TOC to $file..."
+                
+                # Create temporary file
+                temp_file=$(mktemp)
+                
+                # Insert TOC
+                awk -v toc="$main_toc" '
+                BEGIN { in_body = 0; content_started = 0; }
+                
+                # Find body start
+                /<body/ { 
+                  in_body = 1; 
+                  print $0;
+                  next;
+                }
+                
+                # After body, before content starts
+                in_body == 1 && /<div class="content-column">/ {
+                  print "<div class=\"toc-column\">";
+                  print toc;
+                  print "</div>";
+                  print $0;
+                  content_started = 1;
+                  next;
+                }
+                
+                # Print all other lines
+                { print $0; }
+                ' "$file" > "$temp_file"
+                
+                # Replace original with modified file
+                mv "$temp_file" "$file"
+              fi
+            done
+          fi
+
+      # Create index.html if it doesn't exist
+      - name: Create index.html if missing
+        run: |
+          if [ ! -f "docs/index.html" ]; then
+            echo "Creating a basic index.html..."
+            
+            # Try to find any TOC in existing files
+            main_toc=""
+            for file in docs/*.html; do
+              if grep -q '<nav role="toc"' "$file"; then
+                main_toc=$(grep -A 1000 '<nav role="toc"' "$file" | grep -B 1000 '</nav>' | head -n 1000)
+                break
+              fi
+            done
+            
+            # If no TOC found, create a basic one
+            if [ -z "$main_toc" ]; then
+              echo "No TOC found, creating a basic one..."
+              
+              # Build a list of HTML files
+              file_list=""
+              for file in docs/*.html; do
+                # Skip index.html itself
+                if [ "$(basename "$file")" != "index.html" ]; then
+                  filename=$(basename "$file")
+                  # Try to extract title
+                  title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -n 1)
+                  if [ -z "$title" ]; then
+                    title="${filename%.html}"
+                  fi
+                  file_list="$file_list        <li><a href=\"$filename\">$title</a></li>\n"
+                fi
+              done
+              
+              # Create basic TOC
+              main_toc="<nav role=\"toc\">\n  <h2>Table of Contents</h2>\n  <ul>\n    <li><a href=\"index.html\">Home</a></li>\n$file_list  </ul>\n</nav>"
+            fi
+            
+            # Create a simple index.html with the TOC
+            cat > docs/index.html << EOL
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation</title>
+    <link rel="stylesheet" href="css/toc-style.css">
+</head>
+<body>
+    <div class="header">
+        <h1>Documentation</h1>
+    </div>
+
+    <div class="toc-column">
+$main_toc
+    </div>
+
+    <div class="content-column">
+        <h1>Documentation</h1>
+        <p>Welcome to the documentation. Please select a topic from the table of contents.</p>
+        
+        <h2>Available Topics</h2>
+        <ul>
+$(find docs -name "*.html" -not -name "index.html" -type f | while read -r file; do
+  filename=$(basename "$file")
+  title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -n 1)
+  if [ -z "$title" ]; then
+    title="${filename%.html}"
+  fi
+  echo "            <li><a href=\"$filename\">$title</a></li>"
+done)
+        </ul>
+    </div>
+
+    <footer>
+        <p>Generated from DITA content</p>
+    </footer>
+</body>
+</html>
+EOL
+          fi
+
+      # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: docs
           branch: gh-pages
+          clean: true
