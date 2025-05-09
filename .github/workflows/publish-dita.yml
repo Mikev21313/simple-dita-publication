@@ -1,8 +1,29 @@
-name: Publish DITA with Consistent Navigation
+name: Auto-Build and Deploy DITA to GitHub Pages
 on:
+  # Automatically build and deploy when pushing to main branch
   push:
     branches: [ main ]
+    paths:
+      - 'dita-source/**'  # Only trigger when DITA content changes
+  
+  # Automatically build and deploy when creating or updating a pull request
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'dita-source/**'  # Only trigger when DITA content changes
+      
+  # Add ability to manually trigger the workflow from GitHub Actions tab
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to GitHub Pages?'
+        required: true
+        default: 'true'
+        type: boolean
+      title:
+        description: 'Documentation Title (leave empty for default)'
+        required: false
+        type: string
 
 jobs:
   build-and-deploy:
@@ -25,17 +46,51 @@ jobs:
           unzip dita-ot-3.6.1.zip
           chmod +x dita-ot-3.6.1/bin/dita
           
+      # Extract documentation title from DITA map
+      - name: Extract documentation title
+        id: extract_title
+        run: |
+          # Default title in case extraction fails
+          DEFAULT_TITLE="Documentation"
+          
+          # Use manual title if provided through workflow_dispatch
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.title }}" ]]; then
+            DOCS_TITLE="${{ github.event.inputs.title }}"
+            echo "Using manually provided title: $DOCS_TITLE"
+          else
+            # Try to extract title from DITA map
+            if [ -f "dita-source/maps/simple-guide.ditamap" ]; then
+              EXTRACTED_TITLE=$(grep -oP '(?<=<title>).*?(?=</title>)' dita-source/maps/simple-guide.ditamap | head -1)
+              if [ -n "$EXTRACTED_TITLE" ]; then
+                DOCS_TITLE="$EXTRACTED_TITLE"
+                echo "Extracted title from DITA map: $DOCS_TITLE"
+              else
+                DOCS_TITLE="$DEFAULT_TITLE"
+                echo "Could not extract title from DITA map, using default: $DOCS_TITLE"
+              fi
+            else
+              DOCS_TITLE="$DEFAULT_TITLE"
+              echo "DITA map not found, using default title: $DOCS_TITLE"
+            fi
+          fi
+          
+          # Set output variable for use in other steps
+          echo "docs_title=$DOCS_TITLE" >> $GITHUB_OUTPUT
+          
       # Create header and footer for consistent navigation
       - name: Create header and footer
         run: |
+          # Get title from previous step
+          DOCS_TITLE="${{ steps.extract_title.outputs.docs_title }}"
+          
           # Create directory for header and footer files
           mkdir -p custom-templates
           
-          # Create header with consistent navigation
-          cat > custom-templates/header.html << 'EOF'
+          # Create header with consistent navigation and title
+          cat > custom-templates/header.html << EOF
           <div id="site-header">
             <div class="site-title">
-              <a href="index.html">Documentation</a>
+              <a href="index.html">$DOCS_TITLE</a>
             </div>
             <nav class="main-nav">
               <ul>
@@ -52,11 +107,11 @@ jobs:
           <hr>
           EOF
           
-          # Create footer
-          cat > custom-templates/footer.html << 'EOF'
+          # Create footer with title
+          cat > custom-templates/footer.html << EOF
           <hr>
           <div id="site-footer">
-            <p>© 2025 My Documentation | <a href="index.html">Home</a></p>
+            <p>© 2025 $DOCS_TITLE | <a href="index.html">Home</a> | Last updated: <span id="last-updated"></span></p>
           </div>
           <script>
             // Highlight current page in navigation
@@ -70,6 +125,9 @@ jobs:
                   link.parentElement.classList.add('current');
                 }
               });
+              
+              // Add last updated date
+              document.getElementById('last-updated').textContent = new Date().toLocaleDateString();
             });
           </script>
           EOF
@@ -149,6 +207,11 @@ jobs:
             padding: 0;
           }
           
+          /* Make sure original title doesn't appear if we have our custom header */
+          .title {
+            display: none;
+          }
+          
           /* Content area */
           .topictitle1 {
             font-size: 1.8em;
@@ -169,6 +232,14 @@ jobs:
           }
           EOF
           
+      # Set HTML page titles to match documentation title
+      - name: Create title-setting script
+        run: |
+          cat > custom-templates/set-title.js << EOF
+          const DOCS_TITLE = "${{ steps.extract_title.outputs.docs_title }}";
+          document.title = DOCS_TITLE;
+          EOF
+          
       # Transform DITA to HTML with custom header and footer
       - name: Transform DITA to HTML
         run: |
@@ -186,7 +257,28 @@ jobs:
           --args.outext=.html \
           --verbose
           
-      # Ensure output directory exists
+      # Update HTML title tags in all files and insert the script
+      - name: Set consistent HTML titles
+        run: |
+          DOCS_TITLE="${{ steps.extract_title.outputs.docs_title }}"
+          
+          # Copy the title script to output
+          mkdir -p docs/js
+          cp custom-templates/set-title.js docs/js/
+          
+          # Add script to all HTML files
+          find docs -name "*.html" -type f -exec sed -i 's/<\/head>/<script src="\/js\/set-title.js"><\/script><\/head>/' {} \;
+          
+          # Set HTML title tags directly as a fallback
+          find docs -name "*.html" -type f -exec sed -i "s/<title>.*<\/title>/<title>$DOCS_TITLE<\/title>/" {} \;
+          
+      # Add timestamp to show when the site was built
+      - name: Add build timestamp
+        run: |
+          TIMESTAMP=$(date)
+          echo "<!-- Site built at: $TIMESTAMP -->" >> docs/index.html
+          
+      # Ensure output directory exists and has index.html
       - name: Check output
         run: |
           if [ ! -d "docs" ]; then
@@ -202,8 +294,13 @@ jobs:
             sed -i 's/href="css\//href="css\//g' docs/index.html
           fi
           
-      # Deploy to GitHub Pages
+      # Add .nojekyll file to prevent GitHub from processing with Jekyll
+      - name: Disable Jekyll
+        run: touch docs/.nojekyll
+          
+      # Only deploy if on main branch or if manually triggered with deploy=true
       - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true')
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: docs
