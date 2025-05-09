@@ -1,5 +1,5 @@
 # File: .github/workflows/publish-dita.yml
-name: Publish DITA to GitHub Pages
+name: Publish DITA to GitHub Pages with Auto TOC
 
 on:
   push:
@@ -27,49 +27,423 @@ jobs:
           unzip dita-ot-3.6.1.zip
           chmod +x dita-ot-3.6.1/bin/dita
 
-      - name: Verify DITA files
-        run: |
-          echo "Checking DITA map and topics:"
-          ls -la dita-source/maps/ || echo "Maps directory not found"
-          ls -la dita-source/topics/ || echo "Topics directory not found"
-          echo "Content of DITA map:"
-          cat dita-source/maps/simple-guide.ditamap || echo "DITA map not found"
+      # Create CSS directory if it doesn't exist
+      - name: Create CSS directory
+        run: mkdir -p dita-source/css
 
-      - name: Transform DITA to HTML
-        continue-on-error: true
+      # Create custom CSS file for left side TOC
+      - name: Create custom CSS
         run: |
-          ./dita-ot-3.6.1/bin/dita -i dita-source/maps/simple-guide.ditamap -o docs -f html5 \
+          cat > dita-source/css/custom.css << 'EOL'
+          /* Base styles */
+          body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            flex-wrap: wrap;
+          }
+
+          /* Header styles */
+          .header {
+            background-color: #0066cc;
+            color: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            width: 100%;
+          }
+
+          .header h1 {
+            margin: 0;
+            color: white;
+            border: none;
+          }
+
+          /* Left side table of contents */
+          .toc-container {
+            width: 250px;
+            padding-right: 20px;
+            position: sticky;
+            top: 20px;
+            align-self: flex-start;
+            height: calc(100vh - 40px);
+            overflow-y: auto;
+          }
+
+          .toc {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+          }
+
+          .toc h2 {
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+            font-size: 1.2em;
+          }
+
+          .toc ul {
+            list-style-type: none;
+            padding-left: 0;
+          }
+
+          .toc ul ul {
+            padding-left: 20px;
+          }
+
+          .toc li {
+            margin-bottom: 8px;
+            padding-left: 5px;
+          }
+
+          .toc li.active {
+            border-left: 3px solid #0066cc;
+            padding-left: 2px;
+            font-weight: bold;
+          }
+
+          .toc a {
+            color: #0066cc;
+            text-decoration: none;
+            display: block;
+            padding: 3px 0;
+          }
+
+          .toc a:hover {
+            text-decoration: underline;
+          }
+
+          /* Main content area */
+          .content {
+            flex: 1;
+            min-width: 0; /* Allows proper flex behavior */
+          }
+
+          .content h1 {
+            color: #0066cc;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+          }
+
+          .content h2 {
+            color: #0066cc;
+            margin-top: 25px;
+          }
+
+          .content ul, .content ol {
+            margin-left: 20px;
+          }
+
+          .content li {
+            margin-bottom: 8px;
+          }
+
+          /* Navigation between topics */
+          .navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+          }
+
+          .navigation a {
+            color: #0066cc;
+            text-decoration: none;
+          }
+
+          .navigation a:hover {
+            text-decoration: underline;
+          }
+
+          /* Footer */
+          .footer {
+            width: 100%;
+            margin-top: 40px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+            font-size: 0.9em;
+            color: #666;
+            text-align: center;
+          }
+
+          /* Responsive design */
+          @media (max-width: 768px) {
+            body {
+              display: block;
+            }
+            
+            .toc-container {
+              width: 100%;
+              position: static;
+              height: auto;
+              margin-bottom: 20px;
+            }
+          }
+          EOL
+
+      # Create templates directory if it doesn't exist
+      - name: Create templates directory
+        run: mkdir -p dita-source/templates
+
+      # Create header template
+      - name: Create header template
+        run: |
+          cat > dita-source/templates/header.xml << 'EOL'
+          <div class="header">
+            <h1>DITA Documentation</h1>
+          </div>
+          EOL
+
+      # Create footer template with script
+      - name: Create footer template
+        run: |
+          cat > dita-source/templates/footer.xml << 'EOL'
+          <div class="footer">
+            <p>Generated with DITA-OT | Published with GitHub Pages</p>
+          </div>
+          <script>
+            // Highlight the current page in the TOC
+            document.addEventListener('DOMContentLoaded', function() {
+              // Get the current page URL
+              var currentPageUrl = window.location.pathname.split('/').pop();
+              if (!currentPageUrl) currentPageUrl = 'index.html';
+              
+              // Find the matching link in the TOC and add 'active' class to its parent li
+              var tocLinks = document.querySelectorAll('.toc a');
+              tocLinks.forEach(function(link) {
+                if (link.getAttribute('href') === currentPageUrl) {
+                  link.parentElement.classList.add('active');
+                }
+              });
+            });
+          </script>
+          EOL
+
+      # Generate a list of topics from the DITA source
+      - name: Generate topic list
+        run: |
+          # Create a file to store the topic list
+          echo "Scanning for DITA topics..."
+          
+          # Initialize the topic list file with a header and index entry
+          cat > topic_list.txt << 'EOL'
+          index.html|Home
+          EOL
+          
+          # Find all DITA topic files and extract their titles
+          find dita-source/topics -name "*.dita" -type f | while read -r file; do
+            # Get filename without path
+            filename=$(basename "$file")
+            # Get html filename (replace .dita with .html)
+            htmlfile="${filename%.dita}.html"
+            
+            # Extract title from DITA file
+            title=$(grep -o "<title>.*</title>" "$file" | head -1 | sed 's/<title>\(.*\)<\/title>/\1/')
+            
+            # If title extraction failed, use the filename as title
+            if [ -z "$title" ]; then
+              title="${filename%.dita}"
+              # Convert to title case and replace underscores with spaces
+              title=$(echo "$title" | sed 's/_/ /g' | sed 's/\b\(.\)/\u\1/g')
+            fi
+            
+            # Add to topic list file
+            echo "$htmlfile|$title" >> topic_list.txt
+          done
+          
+          echo "Generated topic list:"
+          cat topic_list.txt
+
+      # Transform DITA to HTML
+      - name: Transform DITA to HTML with TOC
+        run: |
+          ./dita-ot-3.6.1/bin/dita \
+          --input=dita-source/maps/simple-guide.ditamap \
+          --format=html5 \
+          --output=docs \
           --args.copycss=yes \
           --args.css=custom.css \
           --args.cssroot=dita-source/css \
           --args.xhtml.toc=toc \
           --nav-toc=full \
-          --args.outext=.html
+          --args.breadcrumbs=yes \
+          --args.hide-parent-link=no \
+          --filter=none \
+          --verbose \
+          --args.hdr=dita-source/templates/header.xml \
+          --args.ftr=dita-source/templates/footer.xml
+        continue-on-error: true
 
-      - name: Verify output
+      # Create TOC HTML from topic list
+      - name: Create TOC HTML
         run: |
-          echo "Checking output files:"
-          ls -la docs/ || echo "Output directory empty or not found"
-          find docs -type f | sort || echo "No files found in output"
-
-      # Fallback: create simple HTML if DITA-OT fails
-      - name: Create simple HTML (fallback)
-        if: ${{ failure() }}
-        run: |
-          mkdir -p docs
-          echo "<html><head><title>Simple DITA Publication</title></head><body>" > docs/index.html
-          echo "<h1>Simple DITA Publication</h1>" >> docs/index.html
-          echo "<p>This is a simple DITA publication.</p>" >> docs/index.html
+          # Create TOC HTML from topic list
+          echo "Generating TOC HTML..."
           
-          # List available topics from DITA map
-          echo "<h2>Available Topics:</h2><ul>" >> docs/index.html
-          grep -o 'href="[^"]*"' dita-source/maps/simple-guide.ditamap | sed 's/href="//g' | sed 's/"//g' | while read -r topic; do
-            echo "<li>$topic</li>" >> docs/index.html
+          # Start TOC HTML
+          cat > toc_html.txt << 'EOL'
+          <div class="toc">
+            <h2>Table of Contents</h2>
+            <ul>
+          EOL
+          
+          # Add each topic to TOC HTML
+          while IFS="|" read -r htmlfile title; do
+            echo "      <li><a href=\"$htmlfile\">$title</a></li>" >> toc_html.txt
+          done < topic_list.txt
+          
+          # End TOC HTML
+          cat >> toc_html.txt << 'EOL'
+            </ul>
+          </div>
+          EOL
+          
+          echo "Generated TOC HTML:"
+          cat toc_html.txt
+
+      # Create topic descriptions for index page
+      - name: Create topic descriptions
+        run: |
+          # Create topic descriptions for index page
+          echo "Generating topic descriptions..."
+          
+          # Start descriptions HTML
+          cat > descriptions_html.txt << 'EOL'
+          <ul>
+          EOL
+          
+          # Skip the first line (index entry) and add descriptions for all other topics
+          tail -n +2 topic_list.txt | while IFS="|" read -r htmlfile title; do
+            echo "    <li><a href=\"$htmlfile\">$title</a> - Information about $title.</li>" >> descriptions_html.txt
           done
-          echo "</ul>" >> docs/index.html
           
-          echo "</body></html>" >> docs/index.html
+          # End descriptions HTML
+          cat >> descriptions_html.txt << 'EOL'
+          </ul>
+          EOL
+          
+          echo "Generated topic descriptions:"
+          cat descriptions_html.txt
 
+      # Modify HTML files to add left side TOC structure
+      - name: Modify HTML files for TOC
+        run: |
+          # Get the TOC HTML
+          toc_html=$(cat toc_html.txt)
+          
+          # Process all HTML files
+          find docs -name "*.html" -type f | while read -r file; do
+            echo "Processing $file..."
+            
+            # Create a temporary file
+            temp_file=$(mktemp)
+            
+            # Process the file with awk
+            awk -v toc="$toc_html" '
+            BEGIN { content_section = 0; body_found = 0; }
+            
+            # When we find the body tag, mark it and add our TOC structure
+            /<body/ {
+              body_found = 1;
+              print $0;
+              print "<div class=\"toc-container\">";
+              print toc;
+              print "</div>";
+              print "<div class=\"content\">";
+              content_section = 1;
+              next;
+            }
+            
+            # When we find the closing body tag, close our content div
+            /<\/body>/ {
+              if (content_section) {
+                print "</div>"; # Close content div
+                content_section = 0;
+              }
+              print $0;
+              next;
+            }
+            
+            # For all other lines, pass them through
+            { print $0; }
+            ' "$file" > "$temp_file"
+            
+            # Replace the original file with the modified one
+            mv "$temp_file" "$file"
+          done
+
+      # Create index file if not present
+      - name: Create index file if not present
+        run: |
+          # Get the TOC HTML and descriptions HTML
+          toc_html=$(cat toc_html.txt)
+          descriptions_html=$(cat descriptions_html.txt)
+          
+          if [ ! -f "docs/index.html" ]; then
+            echo "Creating index.html with TOC..."
+            
+            cat > docs/index.html << EOL
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>DITA Documentation</title>
+                <link rel="stylesheet" type="text/css" href="css/custom.css">
+            </head>
+            <body>
+                <div class="header">
+                  <h1>DITA Documentation</h1>
+                </div>
+                
+                <div class="toc-container">
+                  $toc_html
+                </div>
+                
+                <div class="content">
+                  <h1>Welcome to the DITA Documentation</h1>
+                  
+                  <p>This documentation is generated from DITA source files using DITA-OT and published to GitHub Pages.</p>
+                  
+                  <p>Please select a topic from the table of contents to learn more:</p>
+                  
+                  $descriptions_html
+                  
+                  <p>DITA (Darwin Information Typing Architecture) is an XML-based format for authoring and publishing technical content.</p>
+                </div>
+                
+                <div class="footer">
+                  <p>Generated with DITA-OT | Published with GitHub Pages</p>
+                </div>
+                <script>
+                  // Simple script to highlight the current page in the TOC
+                  document.addEventListener('DOMContentLoaded', function() {
+                    // Get the current page URL
+                    var currentPageUrl = window.location.pathname.split('/').pop();
+                    if (!currentPageUrl) currentPageUrl = 'index.html';
+                    
+                    // Find the matching link in the TOC and add 'active' class to its parent li
+                    var tocLinks = document.querySelectorAll('.toc a');
+                    tocLinks.forEach(function(link) {
+                      if (link.getAttribute('href') === currentPageUrl) {
+                        link.parentElement.classList.add('active');
+                      }
+                    });
+                  });
+                </script>
+            </body>
+            </html>
+            EOL
+          fi
+
+      # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
