@@ -26,140 +26,18 @@ jobs:
           unzip dita-ot-3.6.1.zip
           chmod +x dita-ot-3.6.1/bin/dita
 
-      # Create CSS directory if it doesn't exist
-      - name: Create CSS directory
-        run: mkdir -p dita-source/css
-
-      # Create custom CSS file
-      - name: Create custom CSS
-        run: |
-          cat > dita-source/css/custom.css << 'EOF'
-          /* Basic styles */
-          body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
-          }
-
-          h1, h2, h3 {
-            color: #0066cc;
-          }
-
-          a {
-            color: #0066cc;
-            text-decoration: none;
-          }
-
-          a:hover {
-            text-decoration: underline;
-          }
-          EOF
-
-      # Create directories for DITA source if they don't exist
-      - name: Create DITA directories
-        run: |
-          mkdir -p dita-source/maps
-          mkdir -p dita-source/topics
-
-      # Create a sample DITA map if it doesn't exist
-      - name: Create DITA map
-        run: |
-          if [ ! -f "dita-source/maps/simple-guide.ditamap" ]; then
-            cat > dita-source/maps/simple-guide.ditamap << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
-<map>
-  <title>Documentation Guide</title>
-</map>
-EOF
-          fi
-
-      # Create a sample DITA topic if none exist
-      - name: Create sample DITA topic
-        run: |
-          if [ ! "$(find dita-source/topics -name '*.dita' -type f)" ]; then
-            cat > dita-source/topics/sample.dita << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
-<topic id="sample">
-  <title>Sample Topic</title>
-  <body>
-    <p>This is a sample topic. Replace this content with your actual documentation.</p>
-  </body>
-</topic>
-EOF
-          fi
-
-      # Update DITA map with any topics
-      - name: Update DITA map
-        run: |
-          # Find all topic files
-          topic_files=$(find dita-source/topics -name "*.dita" -type f)
-          
-          # If topics exist, create a new map referencing them
-          if [ -n "$topic_files" ]; then
-            # Create beginning of map file
-            cat > dita-source/maps/simple-guide.ditamap << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
-<map>
-  <title>Documentation Guide</title>
-EOF
-            
-            # Add each topic to the map
-            for topic in $topic_files; do
-              # Get relative path from dita-source
-              rel_path=$(echo "$topic" | sed 's|^dita-source/||')
-              echo "  <topicref href=\"../$rel_path\"/>" >> dita-source/maps/simple-guide.ditamap
-            done
-            
-            # Close the map
-            echo "</map>" >> dita-source/maps/simple-guide.ditamap
-          fi
-
       # Transform DITA to HTML
       - name: Transform DITA to HTML
         run: |
+          # Create output directory
+          mkdir -p docs
+          
+          # Run DITA-OT transformation
           ./dita-ot-3.6.1/bin/dita \
           --input=dita-source/maps/simple-guide.ditamap \
           --format=html5 \
-          --output=docs \
-          --args.copycss=yes \
-          --args.css=custom.css \
-          --args.cssroot=dita-source/css \
-          --verbose
+          --output=docs
         continue-on-error: true
-
-      # Create a simple index file if not present
-      - name: Create simple index file
-        run: |
-          if [ ! -f "docs/index.html" ] || [ ! -s "docs/index.html" ]; then
-            mkdir -p docs
-            cat > docs/index.html << 'EOF'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DITA Documentation</title>
-    <link rel="stylesheet" type="text/css" href="css/custom.css">
-</head>
-<body>
-    <h1>Welcome to the DITA Documentation</h1>
-    <p>This documentation is generated from DITA source files using DITA-OT.</p>
-</body>
-</html>
-EOF
-          fi
-
-      # Ensure CSS is available
-      - name: Copy CSS to output
-        run: |
-          mkdir -p docs/css
-          cp dita-source/css/custom.css docs/css/custom.css
 
       # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
