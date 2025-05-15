@@ -39,7 +39,7 @@ jobs:
       # Step 5: Transform DITA to HTML
       - name: Transform DITA to HTML
         run: |
-          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive_guide.ditamap --format=html5 --output=./site
+          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
       
       # Step 6: Deploy to GitHub Pages using a simpler, more reliable method
       - name: Deploy to GitHub Pages
