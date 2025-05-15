@@ -34,11 +34,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Set up Java
-        uses: actions/setup-java@v2
-        with:
-          java-version: '11'
-          distribution: 'adopt'
+      -- name: Create header and footer
+        run: |
+          # Get title from previous step
+          DOCS_TITLE="${{ steps.extract_title.outputs.docs_title }}"
 
       - name: Install DITA-OT
         run: |
