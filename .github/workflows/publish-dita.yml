@@ -1,4 +1,4 @@
-name: Publish DITA to GitHub Pages
+name: Transform and Publish DITA
 
 on:
   push:
@@ -6,31 +6,45 @@ on:
   workflow_dispatch:
 
 jobs:
-  publish-dita:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
     steps:
+      # Step 1: Check out the repository
       - name: Checkout repository
         uses: actions/checkout@v3
-
+      
+      # Step 2: Set up Java 17 (required for DITA-OT 4.0.2)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
-
-      - name: Install DITA-OT
+      
+      # Step 3: Download and set up DITA-OT
+      - name: Set up DITA-OT
         run: |
           wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
-
-      - name: Convert DITA to HTML
+      
+      # Step 4: Verify DITA-OT and Java version
+      - name: Verify environment
         run: |
-          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive_guide.ditamap --format=html5 --output=./output
-        
+          java -version
+          ./dita-ot-4.0.2/bin/dita --version
+      
+      # Step 5: Transform DITA to HTML
+      - name: Transform DITA to HTML
+        run: |
+          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive_guide.ditamap --format=html5 --output=./site
+      
+      # Step 6: Deploy to GitHub Pages using a simpler, more reliable method
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./output
+          publish_dir: ./site
           force_orphan: true
