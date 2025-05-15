@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
+<topic id="engines">
+    <title>Engine Systems</title>
+    <shortdesc>Overview of automotive engine systems and components.</shortdesc>
+    <body>
+        <section id="engine_overview">
+            <title>Engine Overview</title>
+            <p>Automotive engines are complex mechanical systems that convert fuel into motion through a series of controlled explosions.</p>
+        </section>
+        
+        <section id="engine_types">
+            <title>Types of Engines</title>
+            <p>Modern vehicles employ various engine configurations, each with specific advantages.</p>
+            <ul>
+                <li>Internal Combustion Engines (ICE)
+                    <ul>
+                        <li>Gasoline Engines</li>
+                        <li>Diesel Engines</li>
+                    </ul>
+                </li>
+                <li>Electric Motors</li>
+                <li>Hybrid Systems</li>
+            </ul>
+        </section>
+        
+        <section id="engine_components">
+            <title>Major Engine Components</title>
+            <p>Engine systems consist of several critical components that work together:</p>
+            <dl>
+                <dlentry>
+                    <dt>Engine Block</dt>
+                    <dd>The main structure housing the cylinders and internal components.</dd>
+                </dlentry>
+                <dlentry>
+                    <dt>Cylinder Head</dt>
+                    <dd>Contains valves, spark plugs, and fuel injection systems.</dd>
+                </dlentry>
+                <dlentry>
+                    <dt>Pistons</dt>
+                    <dd>Move up and down within the cylinders to convert pressure into rotational motion.</dd>
+                </dlentry>
+                <dlentry>
+                    <dt>Crankshaft</dt>
+                    <dd>Converts the pistons' reciprocating motion into rotational motion.</dd>
+                </dlentry>
+            </dl>
+        </section>
+        
+        <section id="engine_maintenance">
+            <title>Engine Maintenance</title>
+            <p>Regular maintenance is crucial for optimal engine performance and longevity.</p>
+            <table>
+                <title>Common Maintenance Tasks</title>
+                <tgroup cols="3">
+                    <thead>
+                        <row>
+                            <entry>Maintenance Item</entry>
+                            <entry>Frequency</entry>
+                            <entry>Importance</entry>
+                        </row>
+                    </thead>
+                    <tbody>
+                        <row>
+                            <entry>Oil Change</entry>
+                            <entry>Every 5,000-10,000 miles</entry>
+                            <entry>Critical</entry>
+                        </row>
+                        <row>
+                            <entry>Air Filter</entry>
+                            <entry>Every 15,000-30,000 miles</entry>
+                            <entry>High</entry>
+                        </row>
+                        <row>
+                            <entry>Spark Plugs</entry>
+                            <entry>Every 30,000-100,000 miles</entry>
+                            <entry>Medium</entry>
+                        </row>
+                    </tbody>
+                </tgroup>
+            </table>
+        </section>
+    </body>
+</topic>

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "task.dtd">
+<task id="basic_maintenance">
+    <title>Basic Maintenance</title>
+    <shortdesc>Essential maintenance procedures for keeping your vehicle in optimal condition.</shortdesc>
+    <taskbody>
+        <prereq>
+            <p>Before performing maintenance:</p>
+            <ul>
+                <li>Ensure vehicle is parked on a level surface</li>
+                <li>Engine should be off and cool for most procedures</li>
+                <li>Have appropriate tools and safety equipment ready</li>
+                <li>Consult your vehicle's owner manual for specific recommendations</li>
+            </ul>
+        </prereq>
+        <context>
+            <p>Regular maintenance extends your vehicle's lifespan, improves reliability, maintains fuel efficiency, and enhances safety. The following tasks represent fundamental maintenance procedures that most owners can perform.</p>
+        </context>
+        <steps>
+            <step>
+                <cmd>Check engine oil level and condition</cmd>
+                <info>
+                    <ol>
+                        <li>Locate the dipstick (usually has a brightly colored handle)</li>
+                        <li>Pull it out and wipe clean with a lint-free cloth</li>
+                        <li>Reinsert fully and remove again to check level</li>
+                        <li>Oil should be between MIN and MAX marks</li>
+                        <li>Inspect oil color and consistency - should be amber to light brown, not black or gritty</li>
+                        <li>If low, add manufacturer-recommended oil type in small increments</li>
+                    </ol>
+                    <p>Frequency: Monthly and before long trips</p>
+                </info>
+            </step>
+            <step>
+                <cmd>Inspect tire pressure and condition</cmd>
+                <info>
+                    <ol>
+                        <li>Check tire pressure when tires are cold using a quality gauge</li>
+                        <li>Compare readings to specifications (found on driver's door jamb sticker)</li>
+                        <li>Add air as needed to reach recommended pressure</li>
+                        <li>Inspect tires for wear, damage, and foreign objects</li>
+                        <li>Check tread depth using a tread depth gauge or the penny test</li>
+                        <li>Verify spare tire condition and pressure</li>
+                    </ol>
+                    <p>Frequency: Monthly and before long trips</p>
+                </info>
+            </step>
+            <step>
+                <cmd>Test all lights and signals</cmd>
+                <info>
+                    <ol>
+                        <li>Turn on headlights and verify both low and high beams work</li>
+                        <li>Check that tail lights, brake lights, and license plate lights function</li>
+                        <li>Test turn signals and hazard lights</li>
+                        <li>Verify reverse lights operate when transmission is in reverse</li>
+                        <li>Check any fog lights or auxiliary lighting</li>
+                        <li>Replace any burned-out bulbs promptly</li>
+                    </ol>
+                    <p>Frequency: Monthly</p>
+                </info>
+            </step>
+            <step>
+                <cmd>Check fluid levels</cmd>
+                <info>
+                    <ol>
+                        <li>Coolant/antifreeze: Check level in the overflow reservoir when engine is cool</li>
+                        <li>Brake fluid: Verify level in the master cylinder reservoir</li>
+                        <li>Power steering fluid: Check reservoir level (if applicable)</li>
+                        <li>Transmission fluid: Follow manufacturer's procedure for checking (some require engine running)</li>
+                        <li>Windshield washer fluid: Fill to appropriate level</li>
+                    </ol>
+                    <p>Frequency: Monthly</p>
+                </info>
+            </step>
+            <step>
+                <cmd>Inspect belts and hoses</cmd>
+                <info>
+                    <ol>
+                        <li>With engine off, check drive belts for cracks, fraying, or glazing</li>
+                        <li>Verify belt tension is adequate (not too loose or tight)</li>
+                        <li>Inspect all visible hoses for leaks, bulges, cracks, or hardening</li>
+                        <li>Check hose connections for secure fit and absence of leaks</li>
+                    </ol>
+                    <p>Frequency: Every three months</p>
+                </info>
+            </step>
+            <step>
+                <cmd>Check battery condition</cmd>
+                <info>
+                    <ol>
+                        <li>Inspect battery terminals for corrosion (white or blue-green powder)</li>
+                        <li>Clean terminals if necessary using a battery cleaning brush and solution</li>
+                        <li>Check that battery is securely mounted</li>
+                        <li>For non-sealed batteries, check electrolyte level and add distilled water if needed</li>
+                        <li>Consider using a multimeter or battery tester to check battery health</li>
+                    </ol>
+                    <p>Frequency: Every three months</p>
+                </info>
+            </step>
+        </steps>
+        <result>
+            <p>Regular performance of these basic maintenance tasks will help ensure your vehicle operates reliably and efficiently. You'll also be able to identify potential problems before they become serious, reducing the likelihood of breakdowns and expensive repairs.</p>
+        </result>
+        <example>
+            <p>Create a maintenance log to track when you perform each task. This helps maintain a regular schedule and provides documentation of your vehicle's service history, which can be valuable when selling the vehicle.</p>
+        </example>
+    </taskbody>
+</task>

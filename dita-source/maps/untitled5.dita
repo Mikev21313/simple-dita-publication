@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "task.dtd">
+<task id="basic_maintenance">
+    <title>Basic Car Maintenance</title>
+    <shortdesc>Essential maintenance procedures to keep your vehicle in optimal condition.</shortdesc>
+    <taskbody>
+        <prereq>
+            <p>Before performing maintenance, ensure your vehicle is parked on a level surface with the engine off and cool.</p>
+        </prereq>
+        <context>
+            <p>Regular maintenance extends your vehicle's lifespan and prevents costly repairs.</p>
+        </context>
+        <steps>
+            <step>
+                <cmd>Check engine oil level</cmd>
+                <info>
+                    <p>Locate the dipstick, remove and wipe clean, reinsert fully, and check the oil level indication.</p>
+                </info>
+            </step>
+            <step>
+                <cmd>Inspect tire pressure and condition</cmd>
+                <info>
+                    <p>Use a tire pressure gauge to check all tires and inspect for abnormal wear patterns.</p>
+                </info>
+            </step>
+            <step>
+                <cmd>Examine fluid levels</cmd>
+                <info>
+                    <p>Check coolant, brake fluid, power steering fluid, and windshield washer fluid levels.</p>
+                </info>
+            </step>
+        </steps>
+        <result>
+            <p>Your vehicle will operate more efficiently and reliably with regular maintenance.</p>
+        </result>
+    </taskbody>
+</task>

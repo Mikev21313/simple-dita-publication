@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE bookmap PUBLIC "-//OASIS//DTD DITA BookMap//EN" "bookmap.dtd">
+<bookmap id="cars_complete_guide">
+    <booktitle>
+        <mainbooktitle>Comprehensive Automobile Guide</mainbooktitle>
+        <booktitlealt>Complete DITA Documentation for Automotive Topics</booktitlealt>
+    </booktitle>
+    
+    <bookmeta>
+        <author>Auto Documentation Team</author>
+        <critdates>
+            <created date="2025-05-14"/>
+        </critdates>
+    </bookmeta>
+    
+    <frontmatter>
+        <booklists>
+            <toc/>
+        </booklists>
+    </frontmatter>
+    
+
+    
+    <appendix href="vehicle_specifications.dita" navtitle="Vehicle Specifications Guide"/>
+    <appendix href="glossary.dita" navtitle="Automotive Glossary"/>
+    
+    <backmatter>
+        <booklists>
+            <indexlist/>
+        </booklists>
+    </backmatter>
+</bookmap>

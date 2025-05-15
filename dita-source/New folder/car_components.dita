@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="car_components">
+    <title>Major Vehicle Components</title>
+    <shortdesc>Essential systems and parts that make up modern automobiles.</shortdesc>
+    <conbody>
+        <section>
+            <title>Powertrain Components</title>
+            <p>The powertrain is responsible for generating power and delivering it to the wheels:</p>
+            <ul>
+                <li><b>Engine</b>: Converts fuel into mechanical energy through combustion or electrical energy conversion. Types include internal combustion (gasoline/diesel), hybrid, and fully electric.</li>
+                <li><b>Transmission</b>: Transfers power from the engine to the wheels while allowing gear ratio changes. Types include manual, automatic, continuously variable (CVT), and dual-clutch.</li>
+                <li><b>Driveshaft</b>: Connects the transmission to the differential, transferring rotational power in rear-wheel and all-wheel drive vehicles.</li>
+                <li><b>Differential</b>: Allows wheels to rotate at different speeds when turning while transferring power from the driveshaft to the axles.</li>
+                <li><b>Axles</b>: Connect the wheels to the differential and support the vehicle's weight.</li>
+            </ul>
+        </section>
+        <section>
+            <title>Chassis and Suspension</title>
+            <p>The foundation and support structure of the vehicle:</p>
+            <ul>
+                <li><b>Frame/Chassis</b>: The structural framework that supports all vehicle components. Modern passenger vehicles typically use unibody construction where the body and frame are integrated.</li>
+                <li><b>Suspension System</b>: Connects the vehicle to its wheels, providing support, stability, and isolating the vehicle from road imperfections. Common types include MacPherson strut, double wishbone, multi-link, and solid axle.</li>
+                <li><b>Steering System</b>: Allows the driver to control the vehicle's direction. Modern vehicles typically use rack-and-pinion steering, often with power or electric assistance.</li>
+                <li><b>Braking System</b>: Slows and stops the vehicle through friction. Components include master cylinder, brake lines, calipers/wheel cylinders, and friction materials (pads/shoes).</li>
+                <li><b>Wheels and Tires</b>: The contact point between the vehicle and the road, providing traction and absorbing minor road imperfections.</li>
+            </ul>
+        </section>
+        <section>
+            <title>Electrical and Electronic Systems</title>
+            <p>Provides power and controls for various vehicle functions:</p>
+            <ul>
+                <li><b>Battery</b>: Stores electrical energy for starting the engine and powering electrical systems when the engine is off.</li>
+                <li><b>Alternator</b>: Generates electrical power while the engine is running to recharge the battery and power electrical systems.</li>
+                <li><b>Starter Motor</b>: Initiates engine operation by turning the crankshaft.</li>
+                <li><b>Engine Control Module (ECM)</b>: The main computer that manages engine operation, fuel delivery, and emissions.</li>
+                <li><b>Body Control Module (BCM)</b>: Controls body-related functions like lighting, power windows, and door locks.</li>
+                <li><b>Sensors</b>: Provide input data to various control modules about vehicle operation and conditions.</li>
+                <li><b>Wiring Harness</b>: The network of wires that connects all electrical components.</li>
+            </ul>
+        </section>
+        <section>
+            <title>Body and Interior</title>
+            <p>The visible structure and passenger accommodation:</p>
+            <ul>
+                <li><b>Body Panels</b>: Exterior sheets forming the vehicle's visible structure, including hood, doors, fenders, and roof.</li>
+                <li><b>Safety Structures</b>: Crumple zones, impact beams, and reinforcements designed to protect occupants in collisions.</li>
+                <li><b>Seating</b>: Driver and passenger accommodation with adjustment mechanisms.</li>
+                <li><b>Dashboard/Instrument Panel</b>: Houses controls, displays, and air vents.</li>
+                <li><b>Climate Control System</b>: Maintains interior temperature and air quality through heating, ventilation, and air conditioning (HVAC).</li>
+                <li><b>Infotainment System</b>: Provides entertainment, navigation, and connectivity functions.</li>
+                <li><b>Safety Systems</b>: Airbags, seat belts, and active safety technologies designed to prevent accidents or protect occupants.</li>
+            </ul>
+        </section>
+    </conbody>
+</concept>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="car_basics">
+    <title>Automobile Fundamentals</title>
+    <shortdesc>Basic concepts and terminology related to modern automobiles.</shortdesc>
+    <conbody>
+        <section>
+            <title>What is an Automobile?</title>
+            <p>An automobile, commonly known as a car, is a wheeled motor vehicle used for transportation. Most definitions of cars state that they run primarily on roads, seat one to eight people, have four wheels, and mainly transport people rather than goods.</p>
+        </section>
+        <section>
+            <title>Major Systems</title>
+            <p>Modern automobiles consist of several integrated systems:</p>
+            <ul>
+                <li>Powertrain (engine, transmission)</li>
+                <li>Chassis and suspension</li>
+                <li>Electrical systems</li>
+                <li>Safety systems</li>
+                <li>Comfort and convenience features</li>
+            </ul>
+        </section>
+    </conbody>
+</concept>

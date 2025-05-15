@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="electrical_systems">
+    <title>Electrical Systems</title>
+    <shortdesc>Components and functions of automotive electrical systems.</shortdesc>
+    <conbody>
+        <section>
+            <title>Overview</title>
+            <p>The electrical system in modern vehicles performs numerous essential functions including starting the engine, generating and storing power, ignition, lighting, and supporting electronic control systems.</p>
+        </section>
+        <section>
+            <title>Basic Components</title>
+            <p>Primary electrical system components include:</p>
+            <ul>
+                <li><b>Battery</b>: Stores electrical energy in chemical form</li>
+                <li><b>Alternator</b>: Generates electricity while engine is running</li>
+                <li><b>Starter</b>: Electric motor that initiates engine operation</li>
+                <li><b>Wiring Harness</b>: Organized bundle of wires distributing electricity</li>
+                <li><b>Fuses and Relays</b>: Protection and switching devices</li>
+                <li><b>Electronic Control Units (ECUs)</b>: Specialized computers controlling various systems</li>
+            </ul>
+        </section>
+        <section>
+            <title>Battery System</title>
+            <p>The battery provides electrical energy when the engine is not running:</p>
+            <ul>
+                <li>Most vehicles use 12-volt lead-acid batteries</li>
+                <li>Provides high current for starting</li>
+                <li>Stabilizes voltage in the electrical system</li>
+                <li>Provides power when engine is off</li>
+                <li>Hybrid and electric vehicles use additional high-voltage battery systems</li>
+            </ul>
+        </section>
+        <section>
+            <title>Charging System</title>
+            <p>The charging system replenishes the battery and powers electrical systems while running:</p>
+            <ul>
+                <li>Alternator converts mechanical energy to electrical energy</li>
+                <li>Voltage regulator maintains consistent output voltage</li>
+                <li>Belt-driven from engine crankshaft</li>
+                <li>Charges battery and powers vehicle electrical loads</li>
+            </ul>
+        </section>
+        <section>
+            <title>Starting System</title>
+            <p>Components that work together to start the engine:</p>
+            <ul>
+                <li>Ignition switch or start button</li>
+                <li>Starter relay or solenoid</li>
+                <li>Starter motor</li>
+                <li>Flywheel or flexplate with ring gear</li>
+                <li>Safety switches (neutral safety switch, clutch switch)</li>
+            </ul>
+        </section>
+        <section>
+            <title>Lighting Systems</title>
+            <p>External and internal lighting components:</p>
+            <ul>
+                <li>Headlights (halogen, xenon/HID, LED, or laser)</li>
+                <li>Tail lights, brake lights, and turn signals</li>
+                <li>Interior lighting</li>
+                <li>Dashboard illumination</li>
+                <li>Specialty lighting (fog lights, cornering lights)</li>
+            </ul>
+        </section>
+        <section>
+            <title>Electronic Control Systems</title>
+            <p>Modern vehicles contain numerous specialized computers:</p>
+            <ul>
+                <li>Engine Control Module (ECM)</li>
+                <li>Transmission Control Module (TCM)</li>
+                <li>Body Control Module (BCM)</li>
+                <li>Anti-lock Brake System (ABS) Module</li>
+                <li>Airbag Control Module</li>
+                <li>Infotainment System</li>
+                <li>Climate Control Module</li>
+            </ul>
+        </section>
+        <section>
+            <title>Sensors and Actuators</title>
+            <p>Devices that gather information and control vehicle systems:</p>
+            <ul>
+                <li>Oxygen sensors</li>
+                <li>Temperature sensors</li>
+                <li>Position sensors</li>
+                <li>Speed sensors</li>
+                <li>Fuel injectors</li>
+                <li>Idle air control valves</li>
+                <li>Electronic throttle control</li>
+            </ul>
+        </section>
+        <section>
+            <title>Networking and Communication</title>
+            <p>Modern vehicles use digital networks for internal communication:</p>
+            <ul>
+                <li>Controller Area Network (CAN)</li>
+                <li>Local Interconnect Network (LIN)</li>
+                <li>FlexRay</li>
+                <li>Automotive Ethernet</li>
+                <li>Supports diagnostic systems and interconnected controllers</li>
+            </ul>
+        </section>
+    </conbody>
+</concept>

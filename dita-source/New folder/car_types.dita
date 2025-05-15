@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="car_types">
+    <title>Types of Vehicles</title>
+    <shortdesc>Classifications and categories of modern automobiles.</shortdesc>
+    <conbody>
+        <section>
+            <title>Passenger Cars</title>
+            <p>The most common vehicle type for personal transportation:</p>
+            <ul>
+                <li><b>Sedan</b>: A three-box design with separate compartments for engine, passengers, and cargo. Features four doors and a trunk separate from the passenger compartment.</li>
+                <li><b>Hatchback</b>: Similar to a sedan but with a rear door that opens upward to access a cargo area that's integrated with the passenger compartment.</li>
+                <li><b>Coupe</b>: A two-door passenger car with a fixed roof and sloping rear. Typically emphasizes style and performance over practicality.</li>
+                <li><b>Convertible</b>: Features a retractable or removable roof, allowing open-air driving.</li>
+                <li><b>Station Wagon</b>: Extended roofline and rear cargo area with access through a tailgate. Combines sedan handling with increased cargo capacity.</li>
+                <li><b>Liftback</b>: Combines elements of sedans and hatchbacks with a sloping rear roofline and tailgate that includes the rear window.</li>
+            </ul>
+        </section>
+        <section>
+            <title>Sport Utility Vehicles (SUVs)</title>
+            <p>Versatile vehicles combining passenger car comfort with off-road capabilities:</p>
+            <ul>
+                <li><b>Subcompact SUV</b>: The smallest SUV category, offering urban maneuverability with a slightly raised seating position.</li>
+                <li><b>Compact SUV</b>: Balance of efficiency and utility, popular for family use.</li>
+                <li><b>Mid-size SUV</b>: Offers more interior space and often available with three rows of seating.</li>
+                <li><b>Full-size SUV</b>: Largest SUV category with maximum passenger and cargo capacity.</li>
+                <li><b>Crossover (CUV)</b>: Built on a unibody car platform rather than a truck chassis, emphasizing on-road comfort over off-road capability.</li>
+            </ul>
+        </section>
+        <section>
+            <title>Trucks and Vans</title>
+            <p>Vehicles designed primarily for utility and cargo transportation:</p>
+            <ul>
+                <li><b>Pickup Truck</b>: Features an open cargo bed separate from the passenger cabin. Available in various sizes from compact to heavy-duty.</li>
+                <li><b>Minivan</b>: Multi-passenger vehicle with sliding doors and flexible seating arrangements, optimized for family transportation.</li>
+                <li><b>Full-size Van</b>: Large box-shaped vehicle used for commercial purposes or converted for passenger transport.</li>
+                <li><b>Box Truck</b>: Commercial vehicle with an enclosed cargo area and separate cab.</li>
+            </ul>
+        </section>
+        <section>
+            <title>Specialty and Alternative Fuel Vehicles</title>
+            <p>Vehicles with specific purposes or alternative propulsion systems:</p>
+            <ul>
+                <li><b>Sports Car</b>: Emphasizes performance, handling, and driving experience over practicality.</li>
+                <li><b>Luxury Vehicle</b>: Focuses on comfort, amenities, and premium features across various body styles.</li>
+                <li><b>Hybrid Electric Vehicle (HEV)</b>: Combines internal combustion engine with electric propulsion system.</li>
+                <li><b>Plug-in Hybrid Electric Vehicle (PHEV)</b>: Hybrid with larger battery that can be charged from an external source.</li>
+                <li><b>Battery Electric Vehicle (BEV)</b>: Powered solely by electric motors using energy stored in rechargeable batteries.</li>
+                <li><b>Fuel Cell Electric Vehicle (FCEV)</b>: Uses hydrogen fuel cells to generate electricity for propulsion.</li>
+            </ul>
+        </section>
+    </conbody>
+</concept>

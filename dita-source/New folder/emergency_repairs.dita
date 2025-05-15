@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "task.dtd">
+<task id="emergency_repairs">
+    <title>Emergency Repairs</title>
+    <shortdesc>Basic procedures for handling common roadside emergencies.</shortdesc>
+    <taskbody>
+        <prereq>
+            <p>Before attempting any emergency repair:</p>
+            <ul>
+                <li>Move vehicle to a safe location away from traffic if possible</li>
+                <li>Turn on hazard lights to alert other drivers</li>
+                <li>Set up warning triangles or flares if available and safe to do so</li>
+                <li>Wear high-visibility clothing if available</li>
+                <li>Assess whether it's safer to call for professional roadside assistance</li>
+            </ul>
+        </prereq>
+        <context>
+            <p>Knowing how to handle common vehicle emergencies can help you get back on the road safely or prevent further damage while waiting for professional assistance. These procedures cover the most frequent roadside emergencies drivers encounter.</p>
+        </context>
+        <steps>
+            <stepsection>Changing a Flat Tire</stepsection>
+            <step>
+                <cmd>Prepare the vehicle</cmd>
+                <info>
+                    <ol>
+                        <li>Park on a flat, stable surface away from traffic</li>
+                        <li>Apply parking brake and put automatic transmissions in Park or manual transmissions in gear</li>
+                        <li>Place wheel chocks (or rocks/wood blocks) on the opposite side of the flat tire</li>
+                        <li>Remove spare tire and tools from storage area</li>
+                    </ol>
+                </info>
+            </step>
+            <step>
+                <cmd>Loosen lug nuts before jacking</cmd>
+                <info>
+                    <ol>
+                        <li>Remove any wheel cover or hubcap to access lug nuts</li>
+                        <li>Use lug wrench to turn lug nuts counterclockwise to loosen (but don't remove yet)</li>
+                        <li>Apply downward pressure on wrench and use body weight if necessary</li>
+                    </ol>
+                </info>
+            </step>
+            <step>
+                <cmd>Position jack and raise vehicle</cmd>
+                <info>
+                    <ol>
+                        <li>Locate proper jacking point (solid frame member) near the flat tire</li>
+                        <li>Position jack under jacking point (consult owner's manual for exact location)</li>
+                        <li>Raise vehicle until flat tire is approximately 6 inches off the ground</li>
+                    </ol>
+                </info>
+            </step>
+            <step>
+                <cmd>Remove flat tire and install spare</cmd>
+                <info>
+                    <ol>
+                        <li>Remove lug nuts completely and place in secure location</li>
+                        <li>Remove flat tire by pulling straight toward you</li>
+                        <li>Lift spare tire into position, aligning holes with wheel studs</li>
+                        <li>Install lug nuts and hand-tighten in a star pattern</li>
+                    </ol>
+                </info>
+            </step>
+            <step>
+                <cmd>Lower vehicle and secure wheel</cmd>
+                <info>
+                    <ol>
+                        <li>Lower vehicle until spare tire contacts the ground but still bears no weight</li>
+                        <li>Tighten lug nuts in a star pattern (opposite sides, not in circle)</li>
+                        <li>Lower vehicle completely and remove jack</li>
+                        <li>Fully tighten lug nuts to proper torque if possible</li>
+                    </ol>
+                </info>
+            </step>
+            <stepsection>Jump Starting a Dead Battery</stepsection>
+            <step>
+                <cmd>Position vehicles and prepare</cmd>
+                <info>
+                    <ol>
+                        <li>Position working vehicle close to disabled vehicle but ensure vehicles are not touching</li>
+                        <li>Turn off ignition in both vehicles</li>
+                        <li>Turn off lights, radio, and other electrical accessories</li>
+                        <li>Open hoods and locate batteries</li>
+                        <li>Identify positive (+) and negative (-) terminals on both batteries</li>
+                    </ol>
+                </info>
+            </step>
+            <step>
+                <cmd>Connect jumper cables in proper sequence</cmd>
+                <info>
+                    <ol>
+                        <li>Connect red clamp to positive (+) terminal of dead battery</li>
+                        <li>Connect other red clamp to positive (+) terminal of good battery</li>
+                        <li>Connect black clamp to negative (-) terminal of good battery</li>
+                        <li>Connect other black clamp to unpainted metal surface on disabled vehicle's engine (NOT to negative terminal of dead battery)</li>
+                    </ol>
+                </info>
+            </step>
+            <step>
+                <cmd>Start engines and remove cables</cmd>
+                <info>
+                    <ol>
+                        <li>Start the working vehicle and run for 2-3 minutes</li>
+                        <li>Start the disabled vehicle (if it doesn't start, check connections and try again)</li>
+                        <li>Once disabled vehicle starts, remove jumper cables in reverse order of connection</li>
+                        <li>Keep the jumped vehicle running for at least 20 minutes to recharge battery</li>
+                    </ol>
+                </info>
+            </step>
+            <stepsection>Dealing with Overheating</stepsection>
+            <step>
+                <cmd>Respond to initial signs of overheating</cmd>
+                <info>
+                    <ol>
+                        <li>Watch for temperature gauge in red zone or warning light</li>
+                        <li>Turn off air conditioning and turn on heater to maximum (draws heat from engine)</li>
+                        <li>If in traffic, shift to neutral at stops and gently rev engine to increase coolant circulation</li>
+                    </ol>
+                </info>
+            </step>
+            <step>
+                <cmd>Safely stop the vehicle</cmd>
+                <info>
+                    <ol>
+                        <li>Pull over to safe location away from traffic</li>
+                        <li>Turn off engine</li>
+                        <li>Open hood (use caution - release latch from inside vehicle first)</li>
+                        <li>Allow engine to cool for at least 30 minutes</li>
+                    </ol>
+                </info>
+            </step>
+            <step>
+                <cmd>Check coolant level when safe</cmd>
+                <info>
+                    <ol>
+                        <li>Wait until engine is cool before removing radiator cap or coolant reservoir cap</li>
+                        <li>Use thick cloth or gloves to protect hands</li>
+                        <li>Slowly turn cap counterclockwise to first stop to release pressure before fully removing</li>
+                        <li>Check coolant level and add if low (use 50/50 mix of coolant and water or plain water in emergency)</li>
+                    </ol>
+                </info>
+            </step>
+            <step>
+                <cmd>Inspect for obvious issues</cmd>
+                <info>
+                    <ol>
+                        <li>Look for disconnected hoses, broken belts, or visible leaks</li>
+                        <li>Check radiator for blockage (leaves, debris, etc.)</li>
+                        <li>If major leak is found, professional repair is likely needed</li>
+                    </ol>
+                </info>
+            </step>
+        </steps>
+        <result>
+            <p>These emergency repair procedures can help you address common roadside problems and either resume your journey or safely await professional assistance.</p>
+        </result>
+        <postreq>
+            <p>After completing an emergency repair:</p>
+            <ul>
+                <li>Have the vehicle inspected by a professional as soon as possible</li>
+                <li>Replace temporary spare tires promptly (not designed for extended use)</li>
+                <li>Recharge or replace battery if it needed jump starting</li>
+                <li>Replenish emergency supplies used during the repair</li>
+            </ul>
+        </postreq>
+    </taskbody>
+</task>
