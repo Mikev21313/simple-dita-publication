@@ -29,7 +29,8 @@ jobs:
           ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive_guide.ditamap --format=html5 --output=./output
         
       - name: Deploy to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@v4
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          folder: output
-          branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./output
+          force_orphan: true
