@@ -1,0 +1,242 @@
+/*
+ * Custom CSS for Automotive History Publication
+ * This file is used by the GitHub Actions workflow to style the DITA-OT HTML output.
+ * It is placed in the custom-templates/css/ directory and copied to the docs/css/ directory by the build process.
+ */
+
+/* Import Figtree font as specified in the workflow */
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap');
+
+/* Basic body styling */
+body {
+    font-family: 'Figtree', sans-serif; /* Use the imported font */
+    max-width: 1200px; /* Limit content width for readability */
+    margin: 0 auto; /* Center the content block */
+    padding: 20px; /* Add padding around the content */
+    line-height: 1.6; /* Improve line spacing */
+    color: #333; /* Dark grey text for readability */
+    background-color: #f4f4f4; /* Light grey background */
+}
+
+/* Style for the main container if needed (adjust based on DITA-OT output structure) */
+/* .container-fluid {
+    padding: 0;
+} */
+
+/* Header styling */
+#site-header {
+    margin-bottom: 30px; /* Space below the header */
+    padding-bottom: 15px;
+    border-bottom: 2px solid #d3d3d3; /* Subtle separator */
+    background-color: #fff; /* White background for header */
+    padding: 15px 20px;
+    border-radius: 8px; /* Rounded corners */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Subtle shadow */
+}
+
+.site-title {
+    font-size: 2em; /* Larger title */
+    font-weight: 700; /* Bold title */
+    margin-bottom: 10px;
+    color: #0056b3; /* A shade of blue, common in automotive branding */
+}
+
+.site-title a {
+    color: inherit; /* Inherit color from parent */
+    text-decoration: none; /* No underline on title link */
+    transition: color 0.2s ease;
+}
+
+.site-title a:hover {
+    color: #003d82; /* Darker blue on hover */
+}
+
+/* Main navigation styling */
+.main-nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    background-color: #e9ecef; /* Slightly darker background for nav */
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    padding: 8px; /* Reduced padding */
+    display: flex; /* Arrange nav items in a row */
+    flex-wrap: wrap; /* Allow items to wrap on smaller screens */
+    gap: 10px; /* Space between nav items */
+}
+
+.main-nav li {
+    margin: 0; /* Remove default margin */
+    position: relative;
+}
+
+.main-nav a {
+    color: #007bff; /* Bootstrap primary blue */
+    text-decoration: none;
+    display: block;
+    padding: 8px 15px; /* Adjusted padding */
+    border-radius: 4px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    font-weight: 500; /* Medium font weight */
+}
+
+.main-nav a:hover {
+    background-color: #007bff; /* Blue background on hover */
+    color: #fff; /* White text on hover */
+}
+
+.main-nav a.active,
+.main-nav li.current > a {
+    font-weight: 600; /* Bolder for active/current */
+    background-color: #0056b3; /* Darker blue background for active */
+    color: #fff; /* White text for active */
+}
+
+/* Styling for nested navigation lists (if applicable) */
+.main-nav ul ul {
+    margin-left: 15px; /* Reduced indent */
+    border: none;
+    background: none;
+    padding: 0;
+    flex-direction: column; /* Stack nested items vertically */
+    gap: 0; /* Remove gap for nested items */
+}
+
+.main-nav ul ul a {
+    padding: 4px 10px; /* Smaller padding for nested links */
+    font-weight: 400; /* Normal font weight for nested links */
+    color: #495057; /* Darker grey for nested links */
+}
+
+.main-nav ul ul a:hover {
+    background-color: #e2e6ea; /* Light grey background on hover */
+    color: #212529; /* Darker text on hover */
+}
+
+
+/* Hide the original DITA title if custom header is used */
+.title {
+    display: none;
+}
+
+/* Content area headings */
+.topictitle1 {
+    font-size: 2em; /* Larger main topic title */
+    font-weight: 700;
+    color: #343a40; /* Dark grey */
+    border-bottom: 2px solid #007bff; /* Blue underline */
+    padding-bottom: 10px;
+    margin-bottom: 25px;
+}
+
+.topictitle2 {
+    font-size: 1.6em; /* Sub-topic title size */
+    font-weight: 600;
+    color: #495057; /* Darker grey */
+    margin-top: 20px; /* Space above sub-title */
+    margin-bottom: 15px;
+}
+
+/* Paragraph styling */
+.p, p {
+    color: #495057;
+    line-height: 1.7; /* Increased line height for readability */
+    margin-bottom: 15px; /* Space between paragraphs */
+}
+
+/* Styling for links within content */
+.xref, a:not(.main-nav a):not(.site-title a) {
+    color: #007bff;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(0, 123, 255, 0.3); /* Subtle blue underline */
+    transition: border-color 0.2s ease;
+}
+
+.xref:hover, a:not(.main-nav a):not(.site-title a):hover {
+    border-bottom-color: #007bff; /* Solid blue underline on hover */
+}
+
+/* Styling for tables (basic) */
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 20px 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    background-color: #fff;
+    border-radius: 8px;
+    overflow: hidden; /* Ensures rounded corners on table content */
+}
+
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6; /* Light grey row separator */
+}
+
+th {
+    background-color: #007bff; /* Blue header background */
+    color: #fff; /* White text in header */
+    font-weight: 600;
+}
+
+/* Style for the last row */
+tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Style for images (make them responsive) */
+img {
+    max-width: 100%; /* Ensure images don't overflow their container */
+    height: auto; /* Maintain aspect ratio */
+    display: block; /* Remove extra space below image */
+    margin: 15px 0; /* Space above and below images */
+    border-radius: 5px; /* Slightly rounded corners for images */
+}
+
+
+/* Footer styling */
+#site-footer {
+    margin-top: 40px; /* Space above the footer */
+    color: #6c757d; /* Muted grey text */
+    font-size: 0.9em;
+    border-top: 1px solid #ced4da; /* Separator line */
+    padding-top: 16px;
+    text-align: center; /* Center footer text */
+}
+
+#site-footer a {
+    color: #007bff;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+#site-footer a:hover {
+    color: #0056b3;
+}
+
+/* Lists styling */
+ul, ol {
+    padding-left: 30px; /* Standard list indent */
+    margin-bottom: 15px;
+}
+
+li {
+    margin-bottom: 8px; /* Space between list items */
+}
+
+/* Code and preformatted text styling */
+pre, code {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    background-color: #e9ecef; /* Light background for code */
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 0.95em;
+}
+
+pre {
+    padding: 15px;
+    overflow-x: auto; /* Add scroll for long lines */
+    border: 1px solid #ced4da;
+    margin: 15px 0;
+    border-radius: 5px;
+}
