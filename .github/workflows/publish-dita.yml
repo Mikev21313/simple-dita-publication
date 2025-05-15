@@ -87,8 +87,8 @@ jobs:
           mkdir -p custom-templates
           mkdir -p custom-templates/js
 
-          # Create header with consistent navigation and title
-          cat > custom-templates/header.html << 'EOF'
+          # Write header template to file
+          tee custom-templates/header.html > /dev/null << 'HEADEREOF'
 <div id="site-header">
   <div class="site-title">
     <a href="index.html">TITLE_PLACEHOLDER</a>
@@ -106,12 +106,13 @@ jobs:
   </nav>
 </div>
 <hr>
-EOF
+HEADEREOF
+
           # Replace placeholder with actual title
           sed -i "s/TITLE_PLACEHOLDER/$DOCS_TITLE/g" custom-templates/header.html
 
-          # Create footer with title
-          cat > custom-templates/footer.html << 'EOF'
+          # Write footer template to file
+          tee custom-templates/footer.html > /dev/null << 'FOOTEREOF'
 <hr>
 <div id="site-footer">
   <p>© 2025 TITLE_PLACEHOLDER | <a href="index.html">Home</a> | Last updated: <span id="last-updated"></span></p>
@@ -133,15 +134,17 @@ EOF
     document.getElementById('last-updated').textContent = new Date().toLocaleDateString();
   });
 </script>
-EOF
+FOOTEREOF
+
           # Replace placeholder with actual title in footer
           sed -i "s/TITLE_PLACEHOLDER/$DOCS_TITLE/g" custom-templates/footer.html
 
           # Create title-setting script
-          cat > custom-templates/js/set-title.js << 'EOF'
+          tee custom-templates/js/set-title.js > /dev/null << 'SCRIPTEOF'
 const DOCS_TITLE = "TITLE_PLACEHOLDER";
 document.title = DOCS_TITLE;
-EOF
+SCRIPTEOF
+
           # Replace placeholder with actual title in script
           sed -i "s/TITLE_PLACEHOLDER/$DOCS_TITLE/g" custom-templates/js/set-title.js
 
@@ -149,7 +152,7 @@ EOF
       - name: Create CSS
         run: |
           mkdir -p custom-templates/css
-          cat > custom-templates/css/custom.css << 'EOF'
+          tee custom-templates/css/custom.css > /dev/null << 'CSSEOF'
 /*
  * Custom CSS for Automotive History Publication
  * This file is used by the GitHub Actions workflow to style the DITA-OT HTML output.
@@ -392,7 +395,7 @@ pre {
     margin: 15px 0;
     border-radius: 5px;
 }
-EOF
+CSSEOF
 
       # Transform DITA to HTML with custom header and footer
       - name: Transform DITA to HTML
