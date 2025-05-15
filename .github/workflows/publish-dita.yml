@@ -106,6 +106,7 @@ jobs:
 </div>
 <hr>
 EOF
+          # Ensure EOF is on a new line and has no leading/trailing whitespace
 
           # Create footer with title
           cat > custom-templates/footer.html << EOF
@@ -131,6 +132,7 @@ EOF
   });
 </script>
 EOF
+          # Ensure EOF is on a new line and has no leading/trailing whitespace
 
       # Create custom CSS with Figtree font
       - name: Create CSS
@@ -380,6 +382,7 @@ pre {
     border-radius: 5px;
 }
 EOF
+          # Ensure EOF is on a new line and has no leading/trailing whitespace
 
       # Set HTML page titles to match documentation title
       - name: Create title-setting script
@@ -388,6 +391,7 @@ EOF
 const DOCS_TITLE = "${{ steps.extract_title.outputs.docs_title }}";
 document.title = DOCS_TITLE;
 EOF
+          # Ensure EOF is on a new line and has no leading/trailing whitespace
 
       # Transform DITA to HTML with custom header and footer
       - name: Transform DITA to HTML
