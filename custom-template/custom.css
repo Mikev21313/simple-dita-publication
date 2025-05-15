@@ -34,10 +34,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      -- name: Create header and footer
-        run: |
-          # Get title from previous step
-          DOCS_TITLE="${{ steps.extract_title.outputs.docs_title }}"
+      - name: Set up Java
+        uses: actions/setup-java@v2
+        with:
+          java-version: '11'
+          distribution: 'adopt'
 
       - name: Install DITA-OT
         run: |
@@ -84,6 +85,7 @@ jobs:
 
           # Create directory for header and footer files
           mkdir -p custom-templates
+          mkdir -p custom-templates/js
 
           # Create header with consistent navigation and title
           cat > custom-templates/header.html << 'EOF'
@@ -136,7 +138,6 @@ EOF
           sed -i "s/TITLE_PLACEHOLDER/$DOCS_TITLE/g" custom-templates/footer.html
 
           # Create title-setting script
-          mkdir -p custom-templates/js
           cat > custom-templates/js/set-title.js << 'EOF'
 const DOCS_TITLE = "TITLE_PLACEHOLDER";
 document.title = DOCS_TITLE;
@@ -439,7 +440,7 @@ EOF
       - name: Add build timestamp
         run: |
           TIMESTAMP=$(date)
-          echo "" >> docs/index.html
+          echo "<!-- Site built at: $TIMESTAMP -->" >> docs/index.html
 
       # Ensure output directory exists and has index.html
       - name: Check output
@@ -454,10 +455,6 @@ EOF
             echo "Creating index.html..."
             # Assuming topics/welcome.html is the intended index page
             cp docs/topics/welcome.html docs/index.html
-            # Adjust paths in the copied file if necessary (e.g., relative links)
-            # This might require more sophisticated path adjustment depending on your DITA structure
-            # For simplicity, we'll assume relative paths work or are handled by the script fix
-            # sed -i 's/href="css\//href="css\//g' docs/index.html # Example adjustment
           fi
 
       # Add .nojekyll file to prevent GitHub from processing with Jekyll
