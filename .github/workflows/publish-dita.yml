@@ -1,155 +1,35 @@
-name: Auto-Build and Deploy DITA to GitHub Pages
+name: Publish DITA to GitHub Pages
+
 on:
-  # Automatically build and deploy when pushing to main branch
   push:
     branches: [ main ]
-    paths:
-      - 'dita-source/**'  # Only trigger when DITA content changes
-
-  # Automatically build and deploy when creating or updating a pull request
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - 'dita-source/**'  # Only trigger when DITA content changes
-
-  # Add ability to manually trigger the workflow from GitHub Actions tab
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: 'Deploy to GitHub Pages?'
-        required: true
-        default: 'true'
-        type: boolean
-      title:
-        description: 'Documentation Title (leave empty for default)'
-        required: false
-        type: string
 
 jobs:
-  build-and-deploy:
+  publish-dita:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Set up Java
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v3
         with:
-          java-version: '11'
           distribution: 'adopt'
+          java-version: '11'
 
       - name: Install DITA-OT
         run: |
-          wget https://github.com/dita-ot/dita-ot/releases/download/3.6.1/dita-ot-3.6.1.zip
-          unzip dita-ot-3.6.1.zip
-          chmod +x dita-ot-3.6.1/bin/dita
+          wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
+          unzip dita-ot-4.0.2.zip
+          chmod +x dita-ot-4.0.2/bin/dita
 
-      # Extract documentation title from DITA map
-      - name: Extract documentation title
-        id: extract_title
+      - name: Convert DITA to HTML
         run: |
-          # Default title in case extraction fails
-          DEFAULT_TITLE="Documentation"
-
-          # Use manual title if provided through workflow_dispatch
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.title }}" ]]; then
-            DOCS_TITLE="${{ github.event.inputs.title }}"
-            echo "Using manually provided title: $DOCS_TITLE"
-          else
-            # Try to extract title from DITA map
-            if [ -f "dita-source/maps/simple-guide.ditamap" ]; then
-              EXTRACTED_TITLE=$(grep -oP '(?<=<title>).*?(?=</title>)' dita-source/maps/simple-guide.ditamap | head -1)
-              if [ -n "$EXTRACTED_TITLE" ]; then
-                DOCS_TITLE="$EXTRACTED_TITLE"
-                echo "Extracted title from DITA map: $DOCS_TITLE"
-              else
-                DOCS_TITLE="$DEFAULT_TITLE"
-                echo "Could not extract title from DITA map, using default: $DOCS_TITLE"
-              fi
-            else
-              DOCS_TITLE="$DEFAULT_TITLE"
-              echo "DITA map not found, using default title: $DOCS_TITLE"
-            fi
-          fi
-
-          # Set output variable for use in other steps
-          echo "docs_title=$DOCS_TITLE" >> $GITHUB_OUTPUT
-
-      # Create basic header and footer 
-      - name: Create header and footer
-        run: |
-          # Get title from previous step
-          DOCS_TITLE="${{ steps.extract_title.outputs.docs_title }}"
-
-          # Create directory for header and footer files
-          mkdir -p custom-templates
-
-          # Create very basic header file (with minimal HTML)
-          echo "<div><h1>$DOCS_TITLE</h1><hr></div>" > custom-templates/header.html
-          
-          # Create very basic footer file (with minimal HTML)
-          echo "<hr><div><p>© 2025 $DOCS_TITLE</p></div>" > custom-templates/footer.html
-
-      # Transform DITA to HTML without complex styling
-      - name: Transform DITA to HTML
-        run: |
-          # Execute the DITA command from the repository root
-          ./dita-ot-3.6.1/bin/dita \
-          --input=dita-source/maps/simple-guide.ditamap \
-          --format=html5 \
-          --output=docs \
-          --args.xhtml.toc=toc \
-          --args.hdr=custom-templates/header.html \
-          --args.ftr=custom-templates/footer.html \
-          --nav-toc=partial \
-          --args.outext=.html \
-          --verbose
-
-      # Update HTML title tags in all files
-      - name: Set consistent HTML titles
-        run: |
-          DOCS_TITLE="${{ steps.extract_title.outputs.docs_title }}"
-          
-          # Set HTML title tags directly
-          find docs -name "*.html" -type f -exec sed -i "s/<title>.*<\/title>/<title>$DOCS_TITLE<\/title>/" {} \;
-
-      # Ensure output directory exists and has index.html
-      - name: Check output
-        run: |
-          if [ ! -d "docs" ]; then
-            echo "Output directory not created"
-            exit 1
-          fi
-
-          # Check for index page
-          if [ ! -f "docs/index.html" ]; then
-            echo "Creating index.html..."
-            # Assuming topics/welcome.html is the intended index page
-            if [ -f "docs/topics/welcome.html" ]; then
-              cp docs/topics/welcome.html docs/index.html
-            else
-              # Find the first HTML file and use it as index
-              FIRST_HTML=$(find docs -name "*.html" | head -1)
-              if [ -n "$FIRST_HTML" ]; then
-                cp "$FIRST_HTML" docs/index.html
-              else
-                echo "No HTML files found in output directory"
-                exit 1
-              fi
-            fi
-          fi
-
-      # Add .nojekyll file to prevent GitHub from processing with Jekyll
-      - name: Disable Jekyll
-        run: touch docs/.nojekyll
-
-      # Only deploy if on main branch or if manually triggered with deploy=true
+          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive_guide.ditamap --format=html5 --output=./output
+        
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true')
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: docs
+          folder: output
           branch: gh-pages
-          clean: true
