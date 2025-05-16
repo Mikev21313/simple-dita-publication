@@ -1,4 +1,4 @@
-name: DITA to HTML
+name: DITA to HTML with Side Cart
 
 on:
   push:
@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
       with:
         fetch-depth: 0
 
@@ -23,13 +24,16 @@ jobs:
     - name: Setup DITA-OT
       run: |
         mkdir -p tools
-        curl -L https://github.com/dita-ot/dita-ot/releases/download/4.1.2/dita-ot-4.1.2.zip -o tools/dita-ot.zip
+        curl -L https://github.com/dita-ot/dita-ot/releases/download/3.7.4/dita-ot-3.7.4.zip -o tools/dita-ot.zip
         unzip tools/dita-ot.zip -d tools/
-        mv tools/dita-ot-4.1.2 tools/dita-ot
+        mv tools/dita-ot-3.7.4 tools/dita-ot
+        
+        # Verify DITA-OT installation
+        tools/dita-ot/bin/dita --version
 
     - name: Build DITA
       run: |
-        # Find your main DITA map (adjust as needed)
+        # Find your main DITA map
         MAIN_DITAMAP=$(find dita-source -name "*.ditamap" -type f | head -1)
         
         # If no DITAMAP found, provide a default message
@@ -40,17 +44,24 @@ jobs:
         
         echo "Using DITAMAP: $MAIN_DITAMAP"
         
+        # Create site directory
+        mkdir -p site
+        
         # Run DITA-OT transformation
         tools/dita-ot/bin/dita --input=$MAIN_DITAMAP \
           --format=html5 \
-          --output=build
+          --output=site
 
-    - name: Add Sidebar Feature
+    - name: Add Side Cart Feature
       run: |
-        echo "Adding sidebar/side cart navigation..."
+        echo "Adding side cart navigation..."
         
-        # Create simple CSS for sidebar layout
-        cat > build/css/sidecart.css << 'EOF'
+        # Create directories if they don't exist
+        mkdir -p site/css
+        mkdir -p site/js
+        
+        # Create CSS for side cart layout
+        cat > site/css/sidecart.css << 'EOF'
         body {
           display: flex;
           margin: 0;
@@ -69,6 +80,7 @@ jobs:
           position: fixed;
           left: 0;
           top: 0;
+          box-sizing: border-box;
         }
         
         .main-content {
@@ -112,71 +124,85 @@ jobs:
           font-size: 16px;
           color: #555;
         }
+        
+        @media (max-width: 768px) {
+          .sidebar {
+            width: 200px;
+          }
+          .main-content {
+            margin-left: 200px;
+            max-width: calc(100% - 200px);
+          }
+        }
         EOF
         
-        # Add link to the CSS in all HTML files
-        find build -name "*.html" | while read file; do
-          sed -i 's/<head>/<head>\n<link rel="stylesheet" type="text\/css" href="css\/sidecart.css">/' "$file"
-        done
-        
-        # Extract navigation from DITA-OT output
-        NAVFILE=$(find build -name "toc.html" -o -name "nav.html" -o -name "index.html" | head -1)
-        
-        # Create sidebar content from navigation
-        if [ -n "$NAVFILE" ]; then
-          # Extract navigation links
-          NAV_CONTENT=$(grep -o '<a href="[^"]*"[^>]*>[^<]*</a>' "$NAVFILE" | sed 's/<a /<li><a /g; s/<\/a>/<\/a><\/li>/g')
-          
-          # Create a sidebar div to insert
-          SIDEBAR_HTML="<div class=\"sidebar\">\n<h2>Navigation</h2>\n<ul>\n$NAV_CONTENT\n</ul>\n</div>"
-          
-          # Wrap main content in a div
-          find build -name "*.html" | while read file; do
-            # Skip the TOC/navigation files
-            if [[ "$file" != *"toc.html"* && "$file" != *"nav.html"* ]]; then
-              sed -i 's/<body>/<body>\n'"$SIDEBAR_HTML"'\n<div class="main-content">/' "$file"
-              sed -i 's/<\/body>/<\/div>\n<\/body>/' "$file"
-            fi
-          done
-        else
-          echo "Warning: Navigation file not found. Sidebar may be empty."
-          # Create a simple empty sidebar
-          SIDEBAR_HTML="<div class=\"sidebar\">\n<h2>Navigation</h2>\n<p>No navigation found</p>\n</div>"
-          
-          # Add empty sidebar and wrap content
-          find build -name "*.html" | while read file; do
-            sed -i 's/<body>/<body>\n'"$SIDEBAR_HTML"'\n<div class="main-content">/' "$file"
-            sed -i 's/<\/body>/<\/div>\n<\/body>/' "$file"
-          done
-        fi
-        
-        # Add a simple JavaScript to highlight current page in sidebar
-        cat > build/js/sidebar.js << 'EOF'
+        # Create JavaScript for sidebar functionality
+        cat > site/js/sidecart.js << 'EOF'
         document.addEventListener('DOMContentLoaded', function() {
           // Get current page filename
           var currentPage = window.location.pathname.split('/').pop();
+          if (!currentPage) currentPage = 'index.html';
           
-          // Find and highlight the current page in sidebar
+          // Find and highlight current page in sidebar
           var sidebarLinks = document.querySelectorAll('.sidebar a');
           for (var i = 0; i < sidebarLinks.length; i++) {
-            var linkHref = sidebarLinks[i].getAttribute('href');
-            if (linkHref === currentPage || 
-                (currentPage === '' && linkHref === 'index.html')) {
+            var href = sidebarLinks[i].getAttribute('href');
+            if (href === currentPage) {
               sidebarLinks[i].classList.add('active');
+              // Scroll to active link
+              sidebarLinks[i].scrollIntoView({block: 'center', behavior: 'smooth'});
             }
           }
         });
         EOF
         
-        # Add script to all HTML files
-        find build -name "*.html" | while read file; do
-          sed -i 's/<\/head>/<script src="js\/sidebar.js"><\/script>\n<\/head>/' "$file"
+        # Extract navigation from DITA-OT output
+        echo "Extracting navigation for sidebar..."
+        
+        # Find navigation file (could be toc.html, nav.html, or index.html)
+        NAV_FILE=$(find site -name "toc.html" -o -name "nav.html" -o -name "index.html" | head -1)
+        
+        if [ -n "$NAV_FILE" ]; then
+          echo "Found navigation file: $NAV_FILE"
+          
+          # Extract links from navigation file
+          LINKS=$(grep -o '<a href="[^"]*"[^>]*>[^<]*</a>' "$NAV_FILE" || echo "")
+          
+          if [ -n "$LINKS" ]; then
+            # Format links for sidebar
+            SIDEBAR_LINKS=$(echo "$LINKS" | sed 's/<a /<li><a /g; s/<\/a>/<\/a><\/li>/g')
+            
+            # Create sidebar HTML
+            SIDEBAR_HTML="<div class=\"sidebar\">\n<h2>Navigation</h2>\n<ul>\n$SIDEBAR_LINKS\n</ul>\n</div>"
+          else
+            echo "No links found in navigation file, creating empty sidebar."
+            SIDEBAR_HTML="<div class=\"sidebar\">\n<h2>Navigation</h2>\n<p>No navigation links found.</p>\n</div>"
+          fi
+        else
+          echo "No navigation file found, creating empty sidebar."
+          SIDEBAR_HTML="<div class=\"sidebar\">\n<h2>Navigation</h2>\n<p>No navigation available.</p>\n</div>"
+        fi
+        
+        # Add sidebar to all HTML files and wrap content
+        echo "Adding sidebar to HTML files..."
+        find site -name "*.html" | while read file; do
+          # Skip navigation files
+          if [[ "$file" != *"toc.html"* && "$file" != *"nav.html"* ]]; then
+            # Add CSS and JavaScript references
+            sed -i 's/<\/head>/<link rel="stylesheet" type="text\/css" href="css\/sidecart.css">\n<script src="js\/sidecart.js"><\/script>\n<\/head>/' "$file"
+            
+            # Add sidebar and wrap content
+            sed -i 's/<body>/<body>\n'"$SIDEBAR_HTML"'\n<div class="main-content">/' "$file"
+            sed -i 's/<\/body>/<\/div>\n<\/body>/' "$file"
+          fi
         done
         
-        echo "Sidebar feature added to all HTML files."
+        echo "Side cart feature added successfully."
 
+    # Step 6: Deploy the generated HTML site to GitHub Pages
     - name: Deploy to GitHub Pages
-      uses: JamesIves/github-pages-deploy-action@v4
+      uses: peaceiris/actions-gh-pages@v3
       with:
-        folder: build
-        branch: gh-pages
+        github_token: ${{ secrets.GITHUB_TOKEN }} # Token provided by GitHub
+        publish_dir: ./site                       # Directory containing the built site
+        force_orphan: true                        # Create a new history branch
