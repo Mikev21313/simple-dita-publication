@@ -33,10 +33,18 @@ jobs:
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Transform DITA to HTML5
+      # Step 4: List DITA files for verification
+      - name: List DITA files
+        run: |
+          echo "DITA files in repository:"
+          find dita-source -name "*.dita" -o -name "*.ditamap" | sort
+          echo "--------------------------------------"
+
+      # Step 5: Transform DITA to HTML5
       - name: Transform DITA to HTML5
         run: |
-          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site --nav-toc=partial
+          # Ensure path with spaces works correctly by quoting it
+          ./dita-ot-4.0.2/bin/dita --input="dita-source/automotive.ditamap" --format=html5 --output=./site --nav-toc=partial
           echo "DITA transformation complete"
           
           # Create content directory for SPA fragments
@@ -46,7 +54,7 @@ jobs:
           echo "Generated files:"
           find ./site -type f | sort
 
-      # Step 5: Process HTML files into content fragments
+      # Step 6: Process HTML files into content fragments
       - name: Process HTML Content
         run: |
           # Process each HTML file to extract content only
@@ -65,16 +73,8 @@ jobs:
                       sed '/<body/d;/<\/body>/d' | 
                       awk '
                         BEGIN { skip=0; count=0; }
-                        /<ul>/ { 
-                          if (count == 0 && $0 ~ /Automotive Theories|History of Automobiles|Types of Vehicles/) {
-                            skip=1; count=1; 
-                          }
-                        }
-                        /<\/ul>/ { 
-                          if (skip == 1) { 
-                            skip=0; 
-                          }
-                        }
+                        /<div class=".*\bnav\b.*">/ { skip=1; }
+                        /<\/div>/ { if (skip==1) { skip=0; } }
                         { if (skip == 0) print $0; }
                       ')
             
@@ -82,7 +82,7 @@ jobs:
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
             if [ -z "$title" ]; then
               # Create a title from the filename if none found
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+              title=$(echo "$id" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
             fi
             
             # Create a clean HTML fragment file in the content directory
@@ -92,42 +92,53 @@ jobs:
             echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
           done
 
-      # Step 6: Create navigation configuration
+      # Step 7: Create navigation configuration based on files found
       - name: Create Navigation Config
         run: |
-          # Create navigation config from DITA structure
-          # This extracts navigation from the DITA-OT output
+          # Create directories for assets
+          mkdir -p ./site/js ./site/css
           
-          mkdir -p ./site/js
+          # Process DITAMAP to extract navigation
+          # For now, we'll create a structure based on the filenames
+          echo "// Navigation structure based on your DITA files" > ./site/js/navigation-config.js
+          echo "const navigationConfig = [" >> ./site/js/navigation-config.js
           
-          # Extract navigation from the HTML files
-          cat > ./site/js/navigation-config.js << 'EOF'
-          // Navigation structure
-          const navigationConfig = [
-            {
-              id: "automotive-theories",
-              title: "Automotive Theories",
-              children: [
-                { id: "history-of-automobiles", title: "History of Automobiles" },
-                { id: "types-of-vehicles", title: "Types of Vehicles" },
-                { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
-                { 
-                  id: "major-vehicle-components", 
-                  title: "Major Vehicle Components",
-                  children: [
-                    { id: "electrical-systems", title: "Electrical Systems" },
-                    { id: "engine-systems", title: "Engine Systems" },
-                    { id: "electric-vehicles", title: "Electric Vehicles" },
-                    { id: "braking-systems", title: "Braking Systems" }
-                  ]
-                }
-              ]
-            },
-            { id: "basic-maintenance", title: "Basic Maintenance" },
-            { id: "vehicle-maintenance", title: "Vehicle Maintenance" },
-            { id: "emergency-repairs", title: "Emergency Repairs" }
-          ];
-          EOF
+          # Add automotive concepts section
+          echo "  {" >> ./site/js/navigation-config.js
+          echo "    id: \"automotive_concepts\"," >> ./site/js/navigation-config.js
+          echo "    title: \"Automotive Concepts\"," >> ./site/js/navigation-config.js
+          echo "    children: [" >> ./site/js/navigation-config.js
+          echo "      { id: \"car_basics\", title: \"Car Basics\" }," >> ./site/js/navigation-config.js
+          echo "      { id: \"car_history\", title: \"Car History\" }," >> ./site/js/navigation-config.js
+          echo "      { id: \"car_types\", title: \"Car Types\" }" >> ./site/js/navigation-config.js
+          echo "    ]" >> ./site/js/navigation-config.js
+          echo "  }," >> ./site/js/navigation-config.js
+          
+          # Add components section
+          echo "  {" >> ./site/js/navigation-config.js
+          echo "    id: \"car_components\"," >> ./site/js/navigation-config.js
+          echo "    title: \"Car Components\"," >> ./site/js/navigation-config.js
+          echo "    children: [" >> ./site/js/navigation-config.js
+          echo "      { id: \"electrical\", title: \"Electrical Systems\" }," >> ./site/js/navigation-config.js
+          echo "      { id: \"engines\", title: \"Engine Systems\" }," >> ./site/js/navigation-config.js
+          echo "      { id: \"evs\", title: \"Electric Vehicles\" }," >> ./site/js/navigation-config.js
+          echo "      { id: \"brakes\", title: \"Braking Systems\" }" >> ./site/js/navigation-config.js
+          echo "    ]" >> ./site/js/navigation-config.js
+          echo "  }," >> ./site/js/navigation-config.js
+          
+          # Add maintenance section
+          echo "  {" >> ./site/js/navigation-config.js
+          echo "    id: \"maintenance\"," >> ./site/js/navigation-config.js
+          echo "    title: \"Maintenance\"," >> ./site/js/navigation-config.js
+          echo "    children: [" >> ./site/js/navigation-config.js
+          echo "      { id: \"basic_maintenance\", title: \"Basic Maintenance\" }," >> ./site/js/navigation-config.js
+          echo "      { id: \"car_maintenance\", title: \"Car Maintenance\" }," >> ./site/js/navigation-config.js
+          echo "      { id: \"emergency_repairs\", title: \"Emergency Repairs\" }" >> ./site/js/navigation-config.js
+          echo "    ]" >> ./site/js/navigation-config.js
+          echo "  }" >> ./site/js/navigation-config.js
+          
+          # Close the array
+          echo "];" >> ./site/js/navigation-config.js
           
           # Create content manifest from processed content
           echo "// Content manifest - maps IDs to content files" > ./site/js/content-manifest.js
@@ -138,19 +149,16 @@ jobs:
             cat ./site/content-list.tmp >> ./site/js/content-manifest.js
           fi
           
-          # Close the manifest object
+          # Close the manifest object with default entry
           echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-manifest.js
           echo "};" >> ./site/js/content-manifest.js
           
           # Clean up temp file
           rm -f ./site/content-list.tmp
 
-      # Step 7: Create SPA CSS structure
+      # Step 8: Create SPA CSS
       - name: Create SPA CSS
         run: |
-          mkdir -p ./site/css
-          
-          # Create CSS file for the SPA
           cat > ./site/css/style.css << 'EOF'
           * {
             margin: 0;
@@ -251,25 +259,98 @@ jobs:
           .loading #loading {
             display: block;
           }
+          
+          /* Add loading animation */
+          .loading #content::before {
+            content: "";
+            display: block;
+            width: 40px;
+            height: 40px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            margin-top: -20px;
+            margin-left: -20px;
+            border-radius: 50%;
+            border: 3px solid #f3f3f3;
+            border-top-color: #3498db;
+            animation: spin 1s ease-in-out infinite;
+          }
+          
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+          
+          /* Error styling */
+          .error {
+            background-color: #fff8f8;
+            border-left: 4px solid #e74c3c;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #333;
+          }
+          
+          .error h2 {
+            color: #e74c3c;
+            margin-top: 0;
+          }
+          
+          /* Responsive design for mobile */
+          @media (max-width: 768px) {
+            body {
+              flex-direction: column;
+              height: auto;
+            }
+            
+            .sidebar {
+              width: 100%;
+              height: auto;
+              max-height: 40vh;
+            }
+            
+            .main-content {
+              height: auto;
+              min-height: 60vh;
+            }
+          }
           EOF
 
-      # Step 8: Create SPA JavaScript Application
+      # Step 9: Create SPA JavaScript Application
       - name: Create SPA Application
         run: |
-          # Create the app.js file for the SPA
           cat > ./site/js/app.js << 'EOF'
-          // SPA Application
+          // SPA Application with path handling for GitHub Pages
           
           // DOM Elements
           const contentEl = document.getElementById('content');
           const contentTitleEl = document.getElementById('content-title');
           const navigationEl = document.getElementById('navigation');
           
+          // Base path handling for GitHub Pages
+          const getBasePath = () => {
+            // For GitHub Pages repository sites, we need to include the repo name in paths
+            if (location.hostname.includes('github.io')) {
+              const pathSegments = location.pathname.split('/');
+              if (pathSegments.length > 1) {
+                return '/' + pathSegments[1];
+              }
+            }
+            return '';
+          };
+          
           // Current state
           let currentPage = null;
+          const basePath = getBasePath();
+          
+          // Debug logging function
+          function debug(message, data) {
+            console.log(`[DITA-SPA] ${message}`, data || '');
+          }
           
           // Initialize the application
           function initApp() {
+            debug('Initializing app with base path:', basePath);
+            
             // Render navigation
             renderNavigation(navigationConfig);
             
@@ -277,12 +358,14 @@ jobs:
             window.addEventListener('popstate', handlePopState);
             
             // Load initial page based on URL or default
-            const initialPageId = getPageIdFromUrl() || "automotive-theories";
+            const initialPageId = getPageIdFromUrl() || "automotive_concepts";
+            debug('Initial page ID:', initialPageId);
             navigateToPage(initialPageId, false);
           }
           
           // Render the navigation menu
           function renderNavigation(items, parentEl = navigationEl) {
+            debug('Rendering navigation items:', items.length);
             const ul = document.createElement('ul');
             
             items.forEach(item => {
@@ -311,6 +394,8 @@ jobs:
           
           // Navigate to a specific page
           function navigateToPage(pageId, pushState = true) {
+            debug('Navigating to page:', pageId);
+            
             // Update active state in navigation
             updateActiveNavItem(pageId);
             
@@ -338,29 +423,72 @@ jobs:
                 
                 // Hide loading indicator
                 document.body.classList.remove('loading');
+                debug('Content loaded successfully for:', pageId);
               })
               .catch(error => {
                 console.error('Error loading content:', error);
-                contentEl.innerHTML = `<div class="error">Failed to load content: ${error.message}</div>`;
+                contentEl.innerHTML = `
+                  <div class="error">
+                    <h2>Failed to Load Content</h2>
+                    <p>The requested content "${pageId}" could not be loaded.</p>
+                    <p>Technical details: ${error.message}</p>
+                    <p>Base path: ${basePath}</p>
+                    <p>Attempted URL: ${basePath}/content/${pageId}.html</p>
+                  </div>
+                `;
                 document.body.classList.remove('loading');
               });
           }
           
           // Load content for a page
           async function loadContent(pageId) {
+            debug('Attempting to load content for:', pageId);
+            
             try {
-              const response = await fetch(`content/${pageId}.html`);
+              // Construct the correct path using the base path
+              const contentPath = `${basePath}/content/${pageId}.html`;
+              debug('Fetching from URL:', contentPath);
+              
+              const response = await fetch(contentPath);
               if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
               }
-              return await response.text();
+              
+              const content = await response.text();
+              debug('Content length:', content.length);
+              
+              // Additional check for empty content
+              if (!content || content.trim() === '') {
+                throw new Error('Content file exists but is empty');
+              }
+              
+              return content;
             } catch (error) {
-              console.error(`Error loading content for ${pageId}:`, error);
-              return `<div class="error">
-                <h2>Content Not Found</h2>
-                <p>The requested content "${pageId}" could not be loaded.</p>
-                <p>Please select another topic from the navigation menu.</p>
-              </div>`;
+              debug('Error in loadContent:', error.message);
+              
+              // Try alternative ID formats if the first attempt fails
+              // This helps with inconsistencies in ID naming between DITA and HTML
+              const alternativeId = pageId
+                .replace(/_/g, '-')  // Try with hyphens instead of underscores
+                .replace(/-/g, '_'); // Or vice versa
+              
+              if (alternativeId !== pageId) {
+                debug('Trying alternative ID format:', alternativeId);
+                try {
+                  const contentPath = `${basePath}/content/${alternativeId}.html`;
+                  const response = await fetch(contentPath);
+                  if (response.ok) {
+                    const content = await response.text();
+                    if (content && content.trim() !== '') {
+                      return content;
+                    }
+                  }
+                } catch (altError) {
+                  debug('Alternative ID also failed:', altError.message);
+                }
+              }
+              
+              throw error; // Re-throw to be handled by the caller
             }
           }
           
@@ -386,12 +514,15 @@ jobs:
                 }
                 parent = parent.parentElement;
               }
+            } else {
+              debug('Warning: No navigation item found for:', pageId);
             }
           }
           
           // Handle popstate event (browser back/forward)
           function handlePopState(event) {
             const pageId = event.state?.pageId || getPageIdFromUrl() || 'default';
+            debug('Popstate event, loading page:', pageId);
             navigateToPage(pageId, false);
           }
           
@@ -402,29 +533,108 @@ jobs:
           
           // Get page title from content manifest
           function getPageTitle(pageId) {
-            return (contentManifest[pageId] || contentManifest.default).title;
+            if (!contentManifest[pageId]) {
+              debug('Warning: No manifest entry for:', pageId);
+              return pageId.split(/[-_]/).map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1)
+              ).join(' ');
+            }
+            return contentManifest[pageId].title;
+          }
+          
+          // Check content directory structure on load
+          async function checkContentStructure() {
+            try {
+              debug('Checking for default content file...');
+              const response = await fetch(`${basePath}/content/default.html`);
+              if (response.ok) {
+                debug('Default content exists, structure seems correct');
+              } else {
+                console.warn('Default content not found, may indicate path issues');
+              }
+            } catch (error) {
+              console.error('Error checking content structure:', error);
+            }
           }
           
           // Initialize the app when DOM is ready
-          document.addEventListener('DOMContentLoaded', initApp);
+          document.addEventListener('DOMContentLoaded', () => {
+            debug('DOM loaded, initializing app...');
+            checkContentStructure();
+            initApp();
+          });
+          
+          // Display loading error if content doesn't load within 5 seconds
+          setTimeout(() => {
+            if (document.body.classList.contains('loading')) {
+              debug('Still loading after timeout, may indicate a problem');
+              const errorMsg = document.createElement('div');
+              errorMsg.className = 'loading-timeout-error';
+              errorMsg.innerHTML = `
+                <h2>Content Loading Issue</h2>
+                <p>The content is taking too long to load. This may indicate a path or configuration issue.</p>
+                <p>Current base path: ${basePath}</p>
+                <p>Current page ID: ${currentPage}</p>
+                <p>Check the browser console for more details.</p>
+                <p>Try adding "?debug=true" to the URL for more information.</p>
+              `;
+              contentEl.appendChild(errorMsg);
+            }
+          }, 5000);
           EOF
 
-      # Step 9: Create main index.html file
+      # Step 10: Create main index.html
       - name: Create Index HTML
         run: |
-          # Create the index.html file for the SPA
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            
+            <!-- Base path handling for GitHub Pages -->
+            <script>
+              // Dynamically set the base href based on deployment environment
+              (function() {
+                // For GitHub Pages repository sites
+                if (location.hostname.includes('github.io')) {
+                  const pathSegments = location.pathname.split('/');
+                  if (pathSegments.length > 1) {
+                    const basePath = '/' + pathSegments[1];
+                    document.write('<base href="' + basePath + '/">');
+                    console.log('[DITA-SPA] Base path set to:', basePath);
+                  }
+                }
+              })();
+              
+              // Handle redirects from 404 page 
+              (function() {
+                var redirect = sessionStorage.redirect;
+                delete sessionStorage.redirect;
+                if (redirect && redirect !== location.href) {
+                  var cleanPath = redirect.split('/').pop();
+                  if (cleanPath) {
+                    history.replaceState(null, null, "#" + cleanPath.replace('.html', ''));
+                    console.log('[DITA-SPA] Redirected from:', redirect);
+                  }
+                }
+              })();
+            </script>
+            
             <title>Automotive Documentation</title>
             <link rel="stylesheet" href="css/style.css">
-            <!-- Load JavaScript files -->
-            <script src="js/navigation-config.js"></script>
-            <script src="js/content-manifest.js"></script>
-            <script src="js/app.js"></script>
+            
+            <!-- Error handling and diagnostics -->
+            <script>
+              window.onerror = function(message, source, lineno, colno, error) {
+                console.error('[DITA-SPA] Error:', message, 'at', source, lineno, colno);
+                document.getElementById('error-display') && 
+                  (document.getElementById('error-display').innerHTML = 
+                    '<p>Error: ' + message + '</p><p>Source: ' + source + ':' + lineno + '</p>');
+                return false;
+              };
+            </script>
           </head>
           <body>
             <div class="sidebar">
@@ -434,39 +644,55 @@ jobs:
             <div class="main-content">
               <h1 id="content-title">Loading...</h1>
               <div id="loading">Loading content...</div>
-              <div id="content"></div>
+              <div id="content">
+                <!-- Content will load here -->
+                <!-- Initial loading message -->
+                <div class="initial-loading">
+                  <p>Initializing documentation viewer...</p>
+                  <p><small>If content doesn't appear in a few seconds, check the console for errors.</small></p>
+                </div>
+              </div>
+              <div id="error-display"></div>
             </div>
+            
+            <!-- Debug panel (hidden by default, can be shown with ?debug=true in URL) -->
+            <div id="debug-panel" style="display: none; position: fixed; bottom: 0; right: 0; background: #f0f0f0; padding: 10px; border: 1px solid #ccc; max-width: 300px; max-height: 200px; overflow: auto; font-size: 11px;">
+              <h4>Debug Information</h4>
+              <div id="debug-content"></div>
+            </div>
+            
+            <!-- Add debug panel toggle -->
+            <script>
+              if (location.search.includes('debug=true')) {
+                document.getElementById('debug-panel').style.display = 'block';
+                window.debugLog = function(msg) {
+                  const panel = document.getElementById('debug-content');
+                  if (panel) {
+                    const line = document.createElement('div');
+                    line.textContent = new Date().toISOString().substr(11, 8) + ': ' + msg;
+                    panel.appendChild(line);
+                    panel.scrollTop = panel.scrollHeight;
+                  }
+                  console.log('[DEBUG] ' + msg);
+                };
+                debugLog('Debug mode enabled');
+                debugLog('URL: ' + location.href);
+              } else {
+                window.debugLog = function() {};
+              }
+            </script>
+            
+            <!-- Load JavaScript files -->
+            <script src="js/navigation-config.js"></script>
+            <script src="js/content-manifest.js"></script>
+            <script src="js/app.js"></script>
           </body>
           </html>
           EOF
-          
-          # Create default content page
-          mkdir -p ./site/content
-          cat > ./site/content/default.html << 'EOF'
-          <h1>Automotive Documentation</h1>
-          <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>
-          EOF
-          
-          # Create placeholder content for missing pages
-          for target in automotive-theories history-of-automobiles types-of-vehicles automobile-fundamentals major-vehicle-components electrical-systems engine-systems electric-vehicles braking-systems basic-maintenance vehicle-maintenance emergency-repairs; do
-            if [ ! -f "./site/content/$target.html" ]; then
-              echo "Creating placeholder content for $target"
-              
-              # Create title from ID
-              title=$(echo "$target" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-              
-              # Create placeholder content
-              cat > "./site/content/$target.html" << EOF
-          <h1>${title}</h1>
-          <p>Content for this section is currently under development.</p>
-          EOF
-            fi
-          done
 
-      # Step 10: Add GitHub Pages 404 redirect handling (for clean URLs)
+      # Step 11: Create 404.html page for SPA routing
       - name: Create 404 Page for SPA Routing
         run: |
-          # Create a 404.html file to handle direct access to routes
           cat > ./site/404.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
@@ -478,31 +704,66 @@ jobs:
               // Store the requested URL for processing after redirect
               sessionStorage.redirect = location.href;
               
-              // Redirect to the main site
-              window.location.href = '/';
+              // Dynamically determine the correct base path
+              function getBasePath() {
+                if (location.hostname.includes('github.io')) {
+                  const pathSegments = location.pathname.split('/');
+                  if (pathSegments.length > 1) {
+                    return '/' + pathSegments[1];
+                  }
+                }
+                return '';
+              }
+              
+              // Redirect to the main site with the correct base path
+              const basePath = getBasePath();
+              window.location.href = basePath + '/';
+              
+              // Log for debugging
+              console.log('404 Redirect - Original URL:', location.href);
+              console.log('404 Redirect - Base Path:', basePath);
+              console.log('404 Redirect - Redirecting to:', basePath + '/');
             </script>
           </head>
           <body>
-            <p>Redirecting to documentation...</p>
+            <div style="text-align: center; font-family: Arial, sans-serif; margin-top: 100px;">
+              <h1>Redirecting to documentation...</h1>
+              <p>If you are not redirected automatically, <a href="/">click here</a>.</p>
+            </div>
           </body>
           </html>
           EOF
-          
-          # Add the redirect handler to index.html
-          sed -i '/<script src="js\/app.js"><\/script>/i \
-            <!-- Handle redirects from 404 page --> \
-            <script> \
-              (function() { \
-                var redirect = sessionStorage.redirect; \
-                delete sessionStorage.redirect; \
-                if (redirect && redirect !== location.href) { \
-                  var cleanPath = redirect.split("\/").pop(); \
-                  history.replaceState(null, null, "#" + cleanPath); \
-                } \
-              })(); \
-            </script>' ./site/index.html
 
-      # Step 11: Deploy to GitHub Pages
+      # Step 12: Create default content and placeholders
+      - name: Create Default Content
+        run: |
+          # Create default/fallback content page
+          mkdir -p ./site/content
+          cat > ./site/content/default.html << 'EOF'
+          <h1>Automotive Documentation</h1>
+          <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>
+          <p>This documentation provides information about various aspects of automotive technology, maintenance, and repair.</p>
+          EOF
+          
+          # Create empty placeholder content files for each navigation item
+          # This ensures we have at least something to display if the DITA transformation didn't create all files
+          for topic in automotive_concepts car_basics car_history car_types car_components electrical engines evs brakes maintenance basic_maintenance car_maintenance emergency_repairs; do
+            if [ ! -f "./site/content/$topic.html" ]; then
+              echo "Creating placeholder content for $topic"
+              
+              # Create title from ID
+              title=$(echo "$topic" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+              
+              # Create placeholder content
+              cat > "./site/content/$topic.html" << EOF
+          <h1>${title}</h1>
+          <p>Content for this section is currently under development.</p>
+          <p>This placeholder was automatically generated because the DITA content wasn't found or couldn't be processed.</p>
+          EOF
+            fi
+          done
+
+      # Step 13: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
