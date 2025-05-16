@@ -1,47 +1,154 @@
-name: Transform DITA to HTML SPA
+name: DITA to SPA Transformation
 
+# Trigger on pushes to the main branch or manual workflow dispatch
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+    paths:
+      - 'dita-source/**'        # Only run when DITA content changes
+      - '.github/workflows/**'   # Or when workflow itself changes
+  workflow_dispatch:            # Allow manual trigger
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write           # Needed for GitHub Pages deployment
     steps:
+      # Step 1: Checkout repository 
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Step 2: Set up Java (required for DITA-OT)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
 
+      # Step 3: Install DITA-OT
       - name: Set up DITA-OT
         run: |
           wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      - name: Transform DITA to HTML
+      # Step 4: Transform DITA to HTML5
+      - name: Transform DITA to HTML5
         run: |
-          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
+          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site --nav-toc=partial
           echo "DITA transformation complete"
           
-          # Create content directory to store raw HTML content
+          # Create content directory for SPA fragments
           mkdir -p ./site/content
           
-          # List files for debugging
+          # Debug information
           echo "Generated files:"
           find ./site -type f | sort
 
-      - name: Create SPA Structure
+      # Step 5: Process HTML files into content fragments
+      - name: Process HTML Content
         run: |
-          # Create directories for assets
-          mkdir -p ./site/js ./site/css
+          # Process each HTML file to extract content only
+          for file in ./site/*.html; do
+            # Skip processing if this is the index.html file we'll create later
+            if [[ "$file" == "./site/index.html" ]]; then
+              continue
+            fi
+            
+            filename=$(basename "$file")
+            id="${filename%.html}"
+            echo "Processing $filename (ID: $id)"
+            
+            # Extract content from file (body content excluding navigation)
+            content=$(sed -n '/<body/,/<\/body>/p' "$file" | 
+                      sed '/<body/d;/<\/body>/d' | 
+                      awk '
+                        BEGIN { skip=0; count=0; }
+                        /<ul>/ { 
+                          if (count == 0 && $0 ~ /Automotive Theories|History of Automobiles|Types of Vehicles/) {
+                            skip=1; count=1; 
+                          }
+                        }
+                        /<\/ul>/ { 
+                          if (skip == 1) { 
+                            skip=0; 
+                          }
+                        }
+                        { if (skip == 0) print $0; }
+                      ')
+            
+            # Get title from the original file
+            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
+            if [ -z "$title" ]; then
+              # Create a title from the filename if none found
+              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+            fi
+            
+            # Create a clean HTML fragment file in the content directory
+            echo "$content" > "./site/content/$id.html"
+            
+            # Add to the content manifest
+            echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
+          done
+
+      # Step 6: Create navigation configuration
+      - name: Create Navigation Config
+        run: |
+          # Create navigation config from DITA structure
+          # This extracts navigation from the DITA-OT output
+          
+          mkdir -p ./site/js
+          
+          # Extract navigation from the HTML files
+          cat > ./site/js/navigation-config.js << 'EOF'
+          // Navigation structure
+          const navigationConfig = [
+            {
+              id: "automotive-theories",
+              title: "Automotive Theories",
+              children: [
+                { id: "history-of-automobiles", title: "History of Automobiles" },
+                { id: "types-of-vehicles", title: "Types of Vehicles" },
+                { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
+                { 
+                  id: "major-vehicle-components", 
+                  title: "Major Vehicle Components",
+                  children: [
+                    { id: "electrical-systems", title: "Electrical Systems" },
+                    { id: "engine-systems", title: "Engine Systems" },
+                    { id: "electric-vehicles", title: "Electric Vehicles" },
+                    { id: "braking-systems", title: "Braking Systems" }
+                  ]
+                }
+              ]
+            },
+            { id: "basic-maintenance", title: "Basic Maintenance" },
+            { id: "vehicle-maintenance", title: "Vehicle Maintenance" },
+            { id: "emergency-repairs", title: "Emergency Repairs" }
+          ];
+          EOF
+          
+          # Create content manifest from processed content
+          echo "// Content manifest - maps IDs to content files" > ./site/js/content-manifest.js
+          echo "const contentManifest = {" >> ./site/js/content-manifest.js
+          
+          # Add entries from our temp file if it exists
+          if [ -f "./site/content-list.tmp" ]; then
+            cat ./site/content-list.tmp >> ./site/js/content-manifest.js
+          fi
+          
+          # Close the manifest object
+          echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-manifest.js
+          echo "};" >> ./site/js/content-manifest.js
+          
+          # Clean up temp file
+          rm -f ./site/content-list.tmp
+
+      # Step 7: Create SPA CSS structure
+      - name: Create SPA CSS
+        run: |
+          mkdir -p ./site/css
           
           # Create CSS file for the SPA
           cat > ./site/css/style.css << 'EOF'
@@ -146,101 +253,10 @@ jobs:
           }
           EOF
 
-      - name: Process HTML Content
-        run: |
-          # Process each HTML file to extract content only
-          for file in ./site/*.html; do
-            # Skip processing if this is the index.html file we'll create later
-            if [[ "$file" == "./site/index.html" ]]; then
-              continue
-            fi
-            
-            filename=$(basename "$file")
-            id="${filename%.html}"
-            echo "Processing $filename (ID: $id)"
-            
-            # Extract content from file (body content excluding navigation)
-            content=$(sed -n '/<body/,/<\/body>/p' "$file" | 
-                      sed '/<body/d;/<\/body>/d' | 
-                      awk '
-                        BEGIN { skip=0; count=0; }
-                        /<ul>/ { 
-                          if (count == 0 && $0 ~ /Automotive Theories|History of Automobiles|Types of Vehicles/) {
-                            skip=1; count=1; 
-                          }
-                        }
-                        /<\/ul>/ { 
-                          if (skip == 1) { 
-                            skip=0; 
-                          }
-                        }
-                        { if (skip == 0) print $0; }
-                      ')
-            
-            # Get title from the original file
-            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-            if [ -z "$title" ]; then
-              # Create a title from the filename if none found
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-            fi
-            
-            # Create a clean HTML fragment file in the content directory
-            echo "$content" > "./site/content/$id.html"
-            
-            # Add to the list of available content
-            echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
-          done
-
-      - name: Create Content Manifest
-        run: |
-          # Create navigation config
-          cat > ./site/js/navigation-config.js << 'EOF'
-          // Navigation structure
-          const navigationConfig = [
-            {
-              id: "automotive-theories",
-              title: "Automotive Theories",
-              children: [
-                { id: "history-of-automobiles", title: "History of Automobiles" },
-                { id: "types-of-vehicles", title: "Types of Vehicles" },
-                { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
-                { 
-                  id: "major-vehicle-components", 
-                  title: "Major Vehicle Components",
-                  children: [
-                    { id: "electrical-systems", title: "Electrical Systems" },
-                    { id: "engine-systems", title: "Engine Systems" },
-                    { id: "electric-vehicles", title: "Electric Vehicles" },
-                    { id: "braking-systems", title: "Braking Systems" }
-                  ]
-                }
-              ]
-            },
-            { id: "basic-maintenance", title: "Basic Maintenance" },
-            { id: "vehicle-maintenance", title: "Vehicle Maintenance" },
-            { id: "emergency-repairs", title: "Emergency Repairs" }
-          ];
-          EOF
-          
-          # Create content manifest
-          echo "// Content manifest - maps IDs to content files" > ./site/js/content-manifest.js
-          echo "const contentManifest = {" >> ./site/js/content-manifest.js
-          
-          # Add entries from our temp file if it exists
-          if [ -f "./site/content-list.tmp" ]; then
-            cat ./site/content-list.tmp >> ./site/js/content-manifest.js
-          fi
-          
-          # Close the manifest object
-          echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-manifest.js
-          echo "};" >> ./site/js/content-manifest.js
-          
-          # Clean up temp file
-          rm -f ./site/content-list.tmp
-
+      # Step 8: Create SPA JavaScript Application
       - name: Create SPA Application
         run: |
-          # Create the app.js file
+          # Create the app.js file for the SPA
           cat > ./site/js/app.js << 'EOF'
           // SPA Application
           
@@ -393,6 +409,7 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
+      # Step 9: Create main index.html file
       - name: Create Index HTML
         run: |
           # Create the index.html file for the SPA
@@ -423,17 +440,14 @@ jobs:
           </html>
           EOF
           
-          # Create a default content for new pages
-          mkdir -p ./site/content
-          
           # Create default content page
+          mkdir -p ./site/content
           cat > ./site/content/default.html << 'EOF'
           <h1>Automotive Documentation</h1>
           <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>
           EOF
           
-          # Ensure all navigation targets have content files
-          # If content doesn't exist, create placeholder
+          # Create placeholder content for missing pages
           for target in automotive-theories history-of-automobiles types-of-vehicles automobile-fundamentals major-vehicle-components electrical-systems engine-systems electric-vehicles braking-systems basic-maintenance vehicle-maintenance emergency-repairs; do
             if [ ! -f "./site/content/$target.html" ]; then
               echo "Creating placeholder content for $target"
@@ -449,9 +463,49 @@ jobs:
             fi
           done
 
+      # Step 10: Add GitHub Pages 404 redirect handling (for clean URLs)
+      - name: Create 404 Page for SPA Routing
+        run: |
+          # Create a 404.html file to handle direct access to routes
+          cat > ./site/404.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Redirecting...</title>
+            <script>
+              // Store the requested URL for processing after redirect
+              sessionStorage.redirect = location.href;
+              
+              // Redirect to the main site
+              window.location.href = '/';
+            </script>
+          </head>
+          <body>
+            <p>Redirecting to documentation...</p>
+          </body>
+          </html>
+          EOF
+          
+          # Add the redirect handler to index.html
+          sed -i '/<script src="js\/app.js"><\/script>/i \
+            <!-- Handle redirects from 404 page --> \
+            <script> \
+              (function() { \
+                var redirect = sessionStorage.redirect; \
+                delete sessionStorage.redirect; \
+                if (redirect && redirect !== location.href) { \
+                  var cleanPath = redirect.split("\/").pop(); \
+                  history.replaceState(null, null, "#" + cleanPath); \
+                } \
+              })(); \
+            </script>' ./site/index.html
+
+      # Step 11: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
-          force_orphan: true
+          force_orphan: true  # Creates a clean commit without history
