@@ -100,15 +100,6 @@ jobs:
           cat "$logfile"
           echo "----------------"
         done
-        
-        # Check for DITA-OT temp directory
-        echo "==== DITA-OT TEMP DIRECTORY ===="
-        if [ -d "tools/dita-ot/temp" ]; then
-          echo "Temp directory exists. Contents:"
-          ls -la tools/dita-ot/temp/
-        else
-          echo "Temp directory does not exist!"
-        fi
 
     - name: Test Original DITA Content
       if: always()  # Run this step even if previous steps failed
@@ -133,12 +124,9 @@ jobs:
           echo "dita-source directory does not exist!"
         fi
 
-    - name: Upload Debug Information
-      if: always()
-      uses: actions/upload-artifact@v3
+    - name: Deploy to GitHub Pages
+      if: success()
+      uses: JamesIves/github-pages-deploy-action@v4
       with:
-        name: dita-debug-info
-        path: |
-          logs/
-          test-dita/
-          tools/dita-ot/temp/
+        folder: test-output
+        branch: gh-pages
