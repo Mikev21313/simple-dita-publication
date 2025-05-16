@@ -38,7 +38,7 @@ jobs:
       - name: Create Sidebar Navigation
         run: |
           # Create directories for assets
-          mkdir -p ./site/css ./site/js
+          mkdir -p ./site/css
           
           # Create CSS file
           cat > ./site/css/style.css << 'EOF'
@@ -129,210 +129,178 @@ jobs:
             max-width: 100%;
             height: auto;
           }
+          
+          /* Hide redundant navigation in main content */
+          .main-content > ul:first-of-type {
+            display: none;
+          }
           EOF
           
-          # Create JavaScript file for content loading
-          cat > ./site/js/navigation.js << 'EOF'
+          # Simple script to highlight current page in navigation
+          cat > ./site/js/highlight.js << 'EOF'
           document.addEventListener('DOMContentLoaded', function() {
-            // Get all navigation links
-            const navLinks = document.querySelectorAll('.sidebar a');
+            // Get current page filename
+            var path = window.location.pathname;
+            var page = path.split("/").pop();
             
-            // Add click event listener to each link
-            navLinks.forEach(link => {
-              link.addEventListener('click', function(e) {
-                e.preventDefault();
-                
-                // Remove active class from all links
-                navLinks.forEach(l => l.classList.remove('active'));
-                
-                // Add active class to clicked link
-                this.classList.add('active');
-                
-                // Get the href attribute
-                const href = this.getAttribute('href');
-                
-                // Load content into main area
-                fetch(href)
-                  .then(response => response.text())
-                  .then(html => {
-                    // Create a temporary element to parse the HTML
-                    const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = html;
-                    
-                    // Extract the main content from the loaded page
-                    // First look for main-content div in the loaded page
-                    let content = tempDiv.querySelector('.main-content');
-                    
-                    if (content) {
-                      // If main-content div exists, use its inner content
-                      document.querySelector('.main-content').innerHTML = content.innerHTML;
-                    } else {
-                      // Otherwise, try to extract the body content
-                      const bodyContent = tempDiv.querySelector('body');
-                      if (bodyContent) {
-                        // Exclude navigation elements
-                        const navElements = bodyContent.querySelectorAll('ul');
-                        navElements.forEach(nav => {
-                          if (nav.innerHTML.includes('Automotive Theories') && 
-                              nav.innerHTML.includes('History of Automobiles')) {
-                            nav.remove();
-                          }
-                        });
-                        
-                        document.querySelector('.main-content').innerHTML = bodyContent.innerHTML;
-                      } else {
-                        document.querySelector('.main-content').innerHTML = '<h1>Content not found</h1>';
-                      }
-                    }
-                    
-                    // Update the page title
-                    const title = tempDiv.querySelector('title');
-                    if (title) {
-                      document.title = title.textContent;
-                    }
-                    
-                    // Update the URL without refreshing the page
-                    history.pushState({}, '', href);
-                  })
-                  .catch(error => {
-                    console.error('Error loading content:', error);
-                    document.querySelector('.main-content').innerHTML = 
-                      '<h1>Error</h1><p>Could not load the requested content. Please try again.</p>';
-                  });
-              });
-            });
+            // If no page specified, assume index.html
+            if(!page || page === "") {
+              page = "index.html";
+            }
             
-            // Handle browser back/forward buttons
-            window.addEventListener('popstate', function() {
-              loadContent(window.location.pathname);
-            });
-            
-            // Function to load content based on URL
-            function loadContent(url) {
-              // Extract the filename from the URL
-              const filename = url.split('/').pop() || 'index.html';
-              
-              // Find and click the corresponding navigation link
-              const link = document.querySelector(`.sidebar a[href="${filename}"]`);
-              if (link) {
-                link.click();
-              } else {
-                // If no matching link, load the index page
-                const indexLink = document.querySelector('.sidebar a[href="index.html"]');
-                if (indexLink) {
-                  indexLink.click();
-                }
+            // Find matching link and add active class
+            var navLinks = document.querySelectorAll('.sidebar a');
+            navLinks.forEach(function(link) {
+              if(link.getAttribute('href') === page) {
+                link.classList.add('active');
               }
-            }
-            
-            // Load initial content based on URL
-            if (window.location.pathname === '/' || window.location.pathname.endsWith('/')) {
-              // Load index page for root URL
-              loadContent('index.html');
-            } else {
-              loadContent(window.location.pathname);
-            }
+            });
           });
           EOF
           
-          # Create the base index.html file
-          cat > ./site/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Automotive Documentation</title>
-            <link rel="stylesheet" href="css/style.css">
-            <script src="js/navigation.js"></script>
-          </head>
-          <body>
-            <div class="sidebar">
-              <h2>Navigation</h2>
+          # Create navigation HTML
+          cat > ./site/navigation.html << 'EOF'
+          <ul>
+            <li><a href="automotive-theories.html">Automotive Theories</a>
               <ul>
-                <li><a href="automotive-theories.html">Automotive Theories</a>
+                <li><a href="history-of-automobiles.html">History of Automobiles</a></li>
+                <li><a href="types-of-vehicles.html">Types of Vehicles</a></li>
+                <li><a href="automobile-fundamentals.html">Automobile Fundamentals</a></li>
+                <li><a href="major-vehicle-components.html">Major Vehicle Components</a>
                   <ul>
-                    <li><a href="history-of-automobiles.html">History of Automobiles</a></li>
-                    <li><a href="types-of-vehicles.html">Types of Vehicles</a></li>
-                    <li><a href="automobile-fundamentals.html">Automobile Fundamentals</a></li>
-                    <li><a href="major-vehicle-components.html">Major Vehicle Components</a>
-                      <ul>
-                        <li><a href="electrical-systems.html">Electrical Systems</a></li>
-                        <li><a href="engine-systems.html">Engine Systems</a></li>
-                        <li><a href="electric-vehicles.html">Electric Vehicles</a></li>
-                        <li><a href="braking-systems.html">Braking Systems</a></li>
-                      </ul>
-                    </li>
+                    <li><a href="electrical-systems.html">Electrical Systems</a></li>
+                    <li><a href="engine-systems.html">Engine Systems</a></li>
+                    <li><a href="electric-vehicles.html">Electric Vehicles</a></li>
+                    <li><a href="braking-systems.html">Braking Systems</a></li>
                   </ul>
                 </li>
-                <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
-                <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
-                <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
               </ul>
-            </div>
-            <div class="main-content">
-              <h1>Automotive Documentation</h1>
-              <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>
-              <div id="content-container"></div>
-            </div>
-          </body>
-          </html>
+            </li>
+            <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
+            <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
+            <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
+          </ul>
           EOF
           
-          # Find all content HTML files
-          find ./site -name "*.html" -not -path "./site/index.html" | while read -r file; do
-            echo "Processing $file"
+          # Gather available HTML files
+          AVAILABLE_FILES=$(find ./site -name "*.html" -not -path "./site/index.html" | sed 's|./site/||g')
+          echo "Available HTML files: $AVAILABLE_FILES"
+          
+          # List of navigation targets (keep in sync with navigation.html)
+          NAVIGATION_TARGETS="automotive-theories.html history-of-automobiles.html types-of-vehicles.html automobile-fundamentals.html major-vehicle-components.html electrical-systems.html engine-systems.html electric-vehicles.html braking-systems.html basic-maintenance.html vehicle-maintenance.html emergency-repairs.html"
+
+          # Directory to store topic content files
+          mkdir -p ./site/topics
+          
+          # Identify available content files and map them to navigation targets
+          for TARGET in $NAVIGATION_TARGETS; do
+            TARGET_BASE=$(echo "$TARGET" | sed 's/\.html$//')
+            echo "Processing target: $TARGET"
             
-            # Extract content from HTML files
-            # Create temp file for content extraction
-            CONTENT_FILE=$(mktemp)
-            
-            # Extract body content while removing navigation elements
-            sed -n '/<body/,/<\/body>/p' "$file" | 
-              sed '/<body/d; /<\/body>/d' | 
-              awk '
-                # Skip blocks that look like navigation
-                /<ul>/ {
-                  if (nav_depth == 0 && index($0, "Automotive Theories") > 0) {
-                    nav_depth = 1
-                    next
-                  }
-                }
-                /<\/ul>/ {
-                  if (nav_depth > 0) {
-                    nav_depth--
-                    if (nav_depth == 0) next
-                  }
-                }
-                nav_depth == 0 { print }
-              ' > "$CONTENT_FILE"
-            
-            # Create content-only HTML file with the same name
-            # But don't overwrite the original file yet
-            BASENAME=$(basename "$file")
-            TEMP_FILE=$(mktemp)
-            
-            # Create a simplified HTML structure for AJAX loading
-            cat > "$TEMP_FILE" << EOF
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>$(grep -o '<title>[^<]*</title>' "$file" | sed 's/<title>\(.*\)<\/title>/\1/' || echo "Automotive Documentation")</title>
-          </head>
-          <body>
-          $(cat "$CONTENT_FILE")
-          </body>
-          </html>
-          EOF
-            
-            # Replace the original file
-            cp "$TEMP_FILE" "$file"
-            
-            # Clean up temp files
-            rm -f "$CONTENT_FILE" "$TEMP_FILE"
+            # Look for exact match
+            if echo "$AVAILABLE_FILES" | grep -q "^$TARGET$"; then
+              echo "Found exact match for $TARGET"
+              cp "./site/$TARGET" "./site/topics/$TARGET"
+            else
+              # Look for close match based on filename
+              MATCH=$(echo "$AVAILABLE_FILES" | grep -i "$TARGET_BASE" | head -1)
+              
+              if [ -n "$MATCH" ]; then
+                echo "Found close match: $MATCH for $TARGET"
+                cp "./site/$MATCH" "./site/topics/$TARGET"
+              else
+                # No match found, create placeholder content
+                echo "No match found for $TARGET, creating placeholder"
+                cat > "./site/topics/$TARGET" << EOT
+<!DOCTYPE html>
+<html>
+<head>
+  <title>${TARGET_BASE^}</title>
+</head>
+<body>
+  <h1>${TARGET_BASE^}</h1>
+  <p>Content for this topic is under development.</p>
+</body>
+</html>
+EOT
+              fi
+            fi
           done
           
-          echo "Content files processed successfully."
+          # Create template file
+          cat > ./site/template.html << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PAGE_TITLE</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/highlight.js"></script>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>Navigation</h2>
+    NAVIGATION_CONTENT
+  </div>
+  <div class="main-content">
+    MAIN_CONTENT
+  </div>
+</body>
+</html>
+EOF
+          
+          # Create index page if it doesn't exist
+          if [ ! -f "./site/index.html" ]; then
+            FIRST_TOPIC=$(echo "$NAVIGATION_TARGETS" | awk '{print $1}')
+            cat > "./site/index.html" << EOF
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="refresh" content="0;url=$FIRST_TOPIC">
+  <title>Redirecting...</title>
+</head>
+<body>
+  <p>Redirecting to <a href="$FIRST_TOPIC">$FIRST_TOPIC</a>...</p>
+</body>
+</html>
+EOF
+          fi
+          
+          # Process each navigation target to create final HTML files
+          for TARGET in $NAVIGATION_TARGETS; do
+            echo "Creating final HTML for $TARGET"
+            
+            # Read the page title and content
+            if [ -f "./site/topics/$TARGET" ]; then
+              PAGE_TITLE=$(grep -o '<title>[^<]*</title>' "./site/topics/$TARGET" | sed 's/<title>\(.*\)<\/title>/\1/' || echo "${TARGET%.*}")
+              
+              # Extract main content 
+              TEMP_CONTENT=$(mktemp)
+              sed -n '/<body/,/<\/body>/p' "./site/topics/$TARGET" > "$TEMP_CONTENT"
+              MAIN_CONTENT=$(sed '/<body/d;/<\/body>/d' "$TEMP_CONTENT")
+              
+              # Clean up temp file
+              rm -f "$TEMP_CONTENT"
+            else
+              PAGE_TITLE="${TARGET%.*}"
+              MAIN_CONTENT="<h1>${TARGET%.*}</h1><p>Content coming soon.</p>"
+            fi
+            
+            # Create final HTML file
+            cat ./site/template.html | 
+              sed "s|PAGE_TITLE|$PAGE_TITLE|g" | 
+              sed "s|NAVIGATION_CONTENT|$(cat ./site/navigation.html)|g" | 
+              sed "s|MAIN_CONTENT|$MAIN_CONTENT|g" > "./site/$TARGET"
+          done
+          
+          # Clean up
+          rm -f ./site/template.html ./site/navigation.html
+          rm -rf ./site/topics
+          
+          # List final files
+          echo "Final files:"
+          find ./site -type f | sort
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
