@@ -39,39 +39,44 @@ jobs:
         run: |
           # Create directories for assets
           mkdir -p ./site/css
-          mkdir -p ./site/js
           
           # Create CSS file
           cat > ./site/css/style.css << 'EOF'
-          body {
-            display: flex;
+          * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+          }
+
+          body {
             font-family: Arial, sans-serif;
-            height: 100vh;
+            line-height: 1.6;
+            display: flex;
+            min-height: 100vh;
+            width: 100%;
           }
           
           .sidebar {
             width: 250px;
             background-color: #f5f5f5;
             padding: 20px;
-            height: 100vh;
+            min-height: 100vh;
             position: fixed;
+            left: 0;
+            top: 0;
             overflow-y: auto;
             border-right: 1px solid #ddd;
-            box-sizing: border-box;
           }
           
           .main-content {
             margin-left: 250px;
             padding: 20px;
-            flex: 1;
-            overflow-y: auto;
-            box-sizing: border-box;
+            width: calc(100% - 250px);
           }
           
           .sidebar h2 {
             margin-top: 0;
+            margin-bottom: 15px;
             color: #333;
             border-bottom: 1px solid #ddd;
             padding-bottom: 10px;
@@ -79,7 +84,13 @@ jobs:
           
           .sidebar ul {
             list-style-type: none;
-            padding: 0;
+            padding-left: 0;
+            margin-bottom: 15px;
+          }
+          
+          .sidebar ul ul {
+            padding-left: 20px;
+            margin-top: 5px;
           }
           
           .sidebar li {
@@ -87,66 +98,38 @@ jobs:
           }
           
           .sidebar a {
-            text-decoration: none;
             color: #2c3e50;
+            text-decoration: none;
             display: block;
             padding: 5px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
           }
           
           .sidebar a:hover {
             background-color: #e0e0e0;
-            border-radius: 4px;
           }
           
-          /* Indent nested list items */
-          .sidebar ul ul {
-            padding-left: 20px;
+          /* Improve readability in main content */
+          .main-content h1, .main-content h2, .main-content h3 {
+            margin-top: 1em;
+            margin-bottom: 0.5em;
           }
           
-          /* Handle nested list items */
-          .sidebar li li {
-            margin-bottom: 5px;
+          .main-content p {
+            margin-bottom: 1em;
           }
-          EOF
           
-          # Create JavaScript
-          cat > ./site/js/script.js << 'EOF'
-          document.addEventListener('DOMContentLoaded', function() {
-            // Get the sidebar
-            const sidebar = document.querySelector('.sidebar');
-            
-            // Clone navigation content
-            const navigation = document.querySelector('.main-content ul');
-            
-            if (navigation) {
-              // Create a copy of the navigation
-              const sidebarNav = navigation.cloneNode(true);
-              
-              // Clear any existing content in the sidebar
-              sidebar.innerHTML = '<h2>Navigation</h2>';
-              
-              // Add navigation to sidebar
-              sidebar.appendChild(sidebarNav);
-              
-              // Remove navigation from main content
-              navigation.parentNode.removeChild(navigation);
-            }
-            
-            // Fix links
-            const links = document.querySelectorAll('.sidebar a');
-            links.forEach(link => {
-              const href = link.getAttribute('href');
-              if (href && !href.includes('.html') && !href.startsWith('http') && !href.startsWith('#')) {
-                link.setAttribute('href', href + '.html');
-              }
-            });
-          });
+          .main-content img {
+            max-width: 100%;
+            height: auto;
+          }
           EOF
           
           # Check if index.html exists
           if [ ! -f "./site/index.html" ]; then
             # Find main HTML file
-            MAIN_HTML=$(find ./site -name "*.html" | head -1)
+            MAIN_HTML=$(find ./site -name "*.html" | grep -v "index.html" | head -1)
             if [ -n "$MAIN_HTML" ]; then
               cp "$MAIN_HTML" "./site/index.html"
             else
@@ -155,15 +138,84 @@ jobs:
             fi
           fi
           
-          # Process HTML files
-          find ./site -name "*.html" | while read -r file; do
-            # Add CSS and JS to HTML files
-            sed -i 's|</head>|<link rel="stylesheet" href="css/style.css">\n<script src="js/script.js"></script>\n</head>|' "$file"
+          # Extract navigation from the first HTML file for consistency
+          FIRST_HTML=$(find ./site -name "*.html" | grep -v "index.html" | head -1)
+          
+          # Create a temporary file to store navigation list
+          NAV_CONTENT=""
+          
+          if [ -n "$FIRST_HTML" ]; then
+            echo "Extracting navigation from $FIRST_HTML"
             
-            # Insert the sidebar structure
-            sed -i 's|<body|<body>\n<div class="sidebar"><h2>Navigation</h2><p>Navigation will appear here</p></div>\n<div class="main-content">|' "$file"
-            sed -i 's|</body>|</div>\n</body>|' "$file"
+            # Check if the file contains a UL element that looks like navigation
+            if grep -q '<ul.*>' "$FIRST_HTML"; then
+              # Extract the top-level navigation list
+              NAV_CONTENT=$(grep -oP '(<ul>.*?</ul>)' "$FIRST_HTML" -z | head -1)
+              
+              if [ -z "$NAV_CONTENT" ]; then
+                # Try a different pattern if first one fails
+                NAV_CONTENT=$(grep -oP '(<ul class=".*?">.*?</ul>)' "$FIRST_HTML" -z | head -1)
+              fi
+              
+              echo "Navigation content extracted successfully"
+            else
+              echo "No navigation list found in the HTML"
+              NAV_CONTENT="<ul><li>No navigation found</li></ul>"
+            fi
+          else
+            echo "No HTML files found!"
+            NAV_CONTENT="<ul><li>No navigation found</li></ul>"
+          fi
+          
+          # Save navigation to file for debugging
+          echo "$NAV_CONTENT" > ./site/nav-debug.html
+          
+          # Process all HTML files
+          find ./site -name "*.html" | while read -r file; do
+            echo "Processing $file"
+            # Create a temporary file
+            TEMP_FILE=$(mktemp)
+            
+            # Insert CSS and create sidebar structure
+            cat > "$TEMP_FILE" << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>$(grep -oP '<title>\K(.*?)(?=</title>)' "$file" || echo "Automotive Documentation")</title>
+            <link rel="stylesheet" href="css/style.css">
+          </head>
+          <body>
+            <div class="sidebar">
+              <h2>Navigation</h2>
+              $NAV_CONTENT
+            </div>
+            <div class="main-content">
+          EOF
+            
+            # Extract the content from the original file
+            # Skip everything before the body and navigation list
+            sed -n '/<body/,/<\/body>/p' "$file" | 
+              # Remove the opening body tag
+              sed 's/<body[^>]*>//g' |
+              # Remove the closing body tag
+              sed 's/<\/body>//g' |
+              # Remove navigation list if present (exactly the same one we extracted)
+              sed "s|$NAV_CONTENT||g" >> "$TEMP_FILE"
+            
+            # Add closing tags
+            cat >> "$TEMP_FILE" << EOF
+            </div>
+          </body>
+          </html>
+          EOF
+            
+            # Replace original file with our processed version
+            mv "$TEMP_FILE" "$file"
           done
+          
+          # Clean up debug file
+          rm -f ./site/nav-debug.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
