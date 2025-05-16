@@ -1,4 +1,4 @@
-name: DITA to SPA Transformation
+name: DITA to SPA Transformation with Collapsible Navigation
 
 on:
   push:
@@ -260,15 +260,26 @@ jobs:
             position: relative;
           }
           
-          .sidebar li.has-children > a:before {
+          /* Toggle arrow styling */
+          .sidebar .toggle-arrow {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            position: absolute;
+            left: 0;
+            top: 5px;
+            cursor: pointer;
+            z-index: 10;
+          }
+          
+          .sidebar .toggle-arrow:before {
             content: "▶";
             display: inline-block;
             font-size: 10px;
-            margin-right: 5px;
             transition: transform 0.2s;
           }
           
-          .sidebar li.has-children.expanded > a:before {
+          .sidebar li.expanded > .toggle-arrow:before {
             transform: rotate(90deg);
           }
           
@@ -284,7 +295,7 @@ jobs:
             color: #2c3e50;
             text-decoration: none;
             display: block;
-            padding: 5px;
+            padding: 5px 5px 5px 20px; /* Add left padding for arrow */
             border-radius: 4px;
             transition: background-color 0.2s;
             cursor: pointer;
@@ -370,7 +381,7 @@ jobs:
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // SPA Application with hierarchical navigation
+          // SPA Application with hierarchical navigation and arrow toggling
           
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -423,6 +434,15 @@ jobs:
               // Add class if item has children
               if (item.children && item.children.length > 0) {
                 li.classList.add('has-children');
+                
+                // Create a toggle arrow element
+                const toggle = document.createElement('span');
+                toggle.className = 'toggle-arrow';
+                toggle.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  li.classList.toggle('expanded');
+                });
+                li.appendChild(toggle);
               }
               
               const a = document.createElement('a');
@@ -431,19 +451,7 @@ jobs:
               a.href = `#${item.id}`;
               a.addEventListener('click', (e) => {
                 e.preventDefault();
-                
-                // If item has children, toggle expansion
-                if (item.children && item.children.length > 0) {
-                  li.classList.toggle('expanded');
-                }
-                
-                // Navigate only if item doesn't have children
-                if (!item.children || item.children.length === 0) {
-                  navigateToPage(item.id);
-                } else if (!li.classList.contains('expanded')) {
-                  // If collapsing, navigate to the parent
-                  navigateToPage(item.id);
-                }
+                navigateToPage(item.id);
               });
               
               li.appendChild(a);
