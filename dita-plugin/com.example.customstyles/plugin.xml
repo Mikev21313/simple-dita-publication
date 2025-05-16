@@ -7,6 +7,4 @@
 
   <feature extension="dita.conductor.html5.param" value="html5-custom-styles.init"/>
 
-  <feature extension="ant.import" file="ant/build.xml"/>
-
   </plugin>
