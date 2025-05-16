@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>%title% | Technical Publications</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <img src="images/logo.svg" alt="Logo" class="logo">
+            <h1>Automotive Information</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="automotive-theories.html">Automotive Theories</a></li>
+                <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
+                <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
+                <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <div class="search-container">
+        <input type="text" placeholder="Search" id="search-input">
+        <button type="submit" id="search-button">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+        </button>
+    </div>
+
+    <main>
+        <div class="categories">
+            <!-- Category tiles will be dynamically populated -->
+            %category-tiles%
+        </div>
+
+        <div class="content">
+            %content%
+        </div>
+    </main>
+
+    <footer>
+        <p>©2025 Your Company, Inc. Proprietary and Confidential. For Internal Use Only.</p>
+        <p>Contact: <a href="mailto:support@example.com">support@example.com</a></p>
+    </footer>
+
+    <script src="js/main.js"></script>
+</body>
+</html>

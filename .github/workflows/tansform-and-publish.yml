@@ -1,35 +1,82 @@
-name: Transform and Publish DITA # Original name
+name: DITA to HTML Build and Deploy
 
 on:
-  # Trigger the workflow on push to the main branch
   push:
     branches: [ main ]
-  # Allow manual triggering from the Actions tab
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest # Use the latest Ubuntu runner
-    permissions:
-      contents: write # Grant permission to write to the GitHub Pages branch
-
+  build:
+    runs-on: ubuntu-latest
+    
     steps:
-      # Step 1: Check out the repository
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
-      # Step 2: Set up Java 17 (required for DITA-OT 4.0.2)
-      - name: Set up Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin' # Use Temurin distribution
-          java-version: '17'     # Specify Java 17
+    - name: Set up JDK 11
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
 
-      # Step 3: Download and set up DITA-OT
-      # This step only downloads and unzips the standard DITA-OT
-      - name: Set up DITA-OT
-        run: |
-          echo "Downloading DITA-OT 4.0.2..."
-          wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
-          echo "Unzipping DITA-OT..."
-          unzip
+    - name: Setup DITA-OT
+      run: |
+        mkdir -p tools
+        curl -L https://github.com/dita-ot/dita-ot/releases/download/4.1.2/dita-ot-4.1.2.zip -o tools/dita-ot.zip
+        unzip tools/dita-ot.zip -d tools/
+        mv tools/dita-ot-4.1.2 tools/dita-ot
+
+    - name: Apply Custom Styling
+      run: |
+        # Create custom plugin directory
+        mkdir -p tools/dita-ot/plugins/com.yourcompany.html5
+        
+        # Copy custom HTML templates and CSS to plugin directory
+        cp -r themes/automotive-theme/* tools/dita-ot/plugins/com.yourcompany.html5/
+        
+        # Create plugin.xml file
+        cat > tools/dita-ot/plugins/com.yourcompany.html5/plugin.xml << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <plugin id="com.yourcompany.html5">
+          <require plugin="org.dita.html5"/>
+          <feature extension="dita.conductor.html5.param" file="params.xml"/>
+          <feature extension="dita.conductor.target.relative" file="conductor.xml"/>
+        </plugin>
+        EOF
+        
+        # Create params.xml file
+        cat > tools/dita-ot/plugins/com.yourcompany.html5/params.xml << EOF
+        <dummy/>
+        EOF
+        
+        # Create conductor.xml file
+        cat > tools/dita-ot/plugins/com.yourcompany.html5/conductor.xml << EOF
+        <dummy/>
+        EOF
+        
+        # Install plugin
+        tools/dita-ot/bin/dita --install
+
+    - name: Build DITA
+      run: |
+        tools/dita-ot/bin/dita --input=dita-source/automotive.ditamap \
+        --format=html5 \
+        --output=build \
+        --args.cssroot=themes/automotive-theme/css \
+        --args.css=main.css \
+        --args.csspath=css \
+        --args.copycss=yes \
+        --args.generatecssprocessor=yes \
+        --args.hdr=themes/automotive-theme/templates/header.xml \
+        --args.ftr=themes/automotive-theme/templates/footer.xml
+        
+        # Copy additional assets
+        cp -r themes/automotive-theme/js build/
+        cp -r themes/automotive-theme/images build/
+        
+    - name: Deploy to GitHub Pages
+      uses: JamesIves/github-pages-deploy-action@v4
+      with:
+        folder: build
+        branch: gh-pages
