@@ -1,4 +1,4 @@
-name: Basic DITA-OT Test
+name: DITA to HTML
 
 on:
   push:
@@ -20,113 +20,163 @@ jobs:
         java-version: '11'
         distribution: 'temurin'
 
-    - name: Debug Repository Structure
-      run: |
-        echo "Current directory: $(pwd)"
-        echo "Repository contents:"
-        ls -la
-        echo "DITA source directory content:"
-        ls -la dita-source/ || echo "dita-source directory not found"
-
     - name: Setup DITA-OT
       run: |
         mkdir -p tools
         curl -L https://github.com/dita-ot/dita-ot/releases/download/4.1.2/dita-ot-4.1.2.zip -o tools/dita-ot.zip
         unzip tools/dita-ot.zip -d tools/
         mv tools/dita-ot-4.1.2 tools/dita-ot
-        
-        # Verify DITA-OT installation
-        echo "Verifying DITA-OT installation:"
-        ls -la tools/dita-ot/bin/
-        tools/dita-ot/bin/dita --version
 
-    - name: Create Test DITA Content
+    - name: Build DITA
       run: |
-        echo "Creating minimal test DITA content..."
-        mkdir -p test-dita
+        # Find your main DITA map (adjust as needed)
+        MAIN_DITAMAP=$(find dita-source -name "*.ditamap" -type f | head -1)
         
-        # Create a minimal DITA map
-        cat > test-dita/test.ditamap << 'EOF'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
-        <map>
-          <title>Test Map</title>
-          <topicref href="test-topic.dita"/>
-        </map>
-        EOF
-        
-        # Create a minimal DITA topic
-        cat > test-dita/test-topic.dita << 'EOF'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
-        <topic id="test">
-          <title>Test Topic</title>
-          <body>
-            <p>This is a test topic.</p>
-          </body>
-        </topic>
-        EOF
-        
-        echo "Test DITA content created:"
-        ls -la test-dita/
-
-    - name: Run Basic DITA-OT Test
-      run: |
-        echo "Running basic DITA-OT test..."
-        
-        # Create temp directory for logs
-        mkdir -p logs
-        
-        # Run DITA-OT with our test content and capture all output
-        tools/dita-ot/bin/dita --input=test-dita/test.ditamap --format=html5 --output=test-output --verbose > logs/dita-output.log 2>&1 || true
-        
-        # Display the log regardless of success/failure
-        echo "==== DITA-OT OUTPUT LOG ===="
-        cat logs/dita-output.log
-        
-        # Check if the output directory was created
-        echo "==== OUTPUT DIRECTORY STATUS ===="
-        if [ -d "test-output" ]; then
-          echo "Output directory exists. Contents:"
-          ls -la test-output/
-        else
-          echo "Output directory was not created!"
+        # If no DITAMAP found, provide a default message
+        if [ -z "$MAIN_DITAMAP" ]; then
+          echo "Error: No DITAMAP found in dita-source directory!"
+          exit 1
         fi
         
-        # Look for any log files
-        echo "==== DITA-OT LOG FILES ===="
-        find tools/dita-ot -name "*.log" | while read logfile; do
-          echo "Contents of $logfile:"
-          cat "$logfile"
-          echo "----------------"
+        echo "Using DITAMAP: $MAIN_DITAMAP"
+        
+        # Run DITA-OT transformation
+        tools/dita-ot/bin/dita --input=$MAIN_DITAMAP \
+          --format=html5 \
+          --output=build
+
+    - name: Add Sidebar Feature
+      run: |
+        echo "Adding sidebar/side cart navigation..."
+        
+        # Create simple CSS for sidebar layout
+        cat > build/css/sidecart.css << 'EOF'
+        body {
+          display: flex;
+          margin: 0;
+          padding: 0;
+          height: 100vh;
+          font-family: Arial, sans-serif;
+        }
+        
+        .sidebar {
+          width: 250px;
+          height: 100vh;
+          overflow-y: auto;
+          background-color: #f5f5f5;
+          border-right: 1px solid #ddd;
+          padding: 15px;
+          position: fixed;
+          left: 0;
+          top: 0;
+        }
+        
+        .main-content {
+          margin-left: 250px;
+          padding: 20px;
+          flex: 1;
+          max-width: calc(100% - 250px);
+          box-sizing: border-box;
+          overflow-y: auto;
+        }
+        
+        .sidebar ul {
+          list-style-type: none;
+          padding: 0;
+          margin: 0;
+        }
+        
+        .sidebar li {
+          margin-bottom: 8px;
+        }
+        
+        .sidebar a {
+          display: block;
+          padding: 5px 10px;
+          color: #333;
+          text-decoration: none;
+          border-radius: 4px;
+        }
+        
+        .sidebar a:hover {
+          background-color: #e0e0e0;
+        }
+        
+        .sidebar a.active {
+          background-color: #ddd;
+          font-weight: bold;
+        }
+        
+        .sidebar h3 {
+          margin-top: 20px;
+          font-size: 16px;
+          color: #555;
+        }
+        EOF
+        
+        # Add link to the CSS in all HTML files
+        find build -name "*.html" | while read file; do
+          sed -i 's/<head>/<head>\n<link rel="stylesheet" type="text\/css" href="css\/sidecart.css">/' "$file"
         done
-
-    - name: Test Original DITA Content
-      if: always()  # Run this step even if previous steps failed
-      run: |
-        echo "Attempting to process original DITA content..."
-        if [ -d "dita-source" ]; then
-          DITAMAP=$(find dita-source -name "*.ditamap" -type f | head -1)
-          if [ -n "$DITAMAP" ]; then
-            echo "Found DITAMAP: $DITAMAP"
-            echo "Contents of $DITAMAP:"
-            cat "$DITAMAP"
-            
-            echo "Running DITA-OT on original content..."
-            tools/dita-ot/bin/dita --input="$DITAMAP" --format=html5 --output=original-output --verbose > logs/original-output.log 2>&1 || true
-            
-            echo "==== ORIGINAL CONTENT OUTPUT LOG ===="
-            cat logs/original-output.log
-          else
-            echo "No DITAMAP found in dita-source directory!"
-          fi
+        
+        # Extract navigation from DITA-OT output
+        NAVFILE=$(find build -name "toc.html" -o -name "nav.html" -o -name "index.html" | head -1)
+        
+        # Create sidebar content from navigation
+        if [ -n "$NAVFILE" ]; then
+          # Extract navigation links
+          NAV_CONTENT=$(grep -o '<a href="[^"]*"[^>]*>[^<]*</a>' "$NAVFILE" | sed 's/<a /<li><a /g; s/<\/a>/<\/a><\/li>/g')
+          
+          # Create a sidebar div to insert
+          SIDEBAR_HTML="<div class=\"sidebar\">\n<h2>Navigation</h2>\n<ul>\n$NAV_CONTENT\n</ul>\n</div>"
+          
+          # Wrap main content in a div
+          find build -name "*.html" | while read file; do
+            # Skip the TOC/navigation files
+            if [[ "$file" != *"toc.html"* && "$file" != *"nav.html"* ]]; then
+              sed -i 's/<body>/<body>\n'"$SIDEBAR_HTML"'\n<div class="main-content">/' "$file"
+              sed -i 's/<\/body>/<\/div>\n<\/body>/' "$file"
+            fi
+          done
         else
-          echo "dita-source directory does not exist!"
+          echo "Warning: Navigation file not found. Sidebar may be empty."
+          # Create a simple empty sidebar
+          SIDEBAR_HTML="<div class=\"sidebar\">\n<h2>Navigation</h2>\n<p>No navigation found</p>\n</div>"
+          
+          # Add empty sidebar and wrap content
+          find build -name "*.html" | while read file; do
+            sed -i 's/<body>/<body>\n'"$SIDEBAR_HTML"'\n<div class="main-content">/' "$file"
+            sed -i 's/<\/body>/<\/div>\n<\/body>/' "$file"
+          done
         fi
+        
+        # Add a simple JavaScript to highlight current page in sidebar
+        cat > build/js/sidebar.js << 'EOF'
+        document.addEventListener('DOMContentLoaded', function() {
+          // Get current page filename
+          var currentPage = window.location.pathname.split('/').pop();
+          
+          // Find and highlight the current page in sidebar
+          var sidebarLinks = document.querySelectorAll('.sidebar a');
+          for (var i = 0; i < sidebarLinks.length; i++) {
+            var linkHref = sidebarLinks[i].getAttribute('href');
+            if (linkHref === currentPage || 
+                (currentPage === '' && linkHref === 'index.html')) {
+              sidebarLinks[i].classList.add('active');
+            }
+          }
+        });
+        EOF
+        
+        # Add script to all HTML files
+        find build -name "*.html" | while read file; do
+          sed -i 's/<\/head>/<script src="js\/sidebar.js"><\/script>\n<\/head>/' "$file"
+        done
+        
+        echo "Sidebar feature added to all HTML files."
 
     - name: Deploy to GitHub Pages
-      if: success()
       uses: JamesIves/github-pages-deploy-action@v4
       with:
-        folder: test-output
+        folder: build
         branch: gh-pages
