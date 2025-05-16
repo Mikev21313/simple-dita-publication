@@ -9,6 +9,4 @@
 
   <feature extension="ant.import" file="ant/build.xml"/>
 
-  <feature extension="dita.conductor.html5.resource-directory" value="css"/>
-
-</plugin>
+  </plugin>
