@@ -1,19 +1,15 @@
 name: DITA to SPA Transformation
 
-# Trigger on pushes to the main branch or manual workflow dispatch
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'dita-source/**'        # Only run when DITA content changes
-      - '.github/workflows/**'   # Or when workflow itself changes
-  workflow_dispatch:            # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write           # Needed for GitHub Pages deployment
+      contents: write
     steps:
       # Step 1: Checkout repository 
       - name: Checkout repository
@@ -33,53 +29,26 @@ jobs:
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: List DITA files for verification (FIXED path handling for spaces)
-      - name: Analyze DITA Files
+      # Step 4: Transform DITA to HTML
+      - name: Transform DITA to HTML
         run: |
-          echo "DITA files in repository:"
-          find dita-source -name "*.dita" -o -name "*.ditamap" | sort
-          
-          echo "--------------------------------------"
-          echo "DITA file content samples:"
-          # Fix: Properly handle paths with spaces by using find with -exec
-          find dita-source -name "*.dita" -type f | head -3 | while read -r file; do
-            echo "==== $file (first 20 lines) ===="
-            head -20 "$file" || echo "Unable to read file"
-            echo ""
-          done
-
-      # Step 5: Transform DITA to HTML5
-      - name: Transform DITA to HTML5
-        run: |
-          # Always quote paths that might contain spaces
-          ./dita-ot-4.0.2/bin/dita --input="dita-source/automotive.ditamap" --format=html5 --output="./site" \
-            --nav-toc=partial \
-            --args.copycss=yes \
-            --args.css=style.css \
-            --args.csspath=css \
-            --args.cssroot=./site/css \
-            --args.breadcrumbs=no \
-            --args.gen.task.lbl=NO \
-            --args.xhtml.classattr=yes
-          
+          # Using HTML5 format with parameters for better output
+          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
           echo "DITA transformation complete"
           
           # Create content directory for SPA fragments
           mkdir -p ./site/content
           
-          # Debug information
+          # List files to check output
           echo "Generated files:"
           find ./site -type f | sort
 
-      # Step 6: Process HTML files to extract FULL content
+      # Step 5: Process HTML files into content fragments
       - name: Process HTML Content
         run: |
-          # Create content directory
-          mkdir -p ./site/content
-          
-          # Process each HTML file to extract complete content
-          find ./site -name "*.html" -type f | grep -v "/content/" | while read -r file; do
-            # Skip processing if this is the index.html file we'll create later
+          # Process each HTML file to extract content
+          for file in ./site/*.html; do
+            # Skip processing if this is the index.html we'll create later
             if [[ "$file" == "./site/index.html" ]]; then
               continue
             fi
@@ -88,277 +57,95 @@ jobs:
             id="${filename%.html}"
             echo "Processing $filename (ID: $id)"
             
-            # Extract title from the original file
+            # Extract content from file 
+            content=$(sed -n '/<body/,/<\/body>/p' "$file" | 
+                     sed '/<body/d;/<\/body>/d' | 
+                     sed '/<header/,/<\/header>/d' | 
+                     sed '/<nav/,/<\/nav>/d' | 
+                     sed '/<footer/,/<\/footer>/d')
+            
+            # Get title from the original file
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
             if [ -z "$title" ]; then
-              # Create a title from the filename if none found
-              title=$(echo "$id" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+              title=$(echo "$id" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
             fi
             
-            # IMPROVED CONTENT EXTRACTION - capture the entire main content div
-            content=$(sed -n '/<main/,/<\/main>/p' "$file" 2>/dev/null || 
-                     sed -n '/<div class="body/,/<\/div>/p' "$file" 2>/dev/null ||
-                     sed -n '/<body/,/<\/body>/p' "$file" | 
-                     sed '/<body/d;/<\/body>/d;/<header/,/<\/header>/d;/<nav/,/<\/nav>/d;/<footer/,/<\/footer>/d')
-            
-            # Count content size to verify quality
-            content_size=${#content}
-            echo "Content size for $id: $content_size bytes"
-            
-            # Save with all possible filename variations to ensure accessibility
+            # Create content file
             echo "$content" > "./site/content/$id.html"
-            # Create hyphenated version if using underscores
-            if [[ "$id" == *"_"* ]]; then
-              hyphen_id="${id//_/-}"
-              echo "$content" > "./site/content/$hyphen_id.html"
-              echo "Created alternate hyphenated version: $hyphen_id.html"
-            fi
-            # Create underscore version if using hyphens
-            if [[ "$id" == *"-"* ]]; then
-              underscore_id="${id//-/_}"
-              echo "$content" > "./site/content/$underscore_id.html"
-              echo "Created alternate underscore version: $underscore_id.html"
-            fi
+            
+            # Map from DITA filename to content ID
+            case "$id" in
+              "car_basics") 
+                echo "$content" > "./site/content/automobile-fundamentals.html" 
+                echo "Created mapping: car_basics.html → automobile-fundamentals.html"
+                ;;
+              "car_components") 
+                echo "$content" > "./site/content/major-vehicle-components.html" 
+                echo "Created mapping: car_components.html → major-vehicle-components.html"
+                ;;
+              "car_history") 
+                echo "$content" > "./site/content/history-of-automobiles.html" 
+                echo "Created mapping: car_history.html → history-of-automobiles.html"
+                ;;
+              "car_maintenance") 
+                echo "$content" > "./site/content/vehicle-maintenance.html" 
+                echo "Created mapping: car_maintenance.html → vehicle-maintenance.html"
+                ;;
+              "car_types") 
+                echo "$content" > "./site/content/types-of-vehicles.html" 
+                echo "Created mapping: car_types.html → types-of-vehicles.html"
+                ;;
+              "electrical") 
+                echo "$content" > "./site/content/electrical-systems.html" 
+                echo "Created mapping: electrical.html → electrical-systems.html"
+                ;;
+              "engines") 
+                echo "$content" > "./site/content/engine-systems.html" 
+                echo "Created mapping: engines.html → engine-systems.html"
+                ;;
+              "evs") 
+                echo "$content" > "./site/content/electric-vehicles.html" 
+                echo "Created mapping: evs.html → electric-vehicles.html"
+                ;;
+              "brakes") 
+                echo "$content" > "./site/content/braking-systems.html" 
+                echo "Created mapping: brakes.html → braking-systems.html"
+                ;;
+              "emergency_repairs") 
+                echo "$content" > "./site/content/emergency-repairs.html" 
+                echo "Created mapping: emergency_repairs.html → emergency-repairs.html"
+                ;;
+              "basic_maintenance") 
+                echo "$content" > "./site/content/basic-maintenance.html" 
+                echo "Created mapping: basic_maintenance.html → basic-maintenance.html"
+                ;;
+            esac
             
             # Add to the content manifest
             echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
           done
 
-      # Step 7: Direct DITA content extraction (FIXED for paths with spaces)
-      - name: Direct DITA Content Extraction
-        run: |
-          echo "Extracting content directly from DITA files as backup..."
-          
-          # Create a function to convert DITA to simplified HTML
-          dita_to_html() {
-            local file="$1"
-            local output_file="$2"
-            local title="$3"
-            local topic_id=$(basename "$file" .dita)
-            
-            echo "Processing DITA file: $file"
-            
-            # Extract content using grep/sed with proper quoting
-            content="<h1>$title</h1>\n<div class=\"topic-content\">"
-            
-            # Extract paragraphs
-            paragraphs=$(grep -o "<p>.*</p>" "$file" || echo "")
-            content="${content}\n${paragraphs}"
-            
-            # Extract lists if any
-            lists=$(sed -n '/<[ou]l>/,/<\/[ou]l>/p' "$file" || echo "")
-            content="${content}\n${lists}"
-            
-            # Extract tables if any
-            tables=$(sed -n '/<table>/,/<\/table>/p' "$file" || echo "")
-            content="${content}\n${tables}"
-            
-            # Close the content div
-            content="${content}\n</div>"
-            
-            # Write to file
-            echo -e "$content" > "$output_file"
-            echo "Created direct extraction: $output_file"
-          }
-          
-          # Process each DITA file for direct extraction (using find and proper quoting)
-          find dita-source -name "*.dita" -type f | while read -r dita_file; do
-            # Get filename without extension and with normalizing special characters
-            base_name=$(basename "$dita_file" .dita | tr ' ' '_')
-            
-            # Extract title from DITA file
-            title=$(grep -o "<title>.*</title>" "$dita_file" | head -1 | sed 's/<title>\(.*\)<\/title>/\1/')
-            if [ -z "$title" ]; then
-              title=$(echo "$base_name" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-            fi
-            
-            # Create content using our function
-            dita_to_html "$dita_file" "./site/content/direct_${base_name}.html" "$title"
-            
-            # Create all naming variations to ensure we catch the right one
-            hyphen_name="${base_name//_/-}"
-            if [ ! -f "./site/content/${base_name}.html" ]; then
-              cp "./site/content/direct_${base_name}.html" "./site/content/${base_name}.html"
-              echo "Created backup content for: ${base_name}.html"
-            fi
-            if [ ! -f "./site/content/${hyphen_name}.html" ]; then
-              cp "./site/content/direct_${base_name}.html" "./site/content/${hyphen_name}.html"
-              echo "Created backup content for: ${hyphen_name}.html"
-            fi
-          done
-
-      # Step 8: Create rich placeholder content
-      - name: Create Rich Placeholder Content 
-        run: |
-          # Create a map of topic IDs to rich content
-          declare -A topic_content
-          
-          topic_content["automotive-theories"]="<h1>Automotive Theories</h1>
-          <div class=\"topic-content\">
-          <p>Automotive theory encompasses the fundamental principles behind how vehicles operate, including mechanical, electrical, and physical concepts that govern vehicle design and function.</p>
-          <p>Understanding automotive theory provides the groundwork for diagnosing issues, performing repairs, and appreciating vehicle engineering innovations.</p>
-          <p>From thermodynamics in engines to electrical principles in modern electronic systems, automotive theory spans numerous scientific disciplines applied to transportation technology.</p>
-          </div>"
-          
-          topic_content["major-vehicle-components"]="<h1>Major Vehicle Components</h1>
-          <div class=\"topic-content\">
-          <p>An overview of the primary systems and components in modern vehicles.</p>
-          <p>Modern vehicles integrate numerous interconnected components and systems that work together to provide safe, efficient transportation.</p>
-          <p>These components can be organized into several major categories:</p>
-          <ul>
-            <li>Powertrain components (engine, transmission, drivetrain)</li>
-            <li>Chassis components (frame, suspension, steering, brakes)</li>
-            <li>Electrical systems (battery, alternator, wiring, electronics)</li>
-            <li>Body components (exterior panels, interior features, safety systems)</li>
-          </ul>
-          <p>Understanding these major vehicle components is essential for proper maintenance, troubleshooting, and repair procedures.</p>
-          </div>"
-          
-          topic_content["engine-systems"]="<h1>Engine Systems</h1>
-          <div class=\"topic-content\">
-          <p>The engine is the heart of conventional vehicles, converting fuel into mechanical energy through a series of precisely controlled combustion events.</p>
-          <p>Modern engines consist of several integrated systems working together:</p>
-          <ul>
-            <li><strong>Fuel System</strong> - Delivers the precise amount of fuel required for combustion</li>
-            <li><strong>Air Intake System</strong> - Filters and delivers air needed for combustion</li>
-            <li><strong>Ignition System</strong> - Initiates the combustion process with precisely timed sparks</li>
-            <li><strong>Cooling System</strong> - Maintains optimal engine temperature</li>
-            <li><strong>Lubrication System</strong> - Reduces friction between moving parts</li>
-            <li><strong>Exhaust System</strong> - Removes and treats combustion byproducts</li>
-          </ul>
-          <p>These systems are monitored and controlled by sophisticated engine management computers in modern vehicles.</p>
-          </div>"
-          
-          topic_content["electrical-systems"]="<h1>Electrical Systems</h1>
-          <div class=\"topic-content\">
-          <p>Vehicle electrical systems have evolved from simple circuits to complex networks that control virtually every aspect of vehicle operation.</p>
-          <p>Key components include:</p>
-          <ul>
-            <li><strong>Battery</strong> - Stores electrical energy and provides power when the engine is off</li>
-            <li><strong>Alternator</strong> - Generates electricity while the engine is running</li>
-            <li><strong>Starter</strong> - Initiates engine operation using electrical power</li>
-            <li><strong>Wiring Harnesses</strong> - Connect all electrical components</li>
-            <li><strong>Electronic Control Units (ECUs)</strong> - Computer modules that control vehicle systems</li>
-            <li><strong>Sensors</strong> - Provide real-time data to ECUs about vehicle conditions</li>
-            <li><strong>Actuators</strong> - Convert electrical signals into mechanical movements</li>
-          </ul>
-          <p>Modern vehicles may contain dozens of microprocessors and kilometers of wiring to support advanced features and functions.</p>
-          </div>"
-          
-          topic_content["electric-vehicles"]="<h1>Electric Vehicles</h1>
-          <div class=\"topic-content\">
-          <p>Electric vehicles (EVs) represent a fundamental shift in automotive technology, replacing traditional internal combustion engines with electric propulsion systems.</p>
-          <p>Key components specific to electric vehicles include:</p>
-          <ul>
-            <li><strong>Battery Pack</strong> - High-capacity energy storage system</li>
-            <li><strong>Electric Motor(s)</strong> - Convert electrical energy to mechanical power</li>
-            <li><strong>Power Electronics</strong> - Control electricity flow between battery and motor</li>
-            <li><strong>Charging System</strong> - Allows the battery to be recharged from external sources</li>
-            <li><strong>Thermal Management System</strong> - Maintains optimal temperature for battery and electronics</li>
-            <li><strong>Regenerative Braking</strong> - Recovers energy during deceleration</li>
-          </ul>
-          <p>EVs offer several advantages including zero tailpipe emissions, lower operating costs, and reduced maintenance requirements.</p>
-          </div>"
-          
-          topic_content["braking-systems"]="<h1>Braking Systems</h1>
-          <div class=\"topic-content\">
-          <p>Vehicle braking systems are critical safety components that convert the vehicle's kinetic energy into heat through friction.</p>
-          <p>Modern braking systems typically include:</p>
-          <ul>
-            <li><strong>Master Cylinder</strong> - Converts pedal force into hydraulic pressure</li>
-            <li><strong>Brake Lines</strong> - Carry hydraulic fluid to wheel assemblies</li>
-            <li><strong>Calipers (disc brakes)</strong> - Apply pressure to brake pads against rotors</li>
-            <li><strong>Wheel Cylinders (drum brakes)</strong> - Apply pressure to brake shoes against drums</li>
-            <li><strong>Anti-lock Braking System (ABS)</strong> - Prevents wheel lockup during heavy braking</li>
-            <li><strong>Electronic Stability Control</strong> - Works with ABS to maintain vehicle control</li>
-          </ul>
-          <p>Advances in braking technology include electronic brake-force distribution, brake assist, and autonomous emergency braking systems.</p>
-          </div>"
-          
-          topic_content["history-of-automobiles"]="<h1>History of Automobiles</h1>
-          <div class=\"topic-content\">
-          <p>The development of automobiles has transformed human society since their inception in the late 19th century.</p>
-          <p>Key milestones in automotive history include:</p>
-          <ul>
-            <li><strong>1886</strong> - Karl Benz patents the first practical automobile with internal combustion engine</li>
-            <li><strong>1908</strong> - Ford Model T introduces mass production techniques</li>
-            <li><strong>1913</strong> - Ford's moving assembly line revolutionizes manufacturing</li>
-            <li><strong>1930s-1940s</strong> - Advancements in streamlining, suspension, and power</li>
-            <li><strong>1950s-1960s</strong> - Era of American automotive styling and performance</li>
-            <li><strong>1970s</strong> - Oil crisis drives focus on fuel efficiency</li>
-            <li><strong>1980s-1990s</strong> - Computerization and electronics revolution</li>
-            <li><strong>2000s-Present</strong> - Focus on safety, efficiency, connectivity, and electrification</li>
-          </ul>
-          <p>Each era has contributed innovations that shaped both automotive design and broader society.</p>
-          </div>"
-          
-          # Create rich placeholder content for each topic
-          for topic_id in "${!topic_content[@]}"; do
-            content="${topic_content[$topic_id]}"
-            
-            # Only create if file doesn't exist or is very small
-            if [ ! -f "./site/content/${topic_id}.html" ] || [ $(stat -c%s "./site/content/${topic_id}.html") -lt 200 ]; then
-              echo "$content" > "./site/content/${topic_id}.html"
-              echo "Created rich placeholder content for: ${topic_id}.html"
-            fi
-            
-            # Create alternate versions with underscores
-            underscore_id="${topic_id//-/_}"
-            if [ "$underscore_id" != "$topic_id" ]; then
-              if [ ! -f "./site/content/${underscore_id}.html" ] || [ $(stat -c%s "./site/content/${underscore_id}.html") -lt 200 ]; then
-                echo "$content" > "./site/content/${underscore_id}.html"
-                echo "Created rich placeholder with underscores: ${underscore_id}.html"
-              fi
-            fi
-            
-            # Handle special cases for short names
-            case "$topic_id" in
-              "engine-systems")
-                echo "$content" > "./site/content/engines.html"
-                echo "Created special case content: engines.html"
-                ;;
-              "electric-vehicles")
-                echo "$content" > "./site/content/evs.html"
-                echo "Created special case content: evs.html"
-                ;;
-              "braking-systems")
-                echo "$content" > "./site/content/brakes.html"
-                echo "Created special case content: brakes.html"
-                ;;
-            esac
-          done
-
-      # Step 9: Create navigation configuration exactly matching screenshot
+      # Step 6: Create navigation configuration
       - name: Create Navigation Config
         run: |
           mkdir -p ./site/js ./site/css
           
-          # Create navigation structure exactly matching the screenshot
+          # Create navigation config matching the structure in Image 1
           cat > ./site/js/navigation-config.js << 'EOF'
-          // Navigation structure based on your DITA files
+          // Navigation structure from DITA map
           const navigationConfig = [
-            {
-              id: "automotive-theories",
-              title: "Automotive Theories",
-              children: [
-                { id: "history-of-automobiles", title: "History of Automobiles" },
-                { id: "types-of-vehicles", title: "Types of Vehicles" },
-                { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
-                { 
-                  id: "major-vehicle-components", 
-                  title: "Major Vehicle Components",
-                  children: [
-                    { id: "electrical-systems", title: "Electrical Systems" },
-                    { id: "engine-systems", title: "Engine Systems" },
-                    { id: "electric-vehicles", title: "Electric Vehicles" },
-                    { id: "braking-systems", title: "Braking Systems" }
-                  ]
-                }
-              ]
-            },
+            { id: "automotive-information", title: "Automotive Information" },
             { id: "basic-maintenance", title: "Basic Maintenance" },
+            { id: "braking-systems", title: "Braking Systems" },
+            { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
+            { id: "major-vehicle-components", title: "Major Vehicle Components" },
+            { id: "history-of-automobiles", title: "History of Automobiles" },
             { id: "vehicle-maintenance", title: "Vehicle Maintenance" },
-            { id: "emergency-repairs", title: "Emergency Repairs" }
+            { id: "types-of-vehicles", title: "Types of Vehicles" },
+            { id: "electrical-systems", title: "Electrical Systems" },
+            { id: "emergency-repairs", title: "Emergency Repairs" },
+            { id: "engine-systems", title: "Engine Systems" },
+            { id: "electric-vehicles", title: "Electric Vehicles" }
           ];
           EOF
           
@@ -371,83 +158,28 @@ jobs:
             cat ./site/content-list.tmp >> ./site/js/content-manifest.js
           fi
           
-          # Add specific ID mappings to ensure all navigation items have content
-          echo "  \"automotive-theories\": { \"title\": \"Automotive Theories\" }," >> ./site/js/content-manifest.js
+          # Add explicit mappings for hyphenated IDs
+          echo "  \"automotive-information\": { \"title\": \"Automotive Information\" }," >> ./site/js/content-manifest.js
+          echo "  \"basic-maintenance\": { \"title\": \"Basic Maintenance\" }," >> ./site/js/content-manifest.js
+          echo "  \"braking-systems\": { \"title\": \"Braking Systems\" }," >> ./site/js/content-manifest.js
+          echo "  \"automobile-fundamentals\": { \"title\": \"Automobile Fundamentals\" }," >> ./site/js/content-manifest.js
           echo "  \"major-vehicle-components\": { \"title\": \"Major Vehicle Components\" }," >> ./site/js/content-manifest.js
           echo "  \"history-of-automobiles\": { \"title\": \"History of Automobiles\" }," >> ./site/js/content-manifest.js
+          echo "  \"vehicle-maintenance\": { \"title\": \"Vehicle Maintenance\" }," >> ./site/js/content-manifest.js
           echo "  \"types-of-vehicles\": { \"title\": \"Types of Vehicles\" }," >> ./site/js/content-manifest.js
-          echo "  \"automobile-fundamentals\": { \"title\": \"Automobile Fundamentals\" }," >> ./site/js/content-manifest.js
           echo "  \"electrical-systems\": { \"title\": \"Electrical Systems\" }," >> ./site/js/content-manifest.js
+          echo "  \"emergency-repairs\": { \"title\": \"Emergency Repairs\" }," >> ./site/js/content-manifest.js
           echo "  \"engine-systems\": { \"title\": \"Engine Systems\" }," >> ./site/js/content-manifest.js
           echo "  \"electric-vehicles\": { \"title\": \"Electric Vehicles\" }," >> ./site/js/content-manifest.js
-          echo "  \"braking-systems\": { \"title\": \"Braking Systems\" }," >> ./site/js/content-manifest.js
-          echo "  \"basic-maintenance\": { \"title\": \"Basic Maintenance\" }," >> ./site/js/content-manifest.js
-          echo "  \"vehicle-maintenance\": { \"title\": \"Vehicle Maintenance\" }," >> ./site/js/content-manifest.js
-          echo "  \"emergency-repairs\": { \"title\": \"Emergency Repairs\" }," >> ./site/js/content-manifest.js
           
-          # Close the manifest object with default entry
+          # Close the manifest
           echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-manifest.js
           echo "};" >> ./site/js/content-manifest.js
           
           # Clean up temp file
           rm -f ./site/content-list.tmp
 
-      # Step 10: Create ID mapping function to handle filename variations
-      - name: Create ID Mapping Function
-        run: |
-          cat > ./site/js/id-mapper.js << 'EOF'
-          // ID mapping function to handle various filename patterns
-          const idMappings = {
-            // Map navigation IDs to possible content file names
-            // Many-to-one mappings to handle different naming conventions
-            
-            // Engine Systems variations
-            "engine-systems": ["engine-systems", "engines", "engine_systems", "engine", "engine-system"],
-            
-            // Electric Vehicles variations
-            "electric-vehicles": ["electric-vehicles", "evs", "electric_vehicles", "ev", "electric-vehicle"],
-            
-            // Other potential variations
-            "electrical-systems": ["electrical-systems", "electrical", "electrical_systems", "electrical-system"],
-            "braking-systems": ["braking-systems", "brakes", "braking_systems", "braking"],
-            "automobile-fundamentals": ["automobile-fundamentals", "car_basics", "car-basics", "automobile_fundamentals"],
-            "history-of-automobiles": ["history-of-automobiles", "car_history", "car-history", "history"],
-            "types-of-vehicles": ["types-of-vehicles", "car_types", "car-types", "types"],
-            "basic-maintenance": ["basic-maintenance", "basic_maintenance", "maintenance-basic"],
-            "vehicle-maintenance": ["vehicle-maintenance", "car_maintenance", "car-maintenance"],
-            "emergency-repairs": ["emergency-repairs", "emergency_repairs", "repairs"]
-          };
-          
-          // Function to try all possible file names for a given ID
-          async function tryAllPossibleFiles(baseId, basePath = '') {
-            // Get all possible filenames for this ID
-            const possibleIds = idMappings[baseId] || [baseId];
-            
-            // Try each possible filename
-            for (const id of possibleIds) {
-              try {
-                const contentPath = `${basePath}/content/${id}.html`;
-                console.log(`[DITA-SPA] Trying path: ${contentPath}`);
-                
-                const response = await fetch(contentPath);
-                if (response.ok) {
-                  const content = await response.text();
-                  if (content && content.trim() !== '') {
-                    console.log(`[DITA-SPA] Successfully loaded content from: ${contentPath}`);
-                    return content;
-                  }
-                }
-              } catch (error) {
-                console.log(`[DITA-SPA] Failed to load ${id}.html: ${error.message}`);
-              }
-            }
-            
-            // If we get here, all attempts failed
-            throw new Error(`Could not load content for ${baseId} after trying all possible filenames`);
-          }
-          EOF
-
-      # Step 11: Create SPA CSS with fix for duplicate headings
+      # Step 7: Create SPA CSS
       - name: Create SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
@@ -496,11 +228,6 @@ jobs:
             margin-bottom: 15px;
           }
           
-          .sidebar ul ul {
-            padding-left: 20px;
-            margin-top: 5px;
-          }
-          
           .sidebar li {
             margin-bottom: 8px;
           }
@@ -524,7 +251,7 @@ jobs:
             font-weight: bold;
           }
           
-          /* Improve readability in main content */
+          /* Content styling */
           .main-content h1, .main-content h2, .main-content h3 {
             margin-top: 1em;
             margin-bottom: 0.5em;
@@ -540,21 +267,11 @@ jobs:
           }
           
           /* Fix for duplicate headings */
-          .main-content h1:first-child + h1,
-          #content h1 + h1 {
+          .main-content h1:first-child + h1 {
             display: none;
           }
           
-          /* Fix for empty paragraph tags */
-          p:empty {
-            display: none;
-          }
-          
-          /* Improve content display */
-          .topic-content {
-            margin-top: 1em;
-          }
-          
+          /* Loading state */
           #loading {
             display: none;
             text-align: center;
@@ -567,28 +284,7 @@ jobs:
             display: block;
           }
           
-          /* Add loading animation */
-          .loading #content::before {
-            content: "";
-            display: block;
-            width: 40px;
-            height: 40px;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            margin-top: -20px;
-            margin-left: -20px;
-            border-radius: 50%;
-            border: 3px solid #f3f3f3;
-            border-top-color: #3498db;
-            animation: spin 1s ease-in-out infinite;
-          }
-          
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-          
-          /* Error styling */
+          /* Error state */
           .error {
             background-color: #fff8f8;
             border-left: 4px solid #e74c3c;
@@ -602,42 +298,31 @@ jobs:
             margin-top: 0;
           }
           
-          /* Debug panel styling */
-          #debug-panel {
-            font-family: monospace;
-            z-index: 1000;
-            font-size: 12px;
-            opacity: 0.9;
-          }
-          
-          #debug-content div {
-            border-bottom: 1px dotted #ccc;
-            padding: 2px 0;
-          }
-          
-          /* List styling improvements */
-          ul, ol {
-            margin-left: 20px;
-            margin-bottom: 15px;
-          }
-          
-          li {
-            margin-bottom: 5px;
-          }
-          
-          /* Make strong tags stand out better */
-          strong {
-            color: #2c3e50;
+          /* Responsive design for mobile */
+          @media (max-width: 768px) {
+            body {
+              flex-direction: column;
+              height: auto;
+            }
+            
+            .sidebar {
+              width: 100%;
+              height: auto;
+              max-height: 40vh;
+            }
+            
+            .main-content {
+              height: auto;
+              min-height: 60vh;
+            }
           }
           EOF
 
-      # Steps 12-16 remain the same as before...
-      
-      # Step 12: Create SPA JavaScript Application with enhanced content loading
+      # Step 8: Create SPA JavaScript Application
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // SPA Application with enhanced content loading
+          // SPA Application
           
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -646,7 +331,6 @@ jobs:
           
           // Base path handling for GitHub Pages
           const getBasePath = () => {
-            // For GitHub Pages repository sites, we need to include the repo name in paths
             if (location.hostname.includes('github.io')) {
               const pathSegments = location.pathname.split('/');
               if (pathSegments.length > 1) {
@@ -663,9 +347,6 @@ jobs:
           // Debug logging function
           function debug(message, data) {
             console.log(`[DITA-SPA] ${message}`, data || '');
-            if (window.debugLog) {
-              window.debugLog(message + (data ? ': ' + JSON.stringify(data) : ''));
-            }
           }
           
           // Initialize the application
@@ -673,23 +354,22 @@ jobs:
             debug('Initializing app with base path:', basePath);
             
             // Render navigation
-            renderNavigation(navigationConfig);
+            renderNavigation();
             
             // Set up event listeners
             window.addEventListener('popstate', handlePopState);
             
             // Load initial page based on URL or default
-            const initialPageId = getPageIdFromUrl() || "automotive-theories";
+            const initialPageId = getPageIdFromUrl() || navigationConfig[0].id;
             debug('Initial page ID:', initialPageId);
             navigateToPage(initialPageId, false);
           }
           
           // Render the navigation menu
-          function renderNavigation(items, parentEl = navigationEl) {
-            debug('Rendering navigation items:', items.length);
+          function renderNavigation() {
             const ul = document.createElement('ul');
             
-            items.forEach(item => {
+            navigationConfig.forEach(item => {
               const li = document.createElement('li');
               
               const a = document.createElement('a');
@@ -700,17 +380,12 @@ jobs:
                 e.preventDefault();
                 navigateToPage(item.id);
               });
+              
               li.appendChild(a);
-              
-              // Recursively render children if any
-              if (item.children && item.children.length > 0) {
-                renderNavigation(item.children, li);
-              }
-              
               ul.appendChild(li);
             });
             
-            parentEl.appendChild(ul);
+            navigationEl.appendChild(ul);
           }
           
           // Navigate to a specific page
@@ -731,6 +406,9 @@ jobs:
             // Update current page
             currentPage = pageId;
             
+            // Get alternate ID (convert underscores to hyphens)
+            const altPageId = pageId.replace(/_/g, '-');
+            
             // Load content
             loadContent(pageId)
               .then(content => {
@@ -739,153 +417,54 @@ jobs:
                 contentTitleEl.textContent = title;
                 document.title = title;
                 
-                // Check content quality
-                const contentLength = content.length;
-                debug(`Content length: ${contentLength} characters`);
-                if (contentLength < 200) {
-                  debug('WARNING: Content appears to be very short, may be placeholder');
-                }
-                
-                // Fix for duplicate headings - if title is repeated in content
-                // If content starts with the same title, try to remove it
-                const titleRegex = new RegExp(`<h1.*?>${title}</h1>`, 'i');
-                if (titleRegex.test(content)) {
-                  debug('Found duplicate title in content, removing it');
-                  content = content.replace(titleRegex, '');
+                // Fix for duplicate headings
+                if (content.includes(`<h1>${title}</h1>`)) {
+                  content = content.replace(`<h1>${title}</h1>`, '');
                 }
                 
                 // Update content
                 contentEl.innerHTML = content;
                 
-                // Process content after insertion
-                postProcessContent();
-                
                 // Hide loading indicator
                 document.body.classList.remove('loading');
-                debug('Content loaded successfully for:', pageId);
+                debug('Content loaded successfully');
               })
               .catch(error => {
-                console.error('Error loading content:', error);
-                contentEl.innerHTML = `
-                  <div class="error">
-                    <h2>Content Not Found</h2>
-                    <p>The requested content "${pageId}" could not be loaded.</p>
-                    <p>Please select another topic from the navigation menu.</p>
-                    <p><small>Technical details: ${error.message}</small></p>
-                  </div>
-                `;
-                document.body.classList.remove('loading');
+                debug('Error loading content:', error.message);
+                // Try alternate ID
+                loadContent(altPageId)
+                  .then(content => {
+                    contentTitleEl.textContent = getPageTitle(pageId);
+                    document.title = getPageTitle(pageId);
+                    contentEl.innerHTML = content;
+                    document.body.classList.remove('loading');
+                    debug('Content loaded from alternate ID');
+                  })
+                  .catch(altError => {
+                    console.error('Failed to load content:', altError);
+                    contentEl.innerHTML = `
+                      <div class="error">
+                        <h2>Content Not Found</h2>
+                        <p>The requested content "${pageId}" could not be loaded.</p>
+                        <p>Please select another topic from the navigation menu.</p>
+                      </div>
+                    `;
+                    document.body.classList.remove('loading');
+                  });
               });
           }
           
-          // Post-process content after loading
-          function postProcessContent() {
-            // Handle empty paragraphs
-            const emptyParagraphs = contentEl.querySelectorAll('p:empty');
-            emptyParagraphs.forEach(p => p.remove());
-            
-            // Fix duplicate headings
-            const headings = contentEl.querySelectorAll('h1');
-            if (headings.length > 1) {
-              // Keep only the first heading with the same text
-              const seenHeadings = new Set();
-              headings.forEach(heading => {
-                if (seenHeadings.has(heading.innerText)) {
-                  heading.remove();
-                } else {
-                  seenHeadings.add(heading.innerText);
-                }
-              });
-            }
-          }
-          
-          // Enhanced load content function that tries multiple sources
+          // Load content for a page
           async function loadContent(pageId) {
-            debug('Attempting to load content for:', pageId);
+            const contentPath = `${basePath}/content/${pageId}.html`;
+            debug('Fetching from URL:', contentPath);
             
-            try {
-              // First try the direct ID
-              const contentPath = `${basePath}/content/${pageId}.html`;
-              debug('Fetching from URL:', contentPath);
-              
-              const response = await fetch(contentPath);
-              if (response.ok) {
-                const content = await response.text();
-                if (content && content.trim() !== '') {
-                  const contentLength = content.length;
-                  if (contentLength > 200) {
-                    return content; // Return if content is substantial
-                  } else {
-                    debug('Content found but appears to be minimal, checking alternatives');
-                    // Continue to try alternatives
-                  }
-                }
-              }
-              
-              // If direct ID fails or returns minimal content, try alternative approach
-              if (typeof tryAllPossibleFiles === 'function') {
-                debug('Trying alternative IDs');
-                const alternativeContent = await tryAllPossibleFiles(pageId, basePath);
-                if (alternativeContent && alternativeContent.trim() !== '') {
-                  return alternativeContent;
-                }
-              }
-              
-              // Try direct DITA extraction version
-              const directPath = `${basePath}/content/direct_${pageId}.html`;
-              debug('Trying direct DITA extraction:', directPath);
-              try {
-                const directResponse = await fetch(directPath);
-                if (directResponse.ok) {
-                  const directContent = await directResponse.text();
-                  if (directContent && directContent.trim() !== '') {
-                    return directContent;
-                  }
-                }
-              } catch (directError) {
-                debug('Direct extraction not available:', directError.message);
-              }
-              
-              // Return original content even if minimal
-              return await fetch(contentPath).then(res => res.text());
-            } catch (error) {
-              debug('Error in loadContent:', error.message);
-              
-              // Last resort: try some common patterns manually
-              try {
-                // Try with hyphens instead of underscores
-                const altId = pageId.replace(/_/g, '-');
-                if (altId !== pageId) {
-                  const altPath = `${basePath}/content/${altId}.html`;
-                  debug('Trying alternative ID format:', altPath);
-                  const altResponse = await fetch(altPath);
-                  if (altResponse.ok) {
-                    const content = await altResponse.text();
-                    if (content && content.trim() !== '') {
-                      return content;
-                    }
-                  }
-                }
-                
-                // Try with underscores instead of hyphens
-                const altId2 = pageId.replace(/-/g, '_');
-                if (altId2 !== pageId && altId2 !== altId) {
-                  const altPath2 = `${basePath}/content/${altId2}.html`;
-                  debug('Trying another alternative ID format:', altPath2);
-                  const altResponse2 = await fetch(altPath2);
-                  if (altResponse2.ok) {
-                    const content = await altResponse2.text();
-                    if (content && content.trim() !== '') {
-                      return content;
-                    }
-                  }
-                }
-              } catch (altError) {
-                debug('Alternative ID attempts also failed');
-              }
-              
-              throw error; // Re-throw the original error
+            const response = await fetch(contentPath);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
             }
+            
+            return await response.text();
           }
           
           // Update active state in navigation
@@ -898,26 +477,12 @@ jobs:
             const activeItem = document.querySelector(`.sidebar a[data-id="${pageId}"]`);
             if (activeItem) {
               activeItem.classList.add('active');
-              
-              // Expand parent sections if needed
-              let parent = activeItem.parentElement;
-              while (parent && parent !== navigationEl) {
-                if (parent.tagName === 'LI') {
-                  const parentLink = parent.querySelector('a');
-                  if (parentLink) {
-                    parentLink.classList.add('active');
-                  }
-                }
-                parent = parent.parentElement;
-              }
-            } else {
-              debug('Warning: No navigation item found for:', pageId);
             }
           }
           
           // Handle popstate event (browser back/forward)
           function handlePopState(event) {
-            const pageId = event.state?.pageId || getPageIdFromUrl() || 'default';
+            const pageId = event.state?.pageId || getPageIdFromUrl() || navigationConfig[0].id;
             debug('Popstate event, loading page:', pageId);
             navigateToPage(pageId, false);
           }
@@ -930,74 +495,18 @@ jobs:
           // Get page title from content manifest
           function getPageTitle(pageId) {
             if (!contentManifest[pageId]) {
-              debug('Warning: No manifest entry for:', pageId);
-              return pageId.split(/[-_]/).map(word => 
+              return pageId.split(/-|_/).map(word => 
                 word.charAt(0).toUpperCase() + word.slice(1)
               ).join(' ');
             }
             return contentManifest[pageId].title;
           }
           
-          // Check content directory structure on load
-          async function checkContentStructure() {
-            try {
-              debug('Checking for default content file...');
-              const response = await fetch(`${basePath}/content/default.html`);
-              if (response.ok) {
-                debug('Default content exists, structure seems correct');
-              } else {
-                console.warn('Default content not found, may indicate path issues');
-              }
-            } catch (error) {
-              console.error('Error checking content structure:', error);
-            }
-          }
-          
-          // Add a force reload handler to counter caching issues
-          window.forceReload = function() {
-            debug('Force reload requested');
-            caches.keys().then(keyList => {
-              return Promise.all(keyList.map(key => {
-                return caches.delete(key);
-              }));
-            }).then(() => {
-              debug('Cache cleared');
-              window.location.reload(true);
-            });
-          };
-          
           // Initialize the app when DOM is ready
-          document.addEventListener('DOMContentLoaded', () => {
-            debug('DOM loaded, initializing app...');
-            // Check for nocache parameter to force a clean reload
-            if (location.search.includes('nocache=true')) {
-              debug('No-cache parameter detected, clearing cache');
-              window.forceReload();
-            } else {
-              checkContentStructure();
-              initApp();
-            }
-          });
-          
-          // Display loading error if content doesn't load within 5 seconds
-          setTimeout(() => {
-            if (document.body.classList.contains('loading')) {
-              debug('Still loading after timeout, may indicate a problem');
-              const errorMsg = document.createElement('div');
-              errorMsg.className = 'error';
-              errorMsg.innerHTML = `
-                <h2>Content Loading Issue</h2>
-                <p>The content is taking too long to load. This may indicate a path or configuration issue.</p>
-                <p>Current page ID: ${currentPage}</p>
-                <p>Try adding "?debug=true&nocache=true" to the URL to reload without cache.</p>
-                <p><button onclick="window.forceReload()">Force Reload</button></p>
-              `;
-              contentEl.appendChild(errorMsg);
-            }
-          }, 5000);
+          document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 13: Create main index.html
+      # Step 9: Create index.html
       - name: Create Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
@@ -1020,20 +529,7 @@ jobs:
                   if (pathSegments.length > 1) {
                     const basePath = '/' + pathSegments[1];
                     document.write('<base href="' + basePath + '/">');
-                    console.log('[DITA-SPA] Base path set to:', basePath);
-                  }
-                }
-              })();
-              
-              // Handle redirects from 404 page 
-              (function() {
-                var redirect = sessionStorage.redirect;
-                delete sessionStorage.redirect;
-                if (redirect && redirect !== location.href) {
-                  var cleanPath = redirect.split('/').pop();
-                  if (cleanPath) {
-                    history.replaceState(null, null, "#" + cleanPath.replace('.html', ''));
-                    console.log('[DITA-SPA] Redirected from:', redirect);
+                    console.log('Base path set to:', basePath);
                   }
                 }
               })();
@@ -1041,17 +537,6 @@ jobs:
             
             <title>Automotive Documentation</title>
             <link rel="stylesheet" href="css/style.css">
-            
-            <!-- Error handling and diagnostics -->
-            <script>
-              window.onerror = function(message, source, lineno, colno, error) {
-                console.error('[DITA-SPA] Error:', message, 'at', source, lineno, colno);
-                document.getElementById('error-display') && 
-                  (document.getElementById('error-display').innerHTML = 
-                    '<p>Error: ' + message + '</p><p>Source: ' + source + ':' + lineno + '</p>');
-                return false;
-              };
-            </script>
           </head>
           <body>
             <div class="sidebar">
@@ -1063,46 +548,13 @@ jobs:
               <div id="loading">Loading content...</div>
               <div id="content">
                 <!-- Content will load here -->
-                <!-- Initial loading message -->
                 <div class="initial-loading">
                   <p>Initializing documentation viewer...</p>
-                  <p><small>If content doesn't appear in a few seconds, check the console for errors.</small></p>
                 </div>
               </div>
-              <div id="error-display"></div>
             </div>
-            
-            <!-- Debug panel (hidden by default, can be shown with ?debug=true in URL) -->
-            <div id="debug-panel" style="display: none; position: fixed; bottom: 0; right: 0; background: #f0f0f0; padding: 10px; border: 1px solid #ccc; max-width: 400px; max-height: 300px; overflow: auto; font-size: 12px;">
-              <h4>Debug Information</h4>
-              <div id="debug-content"></div>
-              <hr>
-              <button onclick="window.forceReload()">Force Reload</button>
-            </div>
-            
-            <!-- Add debug panel toggle -->
-            <script>
-              if (location.search.includes('debug=true')) {
-                document.getElementById('debug-panel').style.display = 'block';
-                window.debugLog = function(msg) {
-                  const panel = document.getElementById('debug-content');
-                  if (panel) {
-                    const line = document.createElement('div');
-                    line.textContent = new Date().toISOString().substr(11, 8) + ': ' + msg;
-                    panel.appendChild(line);
-                    panel.scrollTop = panel.scrollHeight;
-                  }
-                  console.log('[DEBUG] ' + msg);
-                };
-                debugLog('Debug mode enabled');
-                debugLog('URL: ' + location.href);
-              } else {
-                window.debugLog = function() {};
-              }
-            </script>
             
             <!-- Load JavaScript files -->
-            <script src="js/id-mapper.js"></script>
             <script src="js/navigation-config.js"></script>
             <script src="js/content-manifest.js"></script>
             <script src="js/app.js"></script>
@@ -1110,7 +562,7 @@ jobs:
           </html>
           EOF
 
-      # Step 14: Create 404.html page for SPA routing
+      # Step 10: Create 404.html page for SPA routing
       - name: Create 404 Page for SPA Routing
         run: |
           cat > ./site/404.html << 'EOF'
@@ -1119,9 +571,6 @@ jobs:
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-            <meta http-equiv="Pragma" content="no-cache">
-            <meta http-equiv="Expires" content="0">
             <title>Redirecting...</title>
             <script>
               // Store the requested URL for processing after redirect
@@ -1141,11 +590,6 @@ jobs:
               // Redirect to the main site with the correct base path
               const basePath = getBasePath();
               window.location.href = basePath + '/';
-              
-              // Log for debugging
-              console.log('404 Redirect - Original URL:', location.href);
-              console.log('404 Redirect - Base Path:', basePath);
-              console.log('404 Redirect - Redirecting to:', basePath + '/');
             </script>
           </head>
           <body>
@@ -1157,30 +601,38 @@ jobs:
           </html>
           EOF
 
-      # Step 15: Debug Content Files
-      - name: Debug Content Files
+      # Step 11: Create placeholder content
+      - name: Create Default Content
         run: |
-          echo "Content directory listing:"
-          find ./site/content -type f | sort
-          echo "---------------------"
+          # Create default content page
+          mkdir -p ./site/content
           
-          # Check content quality by file size
-          echo "Content file sizes:"
-          find ./site/content -type f -name "*.html" | while read -r file; do
-            filename=$(basename "$file")
-            filesize=$(wc -c < "$file")
-            if [ $filesize -lt 200 ]; then
-              status="⚠️ TOO SMALL"
-            else
-              status="✅ OK"
+          # Default automotive information page
+          cat > ./site/content/automotive-information.html << 'EOF'
+          <h1>Automotive Information</h1>
+          <p>Welcome to the automotive documentation. This comprehensive guide provides information about various aspects of automotive technology, maintenance, and repair.</p>
+          <p>Use the navigation menu to explore different topics related to automobiles.</p>
+          EOF
+          
+          # Ensure all navigation items have content files by checking and creating if missing
+          for id in automotive-information basic-maintenance braking-systems automobile-fundamentals major-vehicle-components history-of-automobiles vehicle-maintenance types-of-vehicles electrical-systems emergency-repairs engine-systems electric-vehicles; do
+            if [ ! -f "./site/content/$id.html" ]; then
+              echo "Creating placeholder for $id"
+              
+              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+              
+              cat > "./site/content/$id.html" << EOF
+          <h1>${title}</h1>
+          <p>Information about ${title} is currently being developed.</p>
+          <p>Please check back later for updated content.</p>
+          EOF
             fi
-            printf "%-30s %8d bytes  %s\n" "$filename" "$filesize" "$status"
           done
 
-      # Step 16: Deploy to GitHub Pages
+      # Step 12: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
-          force_orphan: true  # Creates a clean commit without history
+          force_orphan: true
