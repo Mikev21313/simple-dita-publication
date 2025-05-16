@@ -29,7 +29,8 @@ jobs:
           distribution: 'temurin' # Use Temurin distribution
           java-version: '17'     # Specify Java 17
 
-      # Step 3: Download, set up DITA-OT, and install the custom styling plugin
+      # Step 3: Download and set up DITA-OT, and install the custom styling plugin
+      # Changed installation method to install directly from repository checkout path
       - name: Set up DITA-OT and Custom Plugin
         run: |
           echo "Downloading DITA-OT 4.0.2..."
@@ -39,13 +40,11 @@ jobs:
           echo "Setting execute permissions for DITA-OT binary..."
           chmod +x dita-ot-4.0.2/bin/dita
 
-          echo "Copying custom plugin into DITA-OT plugins directory..."
-          # Assumes your plugin folder 'com.example.customstyles' is inside a 'dita-plugin' folder in your repo
-          cp -R dita-plugin/com.example.customstyles dita-ot-4.0.2/plugins/
-
-          echo "Installing custom plugin using the DITA-OT integrator..."
-          # Run the DITA-OT integrator to install and register the plugin
-          ./dita-ot-4.0.2/bin/dita --install ./dita-ot-4.0.2/plugins/com.example.customstyles
+          echo "Installing custom plugin directly from repository checkout path..."
+          # Install the plugin using its path relative to the runner's workspace root.
+          # DITA-OT will automatically copy the plugin files to its internal plugins directory.
+          # Assumes your plugin folder 'com.example.customstyles' is inside a 'dita-plugin' folder in your repo root.
+          ./dita-ot-4.0.2/bin/dita --install ./dita-plugin/com.example.customstyles
 
           echo "DITA-OT setup and plugin installation complete."
 
