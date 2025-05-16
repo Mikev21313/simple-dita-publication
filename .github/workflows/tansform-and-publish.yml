@@ -35,7 +35,7 @@ jobs:
           echo "Generated files:"
           find ./site -type f | sort
 
-      - name: Create Sidebar Navigation and Ensure All Pages Exist
+      - name: Create Sidebar Navigation
         run: |
           # Create directories for assets
           mkdir -p ./site/css
@@ -110,6 +110,12 @@ jobs:
             background-color: #e0e0e0;
           }
           
+          /* Active link styling */
+          .sidebar a.active {
+            background-color: #dbeafe;
+            font-weight: bold;
+          }
+          
           /* Improve readability in main content */
           .main-content h1, .main-content h2, .main-content h3 {
             margin-top: 1em;
@@ -126,103 +132,52 @@ jobs:
           }
           EOF
           
-          # Define the navigation structure with default target files
-          declare -A NAV_ITEMS
-          NAV_ITEMS=(
-            ["automotive-theories.html"]="Automotive Theories"
-            ["history-of-automobiles.html"]="History of Automobiles"
-            ["types-of-vehicles.html"]="Types of Vehicles"
-            ["automobile-fundamentals.html"]="Automobile Fundamentals"
-            ["major-vehicle-components.html"]="Major Vehicle Components"
-            ["electrical-systems.html"]="Electrical Systems"
-            ["engine-systems.html"]="Engine Systems"
-            ["electric-vehicles.html"]="Electric Vehicles"
-            ["braking-systems.html"]="Braking Systems"
-            ["basic-maintenance.html"]="Basic Maintenance"
-            ["vehicle-maintenance.html"]="Vehicle Maintenance"
-            ["emergency-repairs.html"]="Emergency Repairs"
-          )
-          
-          # Find actual HTML files that have been generated
-          ACTUAL_FILES=$(find ./site -name "*.html" -type f | grep -v "index.html" | sed 's|./site/||')
-          echo "Actual HTML files found:"
-          echo "$ACTUAL_FILES"
-          
-          # Create a mapping between expected filenames and actual filenames
-          declare -A FILE_MAPPING
-          
-          # Create redirect files and build mapping
-          for EXPECTED_FILE in "${!NAV_ITEMS[@]}"; do
-            # Remove extension for easier matching
-            EXPECTED_BASE=$(echo "$EXPECTED_FILE" | sed 's/\.html$//')
-            
-            # Check if the exact file exists
-            if echo "$ACTUAL_FILES" | grep -q "^$EXPECTED_FILE$"; then
-              # Exact match - use it
-              FILE_MAPPING["$EXPECTED_FILE"]="$EXPECTED_FILE"
-              echo "Exact match found for $EXPECTED_FILE"
-            else
-              # Try to find a close match by searching for the base name in filenames
-              MATCH=$(echo "$ACTUAL_FILES" | grep -i "$EXPECTED_BASE" | head -1)
-              
-              if [ -n "$MATCH" ]; then
-                # Found a matching file - use it
-                FILE_MAPPING["$EXPECTED_FILE"]="$MATCH"
-                echo "Close match: $EXPECTED_FILE -> $MATCH"
-              else
-                # No match found - we'll create a redirect to index
-                FILE_MAPPING["$EXPECTED_FILE"]="index.html"
-                
-                # Create a redirect file
-                echo "Creating redirect file for $EXPECTED_FILE"
-                cat > "./site/$EXPECTED_FILE" << EOF
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="0;url=index.html">
-  <title>${NAV_ITEMS[$EXPECTED_FILE]}</title>
-  <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-  <div class="sidebar">
-    <h2>Navigation</h2>
-    <!-- Navigation will be added later -->
-  </div>
-  <div class="main-content">
-    <h1>Redirecting...</h1>
-    <p>If you are not redirected automatically, <a href="index.html">click here</a>.</p>
-  </div>
-</body>
-</html>
-EOF
-              fi
-            fi
-          done
-          
           # Generate the navigation HTML
           cat > ./site/navigation.html << 'EOF'
-<ul>
-  <li><a href="automotive-theories.html">Automotive Theories</a>
-    <ul>
-      <li><a href="history-of-automobiles.html">History of Automobiles</a></li>
-      <li><a href="types-of-vehicles.html">Types of Vehicles</a></li>
-      <li><a href="automobile-fundamentals.html">Automobile Fundamentals</a></li>
-      <li><a href="major-vehicle-components.html">Major Vehicle Components</a>
-        <ul>
-          <li><a href="electrical-systems.html">Electrical Systems</a></li>
-          <li><a href="engine-systems.html">Engine Systems</a></li>
-          <li><a href="electric-vehicles.html">Electric Vehicles</a></li>
-          <li><a href="braking-systems.html">Braking Systems</a></li>
-        </ul>
-      </li>
-    </ul>
-  </li>
-  <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
-  <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
-  <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
-</ul>
-EOF
+          <ul>
+            <li><a href="automotive-theories.html">Automotive Theories</a>
+              <ul>
+                <li><a href="history-of-automobiles.html">History of Automobiles</a></li>
+                <li><a href="types-of-vehicles.html">Types of Vehicles</a></li>
+                <li><a href="automobile-fundamentals.html">Automobile Fundamentals</a></li>
+                <li><a href="major-vehicle-components.html">Major Vehicle Components</a>
+                  <ul>
+                    <li><a href="electrical-systems.html">Electrical Systems</a></li>
+                    <li><a href="engine-systems.html">Engine Systems</a></li>
+                    <li><a href="electric-vehicles.html">Electric Vehicles</a></li>
+                    <li><a href="braking-systems.html">Braking Systems</a></li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+            <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
+            <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
+            <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
+          </ul>
+          EOF
+          
+          # Create redirects for navigation items if needed
+          mkdir -p ./site/redirects
+          
+          # Create simple redirects for navigation targets that might not exist
+          for TARGET in automotive-theories.html history-of-automobiles.html types-of-vehicles.html automobile-fundamentals.html major-vehicle-components.html electrical-systems.html engine-systems.html electric-vehicles.html braking-systems.html basic-maintenance.html vehicle-maintenance.html emergency-repairs.html; do
+            if [ ! -f "./site/$TARGET" ]; then
+              echo "Creating redirect for $TARGET"
+              cat > "./site/$TARGET" << REDIR
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta http-equiv="refresh" content="0;url=index.html">
+            <title>Redirect</title>
+          </head>
+          <body>
+            <p>Redirecting to <a href="index.html">main page</a>...</p>
+          </body>
+          </html>
+          REDIR
+            fi
+          done
           
           # Check if index.html exists, if not create it
           if [ ! -f "./site/index.html" ]; then
@@ -230,30 +185,9 @@ EOF
             MAIN_HTML=$(find ./site -name "*.html" | grep -v "index.html" | head -1)
             if [ -n "$MAIN_HTML" ]; then
               cp "$MAIN_HTML" "./site/index.html"
-              echo "Created index.html from $MAIN_HTML"
             else
               # Create basic index
-              cat > ./site/index.html << EOF
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Automotive Documentation</title>
-  <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-  <div class="sidebar">
-    <h2>Navigation</h2>
-    <!-- Navigation will be added later -->
-  </div>
-  <div class="main-content">
-    <h1>Automotive Documentation</h1>
-    <p>Please select a topic from the navigation menu.</p>
-  </div>
-</body>
-</html>
-EOF
-              echo "Created basic index.html"
+              echo '<html><head><meta http-equiv="refresh" content="0;url=automotive.html"></head></html>' > ./site/index.html
             fi
           fi
           
@@ -282,6 +216,21 @@ EOF
             echo '  <meta charset="UTF-8">' >> "$NEW_FILE"
             echo "  <title>$TITLE</title>" >> "$NEW_FILE"
             echo '  <link rel="stylesheet" href="css/style.css">' >> "$NEW_FILE"
+            
+            # Add JavaScript to highlight active link
+            echo '<script>' >> "$NEW_FILE"
+            echo 'document.addEventListener("DOMContentLoaded", function() {' >> "$NEW_FILE"
+            echo '  var currentPage = window.location.pathname.split("/").pop();' >> "$NEW_FILE"
+            echo '  if (!currentPage) currentPage = "index.html";' >> "$NEW_FILE"
+            echo '  var navLinks = document.querySelectorAll(".sidebar a");' >> "$NEW_FILE"
+            echo '  navLinks.forEach(function(link) {' >> "$NEW_FILE"
+            echo '    var linkHref = link.getAttribute("href");' >> "$NEW_FILE"
+            echo '    if (linkHref === currentPage) {' >> "$NEW_FILE"
+            echo '      link.classList.add("active");' >> "$NEW_FILE"
+            echo '    }' >> "$NEW_FILE"
+            echo '  });' >> "$NEW_FILE"
+            echo '});' >> "$NEW_FILE"
+            echo '</script>' >> "$NEW_FILE"
             echo '</head>' >> "$NEW_FILE"
             echo '<body>' >> "$NEW_FILE"
             echo '  <div class="sidebar">' >> "$NEW_FILE"
@@ -291,8 +240,18 @@ EOF
             echo '  </div>' >> "$NEW_FILE"
             echo '  <div class="main-content">' >> "$NEW_FILE"
             
-            # Add the body content, skipping the body tags themselves
-            sed '/<body/d; /<\/body>/d' "$TEMP_CONTENT" >> "$NEW_FILE"
+            # Remove duplicate navigation from main content
+            # Create a temporary file for filtered content
+            FILTERED_CONTENT=$(mktemp)
+            
+            # Extract content but remove navigation lists
+            sed '/<body/d; /<\/body>/d' "$TEMP_CONTENT" > "$FILTERED_CONTENT"
+            
+            # Remove bullet lists that look like our navigation
+            sed -i '/^<ul>/,/<\/ul>/d' "$FILTERED_CONTENT"
+            
+            # Copy filtered content to new file
+            cat "$FILTERED_CONTENT" >> "$NEW_FILE"
             
             # Add closing tags
             echo '  </div>' >> "$NEW_FILE"
@@ -303,14 +262,14 @@ EOF
             mv "$NEW_FILE" "$file"
             
             # Cleanup
-            rm -f "$TEMP_CONTENT"
+            rm -f "$TEMP_CONTENT" "$FILTERED_CONTENT"
           done
           
           # Clean up
           rm -f ./site/navigation.html
           
           # Output a summary of what we did
-          echo "Navigation files processed and redirects created as needed."
+          echo "Navigation files processed."
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
