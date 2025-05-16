@@ -35,12 +35,12 @@ jobs:
           echo "Generated files:"
           find ./site -type f | sort
 
-      - name: Add Sidebar Navigation
+      - name: Create assets directory and CSS
         run: |
           # Create directories for assets
           mkdir -p ./site/css
           
-          # Create CSS file for the layout
+          # Create CSS file
           cat > ./site/css/style.css << 'EOF'
           * {
             margin: 0;
@@ -135,8 +135,10 @@ jobs:
             height: auto;
           }
           EOF
-          
-          # Create JS file to highlight active navigation item
+
+      - name: Create navigation JavaScript
+        run: |
+          # Create highlight script
           cat > ./site/highlight.js << 'EOF'
           document.addEventListener('DOMContentLoaded', function() {
             var currentPage = window.location.pathname.split('/').pop();
@@ -150,9 +152,11 @@ jobs:
             });
           });
           EOF
-          
-          # Create navigation HTML
-          cat > ./site/nav.html << 'EOF'
+
+      - name: Create navigation template
+        run: |
+          # Create navigation HTML 
+          cat > ./site/navigation-template.html << 'EOF'
           <div class="sidebar">
             <h2>Navigation</h2>
             <ul>
@@ -177,110 +181,117 @@ jobs:
             </ul>
           </div>
           EOF
+
+      - name: Process HTML files individually
+        run: |
+          # Get navigation content
+          NAV_CONTENT=$(cat ./site/navigation-template.html)
           
-          # Get files that need processing
-          HTML_FILES=$(find ./site -name "*.html")
-          
-          # Define the navigation targets (files to create if missing)
+          # Process each HTML file to add navigation
+          for file in ./site/*.html; do
+            echo "Processing $(basename "$file")"
+            
+            # Extract title
+            TITLE=$(grep -o '<title>[^<]*</title>' "$file" | head -1)
+            if [ -z "$TITLE" ]; then
+              TITLE="<title>Automotive Documentation</title>"
+            fi
+            
+            # Extract body content
+            BODY_CONTENT=$(sed -n '/<body/,/<\/body>/p' "$file" | sed '/<body/d;/<\/body>/d')
+            
+            # Rewrite the file
+            {
+              echo '<!DOCTYPE html>'
+              echo '<html>'
+              echo '<head>'
+              echo '  <meta charset="UTF-8">'
+              echo "  $TITLE"
+              echo '  <link rel="stylesheet" href="css/style.css">'
+              echo '  <script src="highlight.js"></script>'
+              echo '</head>'
+              echo '<body>'
+              echo "$NAV_CONTENT"
+              echo '<div class="main-content">'
+              echo "$BODY_CONTENT"
+              echo '</div>'
+              echo '</body>'
+              echo '</html>'
+            } > "$file.new"
+            
+            # Replace original with new file
+            mv "$file.new" "$file"
+          done
+
+      - name: Create missing navigation files
+        run: |
+          # Define the navigation targets
           NAV_TARGETS="automotive-theories.html history-of-automobiles.html types-of-vehicles.html automobile-fundamentals.html major-vehicle-components.html electrical-systems.html engine-systems.html electric-vehicles.html braking-systems.html basic-maintenance.html vehicle-maintenance.html emergency-repairs.html"
           
-          # Process HTML files to add navigation
-          for FILE in $HTML_FILES; do
-            FILENAME=$(basename "$FILE")
-            echo "Processing $FILENAME"
-            
-            # Create a temp file
-            TEMP_FILE=$(mktemp)
-            
-            # Extract everything before <body> tag
-            sed -n '1,/<body/p' "$FILE" | sed '/<body/d' > "$TEMP_FILE"
-            
-            # Add stylesheet link and script
-            sed -i '/<\/head>/i \    <link rel="stylesheet" href="css/style.css">' "$TEMP_FILE"
-            sed -i '/<\/head>/i \    <script src="highlight.js"></script>' "$TEMP_FILE"
-            
-            # Start body tag and add navigation
-            echo '<body>' >> "$TEMP_FILE"
-            cat ./site/nav.html >> "$TEMP_FILE"
-            
-            # Add main-content wrapper
-            echo '<div class="main-content">' >> "$TEMP_FILE"
-            
-            # Extract and add existing content (keeping original structure)
-            sed -n '/<body/,/<\/body>/p' "$FILE" | sed '/<body/d;/<\/body>/d' >> "$TEMP_FILE"
-            
-            # Close main content and body
-            echo '</div>' >> "$TEMP_FILE"
-            echo '</body>' >> "$TEMP_FILE"
-            
-            # Add closing html tag
-            echo '</html>' >> "$TEMP_FILE"
-            
-            # Replace original file
-            mv "$TEMP_FILE" "$FILE"
-          done
+          # Get navigation content
+          NAV_CONTENT=$(cat ./site/navigation-template.html)
           
-          # Create missing files from navigation if needed
-          for TARGET in $NAV_TARGETS; do
-            if [ ! -f "./site/$TARGET" ]; then
-              echo "Creating missing file: $TARGET"
+          # Create missing files
+          for target in $NAV_TARGETS; do
+            if [ ! -f "./site/$target" ]; then
+              echo "Creating missing file: $target"
               
-              # Generate a basic page with the same structure
-              cat > "./site/$TARGET" << EOF
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>${TARGET%.*}</title>
-            <link rel="stylesheet" href="css/style.css">
-            <script src="highlight.js"></script>
-          </head>
-          <body>
-          $(cat ./site/nav.html)
-          <div class="main-content">
-            <h1>${TARGET%.*}</h1>
-            <p>Content for this section is currently under development.</p>
-          </div>
-          </body>
-          </html>
-          EOF
+              # Clean target name for title
+              CLEAN_NAME=$(echo "${target%.html}" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+              
+              # Create the file
+              {
+                echo '<!DOCTYPE html>'
+                echo '<html>'
+                echo '<head>'
+                echo '  <meta charset="UTF-8">'
+                echo "  <title>$CLEAN_NAME</title>"
+                echo '  <link rel="stylesheet" href="css/style.css">'
+                echo '  <script src="highlight.js"></script>'
+                echo '</head>'
+                echo '<body>'
+                echo "$NAV_CONTENT"
+                echo '<div class="main-content">'
+                echo "  <h1>$CLEAN_NAME</h1>"
+                echo '  <p>Content for this section is currently under development.</p>'
+                echo '</div>'
+                echo '</body>'
+                echo '</html>'
+              } > "./site/$target"
             fi
           done
-          
-          # Create index.html if missing
+
+      - name: Create index.html if needed
+        run: |
           if [ ! -f "./site/index.html" ]; then
             echo "Creating index.html"
             
-            # Find a suitable file to use as index
-            FIRST_FILE=$(find ./site -name "*.html" | head -1)
+            # Get navigation content
+            NAV_CONTENT=$(cat ./site/navigation-template.html)
             
-            if [ -n "$FIRST_FILE" ]; then
-              cp "$FIRST_FILE" "./site/index.html"
-            else
-              # Create a basic index page
-              cat > "./site/index.html" << EOF
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>Automotive Documentation</title>
-            <link rel="stylesheet" href="css/style.css">
-            <script src="highlight.js"></script>
-          </head>
-          <body>
-          $(cat ./site/nav.html)
-          <div class="main-content">
-            <h1>Automotive Documentation</h1>
-            <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>
-          </div>
-          </body>
-          </html>
-          EOF
-            fi
+            # Create index file
+            {
+              echo '<!DOCTYPE html>'
+              echo '<html>'
+              echo '<head>'
+              echo '  <meta charset="UTF-8">'
+              echo '  <title>Automotive Documentation</title>'
+              echo '  <link rel="stylesheet" href="css/style.css">'
+              echo '  <script src="highlight.js"></script>'
+              echo '</head>'
+              echo '<body>'
+              echo "$NAV_CONTENT"
+              echo '<div class="main-content">'
+              echo '  <h1>Automotive Documentation</h1>'
+              echo '  <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>'
+              echo '</div>'
+              echo '</body>'
+              echo '</html>'
+            } > "./site/index.html"
           fi
           
-          # Clean up
-          rm -f ./site/nav.html
+          # Cleanup
+          rm -f ./site/navigation-template.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
