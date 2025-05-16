@@ -30,6 +30,10 @@ jobs:
         run: |
           ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
           echo "DITA transformation complete"
+          
+          # List files for debugging
+          echo "Generated files:"
+          find ./site -type f | sort
 
       - name: Add Side Navigation
         run: |
@@ -44,6 +48,7 @@ jobs:
             margin: 0;
             padding: 0;
             font-family: Arial, sans-serif;
+            height: 100vh;
           }
           
           .sidebar {
@@ -54,17 +59,22 @@ jobs:
             position: fixed;
             overflow-y: auto;
             border-right: 1px solid #ddd;
+            box-sizing: border-box;
           }
           
           .main-content {
             margin-left: 250px;
             padding: 20px;
             flex: 1;
+            overflow-y: auto;
+            box-sizing: border-box;
           }
           
           .sidebar h2 {
             margin-top: 0;
             color: #333;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
           }
           
           .sidebar ul {
@@ -73,7 +83,7 @@ jobs:
           }
           
           .sidebar li {
-            margin-bottom: 10px;
+            margin-bottom: 8px;
           }
           
           .sidebar a {
@@ -87,11 +97,41 @@ jobs:
             background-color: #e0e0e0;
             border-radius: 4px;
           }
+          
+          /* Indent nested list items */
+          .sidebar ul ul {
+            padding-left: 20px;
+          }
+          
+          /* Handle nested list items */
+          .sidebar li li {
+            margin-bottom: 5px;
+          }
           EOF
           
           # Create JavaScript
           cat > ./site/js/script.js << 'EOF'
           document.addEventListener('DOMContentLoaded', function() {
+            // Get the sidebar
+            const sidebar = document.querySelector('.sidebar');
+            
+            // Clone navigation content
+            const navigation = document.querySelector('.main-content ul');
+            
+            if (navigation) {
+              // Create a copy of the navigation
+              const sidebarNav = navigation.cloneNode(true);
+              
+              // Clear any existing content in the sidebar
+              sidebar.innerHTML = '<h2>Navigation</h2>';
+              
+              // Add navigation to sidebar
+              sidebar.appendChild(sidebarNav);
+              
+              // Remove navigation from main content
+              navigation.parentNode.removeChild(navigation);
+            }
+            
             // Fix links
             const links = document.querySelectorAll('.sidebar a');
             links.forEach(link => {
@@ -117,45 +157,13 @@ jobs:
           
           # Process HTML files
           find ./site -name "*.html" | while read -r file; do
-            # Extract navigation
-            if [ ! -f "./site/nav-extracted.html" ]; then
-              grep -o '<ul[^>]*>.*</ul>' "$file" > ./site/nav-extracted.html || true
-              if [ ! -s "./site/nav-extracted.html" ]; then
-                echo '<ul><li>Navigation not found</li></ul>' > ./site/nav-extracted.html
-              fi
-            fi
+            # Add CSS and JS to HTML files
+            sed -i 's|</head>|<link rel="stylesheet" href="css/style.css">\n<script src="js/script.js"></script>\n</head>|' "$file"
             
-            # Add sidebar
-            awk -v nav="$(cat ./site/nav-extracted.html)" '
-            {
-              if (match($0, "<head>")) {
-                print $0;
-                print "  <link rel=\"stylesheet\" href=\"css/style.css\">";
-                print "  <script src=\"js/script.js\"></script>";
-                next;
-              }
-              else if (match($0, "<body[^>]*>")) {
-                print $0;
-                print "  <div class=\"sidebar\">";
-                print "    <h2>Navigation</h2>";
-                print nav;
-                print "  </div>";
-                print "  <div class=\"main-content\">";
-                next;
-              }
-              else if (match($0, "</body>")) {
-                print "  </div>";
-                print $0;
-                next;
-              }
-              print $0;
-            }' "$file" > "${file}.tmp"
-            
-            mv "${file}.tmp" "$file"
+            # Insert the sidebar structure
+            sed -i 's|<body|<body>\n<div class="sidebar"><h2>Navigation</h2><p>Navigation will appear here</p></div>\n<div class="main-content">|' "$file"
+            sed -i 's|</body>|</div>\n</body>|' "$file"
           done
-          
-          # Clean up
-          rm -f ./site/nav-extracted.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
