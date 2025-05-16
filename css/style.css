@@ -1,0 +1,172 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  line-height: 1.6;
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 250px;
+  background-color: #f5f5f5;
+  padding: 20px;
+  height: 100vh;
+  overflow-y: auto;
+  border-right: 1px solid #ddd;
+}
+
+.main-content {
+  flex: 1;
+  padding: 20px;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar h2 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #333;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 10px;
+}
+
+/* Improved navigation styling for hierarchy */
+.sidebar ul {
+  list-style-type: none;
+  padding-left: 0;
+  margin-bottom: 5px;
+}
+
+.sidebar ul ul {
+  padding-left: 20px;
+  margin-top: 5px;
+  margin-bottom: 0;
+}
+
+.sidebar li {
+  margin-bottom: 5px;
+  position: relative;
+}
+
+/* Toggle arrow styling */
+.sidebar .toggle-arrow {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  position: absolute;
+  left: 0;
+  top: 5px;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.sidebar .toggle-arrow:before {
+  content: "▶";
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.sidebar li.expanded > .toggle-arrow:before {
+  transform: rotate(90deg);
+}
+
+.sidebar li.has-children > ul {
+  display: none;
+}
+
+.sidebar li.has-children.expanded > ul {
+  display: block;
+}
+
+.sidebar a {
+  color: #2c3e50;
+  text-decoration: none;
+  display: block;
+  padding: 5px 5px 5px 20px; /* Add left padding for arrow */
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.sidebar a:hover {
+  background-color: #e0e0e0;
+}
+
+.sidebar a.active {
+  background-color: #dbeafe;
+  font-weight: bold;
+}
+
+/* Content styling */
+.main-content h1, .main-content h2, .main-content h3 {
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+.main-content p {
+  margin-bottom: 1em;
+}
+
+.main-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Fix for duplicate headings */
+.main-content h1:first-child + h1 {
+  display: none;
+}
+
+/* Loading state */
+#loading {
+  display: none;
+  text-align: center;
+  padding: 20px;
+  font-style: italic;
+  color: #666;
+}
+
+.loading #loading {
+  display: block;
+}
+
+/* Error state */
+.error {
+  background-color: #fff8f8;
+  border-left: 4px solid #e74c3c;
+  padding: 15px;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.error h2 {
+  color: #e74c3c;
+  margin-top: 0;
+}
+
+/* Responsive design for mobile */
+@media (max-width: 768px) {
+  body {
+    flex-direction: column;
+    height: auto;
+  }
+  
+  .sidebar {
+    width: 100%;
+    height: auto;
+    max-height: 40vh;
+  }
+  
+  .main-content {
+    height: auto;
+    min-height: 60vh;
+  }
+}

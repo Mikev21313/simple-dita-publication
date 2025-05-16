@@ -1,0 +1,27 @@
+// Content manifest - maps IDs to content files
+const contentManifest = {
+  "basic_maintenance": { "title": "Basic Maintenance" },
+  "brakes": { "title": "Braking Systems" },
+  "car_basics": { "title": "Automobile Fundamentals" },
+  "car_components": { "title": "Major Vehicle Components" },
+  "car_history": { "title": "History of Automobiles" },
+  "car_maintenance": { "title": "Vehicle Maintenance" },
+  "car_types": { "title": "Types of Vehicles" },
+  "electrical": { "title": "Electrical Systems" },
+  "emergency_repairs": { "title": "Emergency Repairs" },
+  "engines": { "title": "Engine Systems" },
+  "evs": { "title": "Electric Vehicles" },
+  "automotive-information": { "title": "Automotive Information" },
+  "basic-maintenance": { "title": "Basic Maintenance" },
+  "braking-systems": { "title": "Braking Systems" },
+  "automobile-fundamentals": { "title": "Automobile Fundamentals" },
+  "major-vehicle-components": { "title": "Major Vehicle Components" },
+  "history-of-automobiles": { "title": "History of Automobiles" },
+  "vehicle-maintenance": { "title": "Vehicle Maintenance" },
+  "types-of-vehicles": { "title": "Types of Vehicles" },
+  "electrical-systems": { "title": "Electrical Systems" },
+  "emergency-repairs": { "title": "Emergency Repairs" },
+  "engine-systems": { "title": "Engine Systems" },
+  "electric-vehicles": { "title": "Electric Vehicles" },
+  "default": { "title": "Automotive Documentation" }
+};

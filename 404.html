@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Redirecting...</title>
+  <script>
+    // Store the requested URL for processing after redirect
+    sessionStorage.redirect = location.href;
+    
+    // Dynamically determine the correct base path
+    function getBasePath() {
+      if (location.hostname.includes('github.io')) {
+        const pathSegments = location.pathname.split('/');
+        if (pathSegments.length > 1) {
+          return '/' + pathSegments[1];
+        }
+      }
+      return '';
+    }
+    
+    // Redirect to the main site with the correct base path
+    const basePath = getBasePath();
+    window.location.href = basePath + '/';
+  </script>
+</head>
+<body>
+  <div style="text-align: center; font-family: Arial, sans-serif; margin-top: 100px;">
+    <h1>Redirecting to documentation...</h1>
+    <p>If you are not redirected automatically, <a href="/">click here</a>.</p>
+  </div>
+</body>
+</html>
