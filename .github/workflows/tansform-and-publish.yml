@@ -35,25 +35,18 @@ jobs:
           echo "Generated files:"
           find ./site -type f | sort
 
-      - name: Create assets directory and CSS
+      - name: Add Layout and Remove Duplicate Navigation
         run: |
-          # Create directories for assets
+          # Create CSS directory
           mkdir -p ./site/css
           
-          # Create CSS file
+          # Create CSS file for layout
           cat > ./site/css/style.css << 'EOF'
-          * {
+          body {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-          }
-
-          body {
             font-family: Arial, sans-serif;
-            line-height: 1.6;
             display: flex;
-            min-height: 100vh;
-            width: 100%;
           }
           
           .sidebar {
@@ -62,10 +55,7 @@ jobs:
             padding: 20px;
             height: 100vh;
             position: fixed;
-            left: 0;
-            top: 0;
             overflow-y: auto;
-            border-right: 1px solid #ddd;
           }
           
           .main-content {
@@ -74,89 +64,14 @@ jobs:
             width: calc(100% - 250px);
           }
           
-          .sidebar h2 {
-            margin-top: 0;
-            margin-bottom: 15px;
-            color: #333;
-            border-bottom: 1px solid #ddd;
-            padding-bottom: 10px;
-          }
-          
-          .sidebar ul {
-            list-style-type: none;
-            padding-left: 0;
-            margin-bottom: 15px;
-          }
-          
-          .sidebar ul ul {
-            padding-left: 20px;
-            margin-top: 5px;
-          }
-          
-          .sidebar li {
-            margin-bottom: 8px;
-          }
-          
-          .sidebar a {
-            color: #2c3e50;
-            text-decoration: none;
-            display: block;
-            padding: 5px;
-            border-radius: 4px;
-            transition: background-color 0.2s;
-          }
-          
-          .sidebar a:hover {
-            background-color: #e0e0e0;
-          }
-          
-          .sidebar a.active {
-            background-color: #dbeafe;
-            font-weight: bold;
-          }
-          
-          /* Hide navigation in main content */
+          /* Hide the duplicate navigation in the main content */
           .main-content > ul:first-of-type {
             display: none;
           }
-          
-          /* Preserve other styles from DITA output */
-          .main-content h1, .main-content h2, .main-content h3 {
-            margin-top: 1em;
-            margin-bottom: 0.5em;
-          }
-          
-          .main-content p {
-            margin-bottom: 1em;
-          }
-          
-          .main-content img {
-            max-width: 100%;
-            height: auto;
-          }
           EOF
-
-      - name: Create navigation JavaScript
-        run: |
-          # Create highlight script
-          cat > ./site/highlight.js << 'EOF'
-          document.addEventListener('DOMContentLoaded', function() {
-            var currentPage = window.location.pathname.split('/').pop();
-            if (!currentPage) currentPage = 'index.html';
-            
-            var navLinks = document.querySelectorAll('.sidebar a');
-            navLinks.forEach(function(link) {
-              if (link.getAttribute('href') === currentPage) {
-                link.classList.add('active');
-              }
-            });
-          });
-          EOF
-
-      - name: Create navigation template
-        run: |
-          # Create navigation HTML 
-          cat > ./site/navigation-template.html << 'EOF'
+          
+          # Create the sidebar navigation HTML
+          cat > ./site/sidebar.html << 'EOF'
           <div class="sidebar">
             <h2>Navigation</h2>
             <ul>
@@ -181,117 +96,59 @@ jobs:
             </ul>
           </div>
           EOF
-
-      - name: Process HTML files individually
-        run: |
-          # Get navigation content
-          NAV_CONTENT=$(cat ./site/navigation-template.html)
           
-          # Process each HTML file to add navigation
+          # Process each HTML file
           for file in ./site/*.html; do
-            echo "Processing $(basename "$file")"
+            echo "Processing $file"
             
-            # Extract title
-            TITLE=$(grep -o '<title>[^<]*</title>' "$file" | head -1)
-            if [ -z "$TITLE" ]; then
-              TITLE="<title>Automotive Documentation</title>"
-            fi
+            # Create a temporary file
+            temp_file=$(mktemp)
             
-            # Extract body content
-            BODY_CONTENT=$(sed -n '/<body/,/<\/body>/p' "$file" | sed '/<body/d;/<\/body>/d')
+            # Extract content from the file, skipping the navigation section
+            content=$(sed -n '/<body/,/<\/body>/p' "$file" | 
+                     sed '/<body/d;/<\/body>/d' | 
+                     awk '
+                       BEGIN { skip=0; count=0; }
+                       /<ul>/ { 
+                         if (count == 0 && $0 ~ /Automotive Theories|History of Automobiles|Types of Vehicles/) {
+                           skip=1; count=1; 
+                         }
+                       }
+                       /<\/ul>/ { 
+                         if (skip == 1) { 
+                           skip=0; 
+                         }
+                       }
+                       { if (skip == 0) print $0; }
+                     ')
             
-            # Rewrite the file
-            {
-              echo '<!DOCTYPE html>'
-              echo '<html>'
-              echo '<head>'
-              echo '  <meta charset="UTF-8">'
-              echo "  $TITLE"
-              echo '  <link rel="stylesheet" href="css/style.css">'
-              echo '  <script src="highlight.js"></script>'
-              echo '</head>'
-              echo '<body>'
-              echo "$NAV_CONTENT"
-              echo '<div class="main-content">'
-              echo "$BODY_CONTENT"
-              echo '</div>'
-              echo '</body>'
-              echo '</html>'
-            } > "$file.new"
+            # Get the title
+            title=$(grep -o "<title>.*</title>" "$file" | head -1)
             
-            # Replace original with new file
-            mv "$file.new" "$file"
+            # Create the new file with the sidebar
+            cat > "$temp_file" << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            $title
+            <link rel="stylesheet" href="css/style.css">
+          </head>
+          <body>
+          $(cat ./site/sidebar.html)
+          <div class="main-content">
+          $content
+          </div>
+          </body>
+          </html>
+          EOF
+            
+            # Replace the original file
+            mv "$temp_file" "$file"
           done
-
-      - name: Create missing navigation files
-        run: |
-          # Define the navigation targets
-          NAV_TARGETS="automotive-theories.html history-of-automobiles.html types-of-vehicles.html automobile-fundamentals.html major-vehicle-components.html electrical-systems.html engine-systems.html electric-vehicles.html braking-systems.html basic-maintenance.html vehicle-maintenance.html emergency-repairs.html"
           
-          # Get navigation content
-          NAV_CONTENT=$(cat ./site/navigation-template.html)
-          
-          # Create missing files
-          for target in $NAV_TARGETS; do
-            if [ ! -f "./site/$target" ]; then
-              echo "Creating missing file: $target"
-              
-              # Clean target name for title
-              CLEAN_NAME=$(echo "${target%.html}" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-              
-              # Create the file
-              {
-                echo '<!DOCTYPE html>'
-                echo '<html>'
-                echo '<head>'
-                echo '  <meta charset="UTF-8">'
-                echo "  <title>$CLEAN_NAME</title>"
-                echo '  <link rel="stylesheet" href="css/style.css">'
-                echo '  <script src="highlight.js"></script>'
-                echo '</head>'
-                echo '<body>'
-                echo "$NAV_CONTENT"
-                echo '<div class="main-content">'
-                echo "  <h1>$CLEAN_NAME</h1>"
-                echo '  <p>Content for this section is currently under development.</p>'
-                echo '</div>'
-                echo '</body>'
-                echo '</html>'
-              } > "./site/$target"
-            fi
-          done
-
-      - name: Create index.html if needed
-        run: |
-          if [ ! -f "./site/index.html" ]; then
-            echo "Creating index.html"
-            
-            # Get navigation content
-            NAV_CONTENT=$(cat ./site/navigation-template.html)
-            
-            # Create index file
-            {
-              echo '<!DOCTYPE html>'
-              echo '<html>'
-              echo '<head>'
-              echo '  <meta charset="UTF-8">'
-              echo '  <title>Automotive Documentation</title>'
-              echo '  <link rel="stylesheet" href="css/style.css">'
-              echo '  <script src="highlight.js"></script>'
-              echo '</head>'
-              echo '<body>'
-              echo "$NAV_CONTENT"
-              echo '<div class="main-content">'
-              echo '  <h1>Automotive Documentation</h1>'
-              echo '  <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>'
-              echo '</div>'
-              echo '</body>'
-              echo '</html>'
-            } > "./site/index.html"
-          fi
-          
-          # Cleanup
-          rm -f ./site/navigation-template.html
+          # Clean up
+          rm -f ./site/sidebar.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
