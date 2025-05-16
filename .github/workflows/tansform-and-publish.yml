@@ -33,7 +33,7 @@ jobs:
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: List DITA files for verification and inspect content
+      # Step 4: List DITA files for verification (FIXED path handling for spaces)
       - name: Analyze DITA Files
         run: |
           echo "DITA files in repository:"
@@ -41,18 +41,18 @@ jobs:
           
           echo "--------------------------------------"
           echo "DITA file content samples:"
-          # Show first 20 lines of a few DITA files to understand structure
-          for file in $(find dita-source -name "*.dita" | head -3); do
+          # Fix: Properly handle paths with spaces by using find with -exec
+          find dita-source -name "*.dita" -type f | head -3 | while read -r file; do
             echo "==== $file (first 20 lines) ===="
-            head -20 "$file"
+            head -20 "$file" || echo "Unable to read file"
             echo ""
           done
 
       # Step 5: Transform DITA to HTML5
       - name: Transform DITA to HTML5
         run: |
-          # Transform with optimized parameters for content quality
-          ./dita-ot-4.0.2/bin/dita --input="dita-source/automotive.ditamap" --format=html5 --output=./site \
+          # Always quote paths that might contain spaces
+          ./dita-ot-4.0.2/bin/dita --input="dita-source/automotive.ditamap" --format=html5 --output="./site" \
             --nav-toc=partial \
             --args.copycss=yes \
             --args.css=style.css \
@@ -78,7 +78,7 @@ jobs:
           mkdir -p ./site/content
           
           # Process each HTML file to extract complete content
-          for file in ./site/*.html; do
+          find ./site -name "*.html" -type f | grep -v "/content/" | while read -r file; do
             # Skip processing if this is the index.html file we'll create later
             if [[ "$file" == "./site/index.html" ]]; then
               continue
@@ -105,11 +105,6 @@ jobs:
             content_size=${#content}
             echo "Content size for $id: $content_size bytes"
             
-            # If content is too small, it might be incomplete
-            if [ $content_size -lt 200 ]; then
-              echo "WARNING: Content for $id appears too small, may be incomplete"
-            fi
-            
             # Save with all possible filename variations to ensure accessibility
             echo "$content" > "./site/content/$id.html"
             # Create hyphenated version if using underscores
@@ -129,7 +124,7 @@ jobs:
             echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
           done
 
-      # Step 7: Direct DITA content extraction for backup/enhancement
+      # Step 7: Direct DITA content extraction (FIXED for paths with spaces)
       - name: Direct DITA Content Extraction
         run: |
           echo "Extracting content directly from DITA files as backup..."
@@ -141,39 +136,33 @@ jobs:
             local title="$3"
             local topic_id=$(basename "$file" .dita)
             
-            # Extract content using XMLStarlet if available, otherwise use grep/sed
-            if command -v xmlstarlet &> /dev/null; then
-              echo "Using XMLStarlet to extract DITA content from $file"
-              # This would be the ideal method, but keeping it simple for now
-            else
-              echo "Using grep/sed to extract DITA content from $file"
-              
-              # Extract all paragraphs, notes, lists, etc.
-              content="<h1>$title</h1>\n<div class=\"topic-content\">"
-              
-              # Extract paragraphs
-              paragraphs=$(grep -o "<p>.*</p>" "$file" || echo "")
-              content="${content}\n${paragraphs}"
-              
-              # Extract lists if any
-              lists=$(sed -n '/<[ou]l>/,/<\/[ou]l>/p' "$file" || echo "")
-              content="${content}\n${lists}"
-              
-              # Extract tables if any
-              tables=$(sed -n '/<table>/,/<\/table>/p' "$file" || echo "")
-              content="${content}\n${tables}"
-              
-              # Close the content div
-              content="${content}\n</div>"
-              
-              # Write to file
-              echo -e "$content" > "$output_file"
-              echo "Created direct extraction: $output_file"
-            fi
+            echo "Processing DITA file: $file"
+            
+            # Extract content using grep/sed with proper quoting
+            content="<h1>$title</h1>\n<div class=\"topic-content\">"
+            
+            # Extract paragraphs
+            paragraphs=$(grep -o "<p>.*</p>" "$file" || echo "")
+            content="${content}\n${paragraphs}"
+            
+            # Extract lists if any
+            lists=$(sed -n '/<[ou]l>/,/<\/[ou]l>/p' "$file" || echo "")
+            content="${content}\n${lists}"
+            
+            # Extract tables if any
+            tables=$(sed -n '/<table>/,/<\/table>/p' "$file" || echo "")
+            content="${content}\n${tables}"
+            
+            # Close the content div
+            content="${content}\n</div>"
+            
+            # Write to file
+            echo -e "$content" > "$output_file"
+            echo "Created direct extraction: $output_file"
           }
           
-          # Process each DITA file for direct extraction
-          for dita_file in $(find dita-source -name "*.dita"); do
+          # Process each DITA file for direct extraction (using find and proper quoting)
+          find dita-source -name "*.dita" -type f | while read -r dita_file; do
             # Get filename without extension and with normalizing special characters
             base_name=$(basename "$dita_file" .dita | tr ' ' '_')
             
@@ -642,6 +631,8 @@ jobs:
           }
           EOF
 
+      # Steps 12-16 remain the same as before...
+      
       # Step 12: Create SPA JavaScript Application with enhanced content loading
       - name: Create SPA Application
         run: |
@@ -1006,7 +997,7 @@ jobs:
           }, 5000);
           EOF
 
-      # Step 13: Create main index.html with enhanced features
+      # Step 13: Create main index.html
       - name: Create Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
@@ -1170,14 +1161,14 @@ jobs:
       - name: Debug Content Files
         run: |
           echo "Content directory listing:"
-          ls -la ./site/content/
+          find ./site/content -type f | sort
           echo "---------------------"
           
           # Check content quality by file size
           echo "Content file sizes:"
-          for file in ./site/content/*.html; do
+          find ./site/content -type f -name "*.html" | while read -r file; do
             filename=$(basename "$file")
-            filesize=$(stat -c %s "$file")
+            filesize=$(wc -c < "$file")
             if [ $filesize -lt 200 ]; then
               status="⚠️ TOO SMALL"
             else
