@@ -2,15 +2,18 @@
 <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
 <map>
     <title>Automotive Information</title>
-    <topicref href="basic_maintenance.dita"/>
-    <topicref href="brakes.dita"/>
-    <topicref href="car_basics.dita"/>
-    <topicref href="car_components.dita"/>
     <topicref href="car_history.dita"/>
-    <topicref href="car_maintenance.dita"/>
-    <topicref href="car_types.dita"/>
-    <topicref href="electrical.dita"/>
-    <topicref href="emergency_repairs.dita"/>
-    <topicref href="engines.dita"/>
-    <topicref href="evs.dita"/>
+    <topicref href="car_basics.dita"/>
+    <topicref href="car_types.dita">
+        <topicref href="evs.dita"/>
+    </topicref>
+    <topicref href="basic_maintenance.dita">
+        <topicref href="emergency_repairs.dita"/>
+        <topicref href="car_maintenance.dita"/>
+    </topicref>
+    <topicref href="car_components.dita">
+        <topicref href="electrical.dita"/>
+        <topicref href="brakes.dita"/>
+        <topicref href="engines.dita"/>
+    </topicref>
 </map>
