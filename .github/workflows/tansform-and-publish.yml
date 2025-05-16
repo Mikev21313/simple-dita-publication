@@ -19,10 +19,9 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
-        
+
     - name: Install Additional Tools
       run: |
-        echo "Installing xmllint for XML validation..."
         sudo apt-get update
         sudo apt-get install -y libxml2-utils
 
@@ -32,16 +31,20 @@ jobs:
         curl -L https://github.com/dita-ot/dita-ot/releases/download/4.1.2/dita-ot-4.1.2.zip -o tools/dita-ot.zip
         unzip tools/dita-ot.zip -d tools/
         mv tools/dita-ot-4.1.2 tools/dita-ot
+        
+        # Verify DITA-OT installation
+        echo "Verifying DITA-OT installation:"
+        ls -la tools/dita-ot/bin/
+        tools/dita-ot/bin/dita --version
 
     - name: Verify DITA Source
       run: |
         echo "Checking DITA source content..."
         if [ ! -d "dita-source" ]; then
-          echo "dita-source directory not found! Creating empty directory structure."
+          echo "dita-source directory not found! Creating directory and sample files."
           mkdir -p dita-source
           
-          # Create a simple sample DITA map if none exists
-          echo "Creating a sample DITA map file..."
+          # Create a simple sample DITA map
           cat > dita-source/sample.ditamap << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
@@ -51,8 +54,7 @@ jobs:
         </map>
         EOF
           
-          # Create a simple sample DITA topic if none exists
-          echo "Creating a sample DITA topic file..."
+          # Create a simple sample DITA topic
           cat > dita-source/sample-topic.dita << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
@@ -64,31 +66,22 @@ jobs:
               <title>Automotive Theories</title>
               <p>Learn about automotive theories and concepts.</p>
             </section>
-            <section>
-              <title>Basic Maintenance</title>
-              <p>Learn about basic vehicle maintenance.</p>
-            </section>
           </body>
         </topic>
         EOF
         else
-          echo "dita-source directory found. Checking contents..."
-          find dita-source -type f -name "*.dita*" | while read -r file; do
-            echo "Found DITA file: $file"
-            # Validate XML syntax
-            xmllint --noout "$file" 2>/dev/null
-            if [ $? -ne 0 ]; then
-              echo "Warning: XML validation failed for $file"
-            fi
+          echo "dita-source directory found. Content:"
+          ls -la dita-source/
+          
+          # Validate any DITA files
+          find dita-source -name "*.dita*" -type f | while read file; do
+            echo "Validating $file"
+            xmllint --noout "$file" 2>/dev/null || echo "Warning: XML validation failed for $file"
           done
           
-          # Count DITA files
-          DITA_FILE_COUNT=$(find dita-source -type f -name "*.dita*" | wc -l)
-          echo "Found $DITA_FILE_COUNT DITA files"
-          
-          if [ "$DITA_FILE_COUNT" -eq 0 ]; then
-            echo "No DITA files found! Creating sample files..."
-            # Create a simple sample DITA map if none exists
+          # If no DITA files found, create sample files
+          if [ $(find dita-source -name "*.dita*" -type f | wc -l) -eq 0 ]; then
+            echo "No DITA files found. Creating sample files."
             cat > dita-source/sample.ditamap << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
@@ -98,7 +91,6 @@ jobs:
         </map>
         EOF
             
-            # Create a simple sample DITA topic if none exists
             cat > dita-source/sample-topic.dita << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
@@ -110,554 +102,101 @@ jobs:
               <title>Automotive Theories</title>
               <p>Learn about automotive theories and concepts.</p>
             </section>
-            <section>
-              <title>Basic Maintenance</title>
-              <p>Learn about basic vehicle maintenance.</p>
-            </section>
           </body>
         </topic>
         EOF
           fi
         fi
 
-    - name: Apply Custom Styling
+    - name: Build DITA (Basic)
       run: |
-        # Create directory structure first
-        mkdir -p themes/automotive-theme/css
-        mkdir -p themes/automotive-theme/js
-        mkdir -p themes/automotive-theme/images/icons
-        mkdir -p themes/automotive-theme/templates
-        
-        # Create custom plugin directory
-        mkdir -p tools/dita-ot/plugins/com.yourcompany.html5
-        
-        # Create CSS file
-        cat > themes/automotive-theme/css/main.css << 'EOF'
-        /* Base Styles */
-        :root {
-            --primary-color: #2c3e50;    /* Dark blue for automotive look */
-            --secondary-color: #e74c3c;  /* Red accent color */
-            --light-gray: #f5f5f5;
-            --medium-gray: #e0e0e0;
-            --dark-gray: #666666;
-            --white: #ffffff;
-            --black: #000000;
-            --font-regular: 'Arial', sans-serif;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: var(--font-regular);
-            font-size: 16px;
-            line-height: 1.5;
-            color: var(--secondary-color);
-            background-color: var(--white);
-        }
-
-        a {
-            color: var(--primary-color);
-            text-decoration: none;
-        }
-
-        /* Header Styles */
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 2rem;
-            border-bottom: 1px solid var(--medium-gray);
-        }
-
-        .logo-container {
-            display: flex;
-            align-items: center;
-        }
-
-        .logo {
-            width: 50px;
-            height: 50px;
-            margin-right: 1rem;
-        }
-
-        header h1 {
-            color: var(--primary-color);
-            font-weight: 400;
-        }
-
-        nav ul {
-            display: flex;
-            list-style: none;
-        }
-
-        nav li {
-            margin-left: 1.5rem;
-        }
-
-        nav a {
-            color: var(--secondary-color);
-            font-weight: 400;
-        }
-
-        nav a:hover {
-            color: var(--primary-color);
-        }
-
-        /* Search Container */
-        .search-container {
-            display: flex;
-            justify-content: center;
-            margin: 2rem auto;
-            max-width: 600px;
-            padding: 0 1rem;
-        }
-
-        #search-input {
-            flex-grow: 1;
-            padding: 0.75rem;
-            border: 1px solid var(--medium-gray);
-            border-right: none;
-            border-radius: 4px 0 0 4px;
-            font-size: 1rem;
-        }
-
-        #search-button {
-            background-color: var(--primary-color);
-            color: var(--white);
-            border: none;
-            border-radius: 0 4px 4px 0;
-            padding: 0.75rem 1.25rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-        }
-
-        /* Main Content */
-        main {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        /* Categories Grid */
-        .categories {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 2rem;
-            margin-bottom: 3rem;
-        }
-
-        .category-tile {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-            background-color: var(--white);
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .category-tile:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        }
-
-        .category-icon {
-            width: 80px;
-            height: 80px;
-            margin-bottom: 1rem;
-        }
-
-        .category-title {
-            margin-top: 1rem;
-            font-weight: 500;
-            color: var(--secondary-color);
-        }
-
-        /* Content Area */
-        .content {
-            background-color: var(--white);
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        /* Footer */
-        footer {
-            background-color: var(--secondary-color);
-            color: var(--white);
-            text-align: center;
-            padding: 1.5rem;
-            margin-top: 3rem;
-            font-size: 0.9rem;
-        }
-
-        footer a {
-            color: var(--primary-color);
-        }
-        EOF
-        
-        # Create JavaScript file
-        cat > themes/automotive-theme/js/main.js << 'EOF'
-        // Category Definitions - Edit these to match your DITA structure
-        const categories = [
-            {
-                id: 'automotive-theories',
-                title: 'Automotive Theories',
-                icon: 'images/icons/theories.svg',
-                url: 'automotive-theories.html'
-            },
-            {
-                id: 'basic-maintenance',
-                title: 'Basic Maintenance',
-                icon: 'images/icons/basic-maintenance.svg',
-                url: 'basic-maintenance.html'
-            },
-            {
-                id: 'vehicle-maintenance',
-                title: 'Vehicle Maintenance',
-                icon: 'images/icons/vehicle-maintenance.svg',
-                url: 'vehicle-maintenance.html'
-            },
-            {
-                id: 'emergency-repairs',
-                title: 'Emergency Repairs',
-                icon: 'images/icons/emergency.svg',
-                url: 'emergency-repairs.html'
-            },
-            {
-                id: 'vehicle-components',
-                title: 'Vehicle Components',
-                icon: 'images/icons/components.svg',
-                url: 'vehicle-components.html'
-            },
-            {
-                id: 'electrical-systems',
-                title: 'Electrical Systems',
-                icon: 'images/icons/electrical.svg',
-                url: 'electrical-systems.html'
-            }
-            // Add more categories as needed
-        ];
-
-        // Function to generate category tiles
-        function generateCategoryTiles() {
-            const categoriesContainer = document.querySelector('.categories');
-            if (!categoriesContainer) return;
-            
-            categories.forEach(category => {
-                const tile = document.createElement('a');
-                tile.href = category.url;
-                tile.className = 'category-tile';
-                tile.id = category.id;
-                
-                const icon = document.createElement('img');
-                icon.src = category.icon;
-                icon.alt = category.title;
-                icon.className = 'category-icon';
-                
-                const title = document.createElement('h3');
-                title.className = 'category-title';
-                title.textContent = category.title;
-                
-                tile.appendChild(icon);
-                tile.appendChild(title);
-                categoriesContainer.appendChild(tile);
-            });
-        }
-
-        // Initialize search functionality
-        function initSearch() {
-            const searchInput = document.getElementById('search-input');
-            const searchButton = document.getElementById('search-button');
-            
-            if (!searchInput || !searchButton) return;
-            
-            searchButton.addEventListener('click', () => {
-                const query = searchInput.value.trim();
-                if (query) {
-                    // Implement search functionality or redirect to search page
-                    window.location.href = `search.html?q=${encodeURIComponent(query)}`;
-                }
-            });
-            
-            searchInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    searchButton.click();
-                }
-            });
-        }
-
-        // Initialize the page
-        document.addEventListener('DOMContentLoaded', () => {
-            generateCategoryTiles();
-            initSearch();
-        });
-        EOF
-        
-        # Create HTML template
-        cat > themes/automotive-theme/templates/index.html << 'EOF'
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>%title% | Automotive Information</title>
-            <link rel="stylesheet" href="css/main.css">
-        </head>
-        <body>
-            <header>
-                <div class="logo-container">
-                    <img src="images/logo.svg" alt="Logo" class="logo">
-                    <h1>Automotive Information</h1>
-                </div>
-                <nav>
-                    <ul>
-                        <li><a href="index.html">Home</a></li>
-                        <li><a href="automotive-theories.html">Automotive Theories</a></li>
-                        <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
-                        <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
-                        <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
-                    </ul>
-                </nav>
-            </header>
-
-            <div class="search-container">
-                <input type="text" placeholder="Search" id="search-input">
-                <button type="submit" id="search-button">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="11" cy="11" r="8"></circle>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-                </button>
-            </div>
-
-            <main>
-                <div class="categories">
-                    <!-- Category tiles will be dynamically populated -->
-                    %category-tiles%
-                </div>
-
-                <div class="content">
-                    %content%
-                </div>
-            </main>
-
-            <footer>
-                <p>©2025 Your Company, Inc. All Rights Reserved.</p>
-                <p>Contact: <a href="mailto:support@example.com">support@example.com</a></p>
-            </footer>
-
-            <script src="js/main.js"></script>
-        </body>
-        </html>
-        EOF
-        
-        # Create logo SVG
-        cat > themes/automotive-theme/images/logo.svg << 'EOF'
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="45" fill="#ffffff" stroke="#2c3e50" stroke-width="5"/>
-          <!-- Car shape -->
-          <path d="M25 55 C25 55, 30 45, 50 45 C70 45, 75 55, 75 55 L75 65 L25 65 Z" fill="#e74c3c"/>
-          <!-- Wheels -->
-          <circle cx="35" cy="65" r="8" fill="#2c3e50"/>
-          <circle cx="65" cy="65" r="8" fill="#2c3e50"/>
-          <!-- Windshield -->
-          <path d="M40 45 L45 35 L55 35 L60 45" fill="none" stroke="#2c3e50" stroke-width="2"/>
-        </svg>
-        EOF
-        
-        # Create SVG icons
-        # Automotive Theories icon
-        cat > themes/automotive-theme/images/icons/theories.svg << 'EOF'
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="45" fill="#f5f5f5" stroke="#2c3e50" stroke-width="3"/>
-          <!-- Book/theory icon -->
-          <rect x="30" y="30" width="40" height="50" fill="#fff" stroke="#2c3e50" stroke-width="2"/>
-          <!-- Book pages -->
-          <path d="M50 30 L50 80" stroke="#2c3e50" stroke-width="1"/>
-          <!-- Text lines -->
-          <path d="M35 40 L45 40" stroke="#e74c3c" stroke-width="2"/>
-          <path d="M55 40 L65 40" stroke="#e74c3c" stroke-width="2"/>
-          <path d="M35 50 L45 50" stroke="#e74c3c" stroke-width="2"/>
-          <path d="M55 50 L65 50" stroke="#e74c3c" stroke-width="2"/>
-          <path d="M35 60 L45 60" stroke="#e74c3c" stroke-width="2"/>
-          <path d="M55 60 L65 60" stroke="#e74c3c" stroke-width="2"/>
-          <path d="M35 70 L45 70" stroke="#e74c3c" stroke-width="2"/>
-          <path d="M55 70 L65 70" stroke="#e74c3c" stroke-width="2"/>
-        </svg>
-        EOF
-        
-        # Basic Maintenance icon
-        cat > themes/automotive-theme/images/icons/basic-maintenance.svg << 'EOF'
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="45" fill="#f5f5f5" stroke="#2c3e50" stroke-width="3"/>
-          <!-- Wrench -->
-          <path d="M30 70 L45 55 L65 75 L70 70 L50 50 L70 30 L65 25 L45 45 L30 30 L25 35 L45 55 Z" fill="#e74c3c" stroke="#2c3e50" stroke-width="2"/>
-        </svg>
-        EOF
-        
-        # Vehicle Maintenance icon
-        cat > themes/automotive-theme/images/icons/vehicle-maintenance.svg << 'EOF'
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="45" fill="#f5f5f5" stroke="#2c3e50" stroke-width="3"/>
-          <!-- Car silhouette -->
-          <path d="M25 55 C25 55, 30 45, 50 45 C70 45, 75 55, 75 55 L75 65 L25 65 Z" fill="#fff" stroke="#2c3e50" stroke-width="2"/>
-          <!-- Wheels -->
-          <circle cx="35" cy="65" r="8" fill="#e74c3c" stroke="#2c3e50" stroke-width="1"/>
-          <circle cx="65" cy="65" r="8" fill="#e74c3c" stroke="#2c3e50" stroke-width="1"/>
-          <!-- Windshield -->
-          <path d="M40 45 L45 35 L55 35 L60 45" fill="none" stroke="#2c3e50" stroke-width="2"/>
-          <!-- Wrench over car -->
-          <path d="M40 30 L50 40 L45 45 L35 35 Z" fill="#e74c3c" stroke="#2c3e50" stroke-width="1"/>
-        </svg>
-        EOF
-        
-        # Emergency Repairs icon
-        cat > themes/automotive-theme/images/icons/emergency.svg << 'EOF'
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="45" fill="#f5f5f5" stroke="#2c3e50" stroke-width="3"/>
-          <!-- Alert triangle -->
-          <path d="M50 20 L80 70 L20 70 Z" fill="#e74c3c" stroke="#2c3e50" stroke-width="2"/>
-          <!-- Exclamation mark -->
-          <circle cx="50" cy="60" r="3" fill="#fff"/>
-          <rect x="47" y="35" width="6" height="20" rx="3" ry="3" fill="#fff"/>
-        </svg>
-        EOF
-        
-        # Vehicle Components icon
-        cat > themes/automotive-theme/images/icons/components.svg << 'EOF'
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="45" fill="#f5f5f5" stroke="#2c3e50" stroke-width="3"/>
-          <!-- Gear -->
-          <path d="M50 25 L55 25 L57 35 C60 36 63 37 65 39 L75 35 L78 39 L70 47 C71 49 71 52 70 55 L78 61 L75 65 L65 61 C63 63 60 64 57 65 L55 75 L45 75 L43 65 C40 64 37 63 35 61 L25 65 L22 61 L30 55 C29 52 29 49 30 47 L22 39 L25 35 L35 39 C37 37 40 36 43 35 L45 25 Z" fill="#e74c3c" stroke="#2c3e50" stroke-width="2"/>
-          <!-- Inner circle -->
-          <circle cx="50" cy="50" r="10" fill="#fff" stroke="#2c3e50" stroke-width="2"/>
-        </svg>
-        EOF
-        
-        # Electrical Systems icon
-        cat > themes/automotive-theme/images/icons/electrical.svg << 'EOF'
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="45" fill="#f5f5f5" stroke="#2c3e50" stroke-width="3"/>
-          <!-- Lightning bolt -->
-          <path d="M55 25 L35 50 L50 50 L45 75 L65 50 L50 50 Z" fill="#e74c3c" stroke="#2c3e50" stroke-width="2"/>
-          <!-- Battery terminals -->
-          <rect x="30" y="35" width="10" height="5" fill="#2c3e50"/>
-          <rect x="60" y="35" width="10" height="5" fill="#2c3e50"/>
-        </svg>
-        EOF
-        
-        # Create template header and footer files
-        cat > themes/automotive-theme/templates/header.xml << 'EOF'
-        <div class="header">
-          <div class="logo-container">
-            <img src="images/logo.svg" alt="Logo" class="logo">
-            <h1>Automotive Information</h1>
-          </div>
-          <nav>
-            <ul>
-              <li><a href="index.html">Home</a></li>
-              <li><a href="automotive-theories.html">Automotive Theories</a></li>
-              <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
-              <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
-              <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
-            </ul>
-          </nav>
-        </div>
-        EOF
-        
-        cat > themes/automotive-theme/templates/footer.xml << 'EOF'
-        <div class="footer">
-          <p>©2025 Your Company, Inc. All Rights Reserved.</p>
-          <p>Contact: <a href="mailto:support@example.com">support@example.com</a></p>
-        </div>
-        EOF
-        
-        # Create plugin.xml file
-        cat > tools/dita-ot/plugins/com.yourcompany.html5/plugin.xml << 'EOF'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <plugin id="com.yourcompany.html5">
-          <require plugin="org.dita.html5"/>
-          <feature extension="dita.conductor.html5.param" file="params.xml"/>
-        </plugin>
-        EOF
-        
-        # Create params.xml file
-        cat > tools/dita-ot/plugins/com.yourcompany.html5/params.xml << 'EOF'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <params>
-          <param name="args.csspath" expression="css"/>
-          <param name="args.css" expression="main.css"/>
-          <param name="args.copycss" expression="yes"/>
-          <param name="args.cssroot" expression="themes/automotive-theme/css"/>
-          <param name="args.hdr" expression="themes/automotive-theme/templates/header.xml"/>
-          <param name="args.ftr" expression="themes/automotive-theme/templates/footer.xml"/>
-        </params>
-        EOF
-        
-        # Copy custom files to plugin directory
-        cp -r themes/automotive-theme/* tools/dita-ot/plugins/com.yourcompany.html5/
-        
-        # Install plugin
-        tools/dita-ot/bin/dita --install
-
-    - name: Build DITA
-      run: |
-        # Debug information
-        echo "==== DEBUG INFO ===="
-        echo "Current directory: $(pwd)"
-        echo "Listing dita-source directory:"
-        ls -la dita-source/ || echo "dita-source directory not found"
-        echo "Installed plugins:"
-        tools/dita-ot/bin/dita --plugins || echo "Failed to list plugins"
-        
-        # Find your main DITA map file (adjust as needed)
+        # Find the main DITA map
         MAIN_DITAMAP=$(find dita-source -name "*.ditamap" -type f | head -1)
-        
-        # If no DITAMAP found, provide a default
         if [ -z "$MAIN_DITAMAP" ]; then
-          echo "No DITAMAP found, using a default name"
           MAIN_DITAMAP="dita-source/sample.ditamap"
-          echo "Warning: No existing DITAMAP file was found. Using the sample file."
         fi
         
         echo "Using DITAMAP: $MAIN_DITAMAP"
+        echo "DITA-OT version:"
+        tools/dita-ot/bin/dita --version
         
-        # Add verbose flag for more detailed output
-        tools/dita-ot/bin/dita --input=$MAIN_DITAMAP \
-        --format=html5 \
-        --output=build \
-        --verbose \
-        --args.cssroot=themes/automotive-theme/css \
-        --args.css=main.css \
-        --args.csspath=css \
-        --args.copycss=yes \
-        --args.hdr=themes/automotive-theme/templates/header.xml \
-        --args.ftr=themes/automotive-theme/templates/footer.xml
+        # Run a basic transformation without any customization first
+        echo "Running basic HTML5 transformation..."
+        tools/dita-ot/bin/dita --input=$MAIN_DITAMAP --format=html5 --output=build --verbose
         
-        # Check build result
-        BUILD_RESULT=$?
-        if [ $BUILD_RESULT -ne 0 ]; then
-          echo "DITA build failed with code $BUILD_RESULT"
-          echo "Contents of dita-ot temp directory:"
-          ls -la tools/dita-ot/temp || echo "No temp directory found"
-          echo "Checking for log files:"
-          find tools/dita-ot -name "*.log" | xargs cat || echo "No log files found"
-          exit $BUILD_RESULT
+        # Check the build result
+        if [ $? -ne 0 ]; then
+          echo "Basic DITA-OT build failed!"
+          echo "Checking DITA-OT log files:"
+          find tools/dita-ot -name "*.log" | while read logfile; do
+            echo "==== Contents of $logfile ===="
+            cat "$logfile"
+          done
+          exit 1
         fi
         
-        # Copy additional assets
-        cp -r themes/automotive-theme/js build/
-        cp -r themes/automotive-theme/images build/
+        echo "Basic DITA-OT build succeeded! Output:"
+        ls -la build/
+
+    - name: Add Simple CSS Styling
+      if: success()
+      run: |
+        echo "Adding simple CSS styling..."
+        mkdir -p css
+        
+        # Create a simple CSS file
+        cat > css/automotive.css << 'EOF'
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 10px 20px;
+            margin-bottom: 20px;
+        }
+        
+        footer {
+            background-color: #e74c3c;
+            color: white;
+            padding: 10px 20px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        a {
+            color: #2c3e50;
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+        EOF
+        
+        # Copy CSS to the build directory
+        cp css/automotive.css build/
+        
+        # Add a link to the CSS in the HTML files
+        find build -name "*.html" | while read htmlfile; do
+          sed -i 's/<\/head>/<link rel="stylesheet" type="text\/css" href="automotive.css"\/>\n<\/head>/' "$htmlfile"
+        done
 
     - name: Deploy to GitHub Pages
+      if: success()
       uses: JamesIves/github-pages-deploy-action@v4
       with:
         folder: build
