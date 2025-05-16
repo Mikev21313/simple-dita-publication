@@ -1,30 +1,25 @@
 name: Transform and Publish DITA # Original name
-
 on:
   # Trigger the workflow on push to the main branch
   push:
     branches: [ main ]
   # Allow manual triggering from the Actions tab
   workflow_dispatch:
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest # Use the latest Ubuntu runner
     permissions:
       contents: write # Grant permission to write to the GitHub Pages branch
-
     steps:
       # Step 1: Check out the repository
       - name: Checkout repository
         uses: actions/checkout@v3
-
       # Step 2: Set up Java 17 (required for DITA-OT 4.0.2)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin' # Use Temurin distribution
           java-version: '17'     # Specify Java 17
-
       # Step 3: Download and set up DITA-OT
       # This step only downloads and unzips the standard DITA-OT
       - name: Set up DITA-OT
@@ -36,7 +31,6 @@ jobs:
           echo "Setting execute permissions for DITA-OT binary..."
           chmod +x dita-ot-4.0.2/bin/dita
           echo "DITA-OT setup complete."
-
       # Step 4: Verify DITA-OT and Java version (optional but good for debugging)
       - name: Verify environment
         run: |
@@ -44,7 +38,6 @@ jobs:
           java -version
           echo "DITA-OT Version:"
           ./dita-ot-4.0.2/bin/dita --version
-
       # Step 5: Transform DITA to HTML using the standard html5 format
       # This uses the default HTML5 transformation without custom plugin styling
       - name: Transform DITA to HTML
@@ -52,7 +45,229 @@ jobs:
           echo "Running standard DITA-OT HTML5 transformation..."
           ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
           echo "DITA transformation complete. Output is in ./site"
-
+          
+      # New Step: Add Side Cart Feature
+      - name: Add Side Cart Feature
+        run: |
+          echo "Adding side cart navigation feature..."
+          
+          # Create directories for CSS and JS
+          mkdir -p ./site/css
+          mkdir -p ./site/js
+          
+          # Create CSS file for side cart
+          cat > ./site/css/sidecart.css << 'EOF'
+          body {
+            display: flex;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+          }
+          
+          .sidebar {
+            width: 250px;
+            height: 100vh;
+            overflow-y: auto;
+            background-color: #f5f5f5;
+            border-right: 1px solid #ddd;
+            padding: 15px;
+            position: fixed;
+            left: 0;
+            top: 0;
+            box-sizing: border-box;
+          }
+          
+          .main-content {
+            margin-left: 250px;
+            padding: 20px;
+            flex: 1;
+            max-width: calc(100% - 250px);
+            box-sizing: border-box;
+            overflow-y: auto;
+          }
+          
+          .sidebar ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+          }
+          
+          .sidebar li {
+            margin-bottom: 8px;
+          }
+          
+          .sidebar a {
+            display: block;
+            padding: 5px 10px;
+            color: #333;
+            text-decoration: none;
+            border-radius: 4px;
+          }
+          
+          .sidebar a:hover {
+            background-color: #e0e0e0;
+          }
+          
+          .sidebar a.active {
+            background-color: #ddd;
+            font-weight: bold;
+          }
+          
+          .sidebar h3 {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #555;
+          }
+          
+          @media (max-width: 768px) {
+            .sidebar {
+              width: 200px;
+            }
+            .main-content {
+              margin-left: 200px;
+              max-width: calc(100% - 200px);
+            }
+          }
+          EOF
+          
+          # Create JavaScript file for sidebar functionality
+          cat > ./site/js/sidecart.js << 'EOF'
+          document.addEventListener('DOMContentLoaded', function() {
+            // Get current page filename
+            var currentPage = window.location.pathname.split('/').pop();
+            if (!currentPage) currentPage = 'index.html';
+            
+            // Find and highlight current page in sidebar
+            var sidebarLinks = document.querySelectorAll('.sidebar a');
+            for (var i = 0; i < sidebarLinks.length; i++) {
+              var href = sidebarLinks[i].getAttribute('href');
+              if (href === currentPage) {
+                sidebarLinks[i].classList.add('active');
+                // Scroll to active link
+                sidebarLinks[i].scrollIntoView({block: 'center', behavior: 'smooth'});
+              }
+            }
+          });
+          EOF
+          
+          # Find navigation file and extract links
+          echo "Finding navigation and extracting links..."
+          NAV_FILE=$(find ./site -name "toc.html" -o -name "nav.html" -o -name "index.html" | head -1)
+          
+          if [ -n "$NAV_FILE" ]; then
+            echo "Found navigation file: $NAV_FILE"
+            
+            # Create temporary files for processing
+            TEMP_LINKS=$(mktemp)
+            TEMP_SIDEBAR=$(mktemp)
+            
+            # Extract links - safer approach without complex regex
+            grep -o '<a href=[^>]*>[^<]*</a>' "$NAV_FILE" > "$TEMP_LINKS" || echo "No links found"
+            
+            # Create sidebar HTML
+            echo '<div class="sidebar">' > "$TEMP_SIDEBAR"
+            echo '<h2>Navigation</h2>' >> "$TEMP_SIDEBAR"
+            echo '<ul>' >> "$TEMP_SIDEBAR"
+            
+            # Add links to sidebar
+            if [ -s "$TEMP_LINKS" ]; then
+              while read -r link; do
+                echo "<li>$link</li>" >> "$TEMP_SIDEBAR"
+              done < "$TEMP_LINKS"
+            else
+              echo "<li>No navigation links available</li>" >> "$TEMP_SIDEBAR"
+            fi
+            
+            echo '</ul>' >> "$TEMP_SIDEBAR"
+            echo '</div>' >> "$TEMP_SIDEBAR"
+            
+            # Add sidebar to HTML files using a safer approach
+            find ./site -name "*.html" | while read -r html_file; do
+              # Skip navigation files
+              if [[ "$html_file" != *"toc.html"* && "$html_file" != *"nav.html"* ]]; then
+                echo "Adding sidebar to $html_file"
+                
+                # Create new file with modifications
+                TEMP_HTML=$(mktemp)
+                
+                # Process the file line by line to avoid sed issues
+                while IFS= read -r line; do
+                  # Add CSS and JS links before head closing tag
+                  if [[ "$line" == *"</head>"* ]]; then
+                    echo '<link rel="stylesheet" type="text/css" href="css/sidecart.css">' >> "$TEMP_HTML"
+                    echo '<script src="js/sidecart.js"></script>' >> "$TEMP_HTML"
+                  fi
+                  
+                  # Add sidebar after body opening tag
+                  if [[ "$line" == *"<body"*">"* ]]; then
+                    echo "$line" >> "$TEMP_HTML"
+                    cat "$TEMP_SIDEBAR" >> "$TEMP_HTML"
+                    echo '<div class="main-content">' >> "$TEMP_HTML"
+                    continue
+                  fi
+                  
+                  # Add main-content div closing before body closing tag
+                  if [[ "$line" == *"</body>"* ]]; then
+                    echo '</div>' >> "$TEMP_HTML"
+                  fi
+                  
+                  # Write the original line
+                  echo "$line" >> "$TEMP_HTML"
+                done < "$html_file"
+                
+                # Replace original file with modified version
+                mv "$TEMP_HTML" "$html_file"
+              fi
+            done
+            
+            # Clean up temp files
+            rm -f "$TEMP_LINKS" "$TEMP_SIDEBAR"
+          else
+            echo "No navigation file found. Creating basic sidebar."
+            
+            # Create a basic sidebar for all HTML files
+            find ./site -name "*.html" | while read -r html_file; do
+              # Skip navigation files
+              if [[ "$html_file" != *"toc.html"* && "$html_file" != *"nav.html"* ]]; then
+                echo "Adding basic sidebar to $html_file"
+                
+                # Process with temporary file
+                TEMP_HTML=$(mktemp)
+                
+                # Process the file line by line
+                while IFS= read -r line; do
+                  # Add CSS and JS links before head closing tag
+                  if [[ "$line" == *"</head>"* ]]; then
+                    echo '<link rel="stylesheet" type="text/css" href="css/sidecart.css">' >> "$TEMP_HTML"
+                    echo '<script src="js/sidecart.js"></script>' >> "$TEMP_HTML"
+                  fi
+                  
+                  # Add basic sidebar after body opening tag
+                  if [[ "$line" == *"<body"*">"* ]]; then
+                    echo "$line" >> "$TEMP_HTML"
+                    echo '<div class="sidebar"><h2>Navigation</h2><p>No navigation available</p></div>' >> "$TEMP_HTML"
+                    echo '<div class="main-content">' >> "$TEMP_HTML"
+                    continue
+                  fi
+                  
+                  # Add main-content div closing before body closing tag
+                  if [[ "$line" == *"</body>"* ]]; then
+                    echo '</div>' >> "$TEMP_HTML"
+                  fi
+                  
+                  # Write the original line
+                  echo "$line" >> "$TEMP_HTML"
+                done < "$html_file"
+                
+                # Replace original file with modified version
+                mv "$TEMP_HTML" "$html_file"
+              fi
+            done
+          fi
+          
+          echo "Side cart feature added successfully."
+          
       # Step 6: Deploy the generated HTML site to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
