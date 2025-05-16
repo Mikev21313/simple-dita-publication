@@ -1,4 +1,93 @@
-name: DITA to HTML Build and Deploy
+    - name: Install Additional Tools
+      run: |
+        echo "Installing xmllint for XML validation..."
+        sudo apt-get update
+        sudo apt-get install -y libxml2-utils    - name: Verify DITA Source
+      run: |
+        echo "Checking DITA source content..."
+        if [ ! -d "dita-source" ]; then
+          echo "dita-source directory not found! Creating empty directory structure."
+          mkdir -p dita-source
+          
+          # Create a simple sample DITA map if none exists
+          echo "Creating a sample DITA map file..."
+          cat > dita-source/sample.ditamap << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
+        <map>
+          <title>Automotive Information</title>
+          <topicref href="sample-topic.dita" type="topic"/>
+        </map>
+        EOF
+          
+          # Create a simple sample DITA topic if none exists
+          echo "Creating a sample DITA topic file..."
+          cat > dita-source/sample-topic.dita << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
+        <topic id="sample">
+          <title>Automotive Information</title>
+          <body>
+            <p>Welcome to our automotive documentation.</p>
+            <section>
+              <title>Automotive Theories</title>
+              <p>Learn about automotive theories and concepts.</p>
+            </section>
+            <section>
+              <title>Basic Maintenance</title>
+              <p>Learn about basic vehicle maintenance.</p>
+            </section>
+          </body>
+        </topic>
+        EOF
+        else
+          echo "dita-source directory found. Checking contents..."
+          find dita-source -type f -name "*.dita*" | while read -r file; do
+            echo "Found DITA file: $file"
+            # Validate XML syntax
+            xmllint --noout "$file" 2>/dev/null
+            if [ $? -ne 0 ]; then
+              echo "Warning: XML validation failed for $file"
+            fi
+          done
+          
+          # Count DITA files
+          DITA_FILE_COUNT=$(find dita-source -type f -name "*.dita*" | wc -l)
+          echo "Found $DITA_FILE_COUNT DITA files"
+          
+          if [ "$DITA_FILE_COUNT" -eq 0 ]; then
+            echo "No DITA files found! Creating sample files..."
+            # Create a simple sample DITA map if none exists
+            cat > dita-source/sample.ditamap << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
+        <map>
+          <title>Automotive Information</title>
+          <topicref href="sample-topic.dita" type="topic"/>
+        </map>
+        EOF
+            
+            # Create a simple sample DITA topic if none exists
+            cat > dita-source/sample-topic.dita << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
+        <topic id="sample">
+          <title>Automotive Information</title>
+          <body>
+            <p>Welcome to our automotive documentation.</p>
+            <section>
+              <title>Automotive Theories</title>
+              <p>Learn about automotive theories and concepts.</p>
+            </section>
+            <section>
+              <title>Basic Maintenance</title>
+              <p>Learn about basic vehicle maintenance.</p>
+            </section>
+          </body>
+        </topic>
+        EOF
+          fi
+        finame: DITA to HTML Build and Deploy
 
 on:
   push:
@@ -517,26 +606,48 @@ jobs:
 
     - name: Build DITA
       run: |
+        # Debug information
+        echo "==== DEBUG INFO ===="
+        echo "Current directory: $(pwd)"
+        echo "Listing dita-source directory:"
+        ls -la dita-source/ || echo "dita-source directory not found"
+        echo "Installed plugins:"
+        tools/dita-ot/bin/dita --plugins || echo "Failed to list plugins"
+        
         # Find your main DITA map file (adjust as needed)
-        MAIN_DITAMAP=$(find dita-source -name "*.ditamap" | head -1)
+        MAIN_DITAMAP=$(find dita-source -name "*.ditamap" -type f | head -1)
         
         # If no DITAMAP found, provide a default
         if [ -z "$MAIN_DITAMAP" ]; then
           echo "No DITAMAP found, using a default name"
           MAIN_DITAMAP="dita-source/main.ditamap"
+          echo "Warning: No DITAMAP file was found. Check if your DITA source files exist."
         fi
         
         echo "Using DITAMAP: $MAIN_DITAMAP"
         
+        # Add verbose flag for more detailed output
         tools/dita-ot/bin/dita --input=$MAIN_DITAMAP \
         --format=html5 \
         --output=build \
+        --verbose \
         --args.cssroot=themes/automotive-theme/css \
         --args.css=main.css \
         --args.csspath=css \
         --args.copycss=yes \
         --args.hdr=themes/automotive-theme/templates/header.xml \
         --args.ftr=themes/automotive-theme/templates/footer.xml
+        
+        # Check build result
+        BUILD_RESULT=$?
+        if [ $BUILD_RESULT -ne 0 ]; then
+          echo "DITA build failed with code $BUILD_RESULT"
+          echo "Contents of dita-ot temp directory:"
+          ls -la tools/dita-ot/temp || echo "No temp directory found"
+          echo "Checking for log files:"
+          find tools/dita-ot -name "*.log" | xargs cat || echo "No log files found"
+          exit $BUILD_RESULT
+        fi
         
         # Copy additional assets
         cp -r themes/automotive-theme/js build/
