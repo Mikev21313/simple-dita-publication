@@ -162,6 +162,9 @@ jobs:
             fi
           fi
           
+          # Store navigation content in a variable for reuse
+          NAV_CONTENT=$(cat ./site/navigation.html)
+          
           # Process all HTML files
           find ./site -name "*.html" | while read -r file; do
             echo "Processing $file"
@@ -177,31 +180,29 @@ jobs:
             # Create a new file with our structure
             NEW_FILE=$(mktemp)
             
-            cat > "$NEW_FILE" << EOF
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>$TITLE</title>
-            <link rel="stylesheet" href="css/style.css">
-          </head>
-          <body>
-            <div class="sidebar">
-              <h2>Navigation</h2>
-              $(cat ./site/navigation.html)
-            </div>
-            <div class="main-content">
-          EOF
+            # Create HTML structure 
+            echo '<!DOCTYPE html>' > "$NEW_FILE"
+            echo '<html>' >> "$NEW_FILE"
+            echo '<head>' >> "$NEW_FILE"
+            echo '  <meta charset="UTF-8">' >> "$NEW_FILE"
+            echo "  <title>$TITLE</title>" >> "$NEW_FILE"
+            echo '  <link rel="stylesheet" href="css/style.css">' >> "$NEW_FILE"
+            echo '</head>' >> "$NEW_FILE"
+            echo '<body>' >> "$NEW_FILE"
+            echo '  <div class="sidebar">' >> "$NEW_FILE"
+            echo '    <h2>Navigation</h2>' >> "$NEW_FILE"
+            # Insert navigation content directly
+            echo "$NAV_CONTENT" >> "$NEW_FILE"
+            echo '  </div>' >> "$NEW_FILE"
+            echo '  <div class="main-content">' >> "$NEW_FILE"
             
             # Add the body content, skipping the body tags themselves
             sed '/<body/d; /<\/body>/d' "$TEMP_CONTENT" >> "$NEW_FILE"
             
             # Add closing tags
-            cat >> "$NEW_FILE" << EOF
-            </div>
-          </body>
-          </html>
-          EOF
+            echo '  </div>' >> "$NEW_FILE"
+            echo '</body>' >> "$NEW_FILE"
+            echo '</html>' >> "$NEW_FILE"
             
             # Replace original file with our processed version
             mv "$NEW_FILE" "$file"
