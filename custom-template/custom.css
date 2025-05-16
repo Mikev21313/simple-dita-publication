@@ -15,7 +15,7 @@ body {
     padding: 20px; /* Add padding around the content */
     line-height: 1.6; /* Improve line spacing */
     color: #333; /* Dark grey text for readability */
-    background-color: #f4f4f4; /* Light grey background */
+    background-color: teal; /* Changed background color to teal */
 }
 
 /* Style for the main container if needed (adjust based on DITA-OT output structure) */
@@ -131,4 +131,10 @@ body {
 
 .topictitle2 {
     font-size: 1.6em; /* Sub-topic title size */
-    font-weight: 6
+    font-weight: 600;
+    color: #495057; /* Darker grey */
+    margin-top: 20px;
+    margin-bottom: 15px;
+}
+
+/* ... (rest of your CSS) ... */
