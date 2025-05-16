@@ -1,8 +1,39 @@
+name: DITA to HTML Build and Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Set up JDK 11
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+        
     - name: Install Additional Tools
       run: |
         echo "Installing xmllint for XML validation..."
         sudo apt-get update
-        sudo apt-get install -y libxml2-utils    - name: Verify DITA Source
+        sudo apt-get install -y libxml2-utils
+
+    - name: Setup DITA-OT
+      run: |
+        mkdir -p tools
+        curl -L https://github.com/dita-ot/dita-ot/releases/download/4.1.2/dita-ot-4.1.2.zip -o tools/dita-ot.zip
+        unzip tools/dita-ot.zip -d tools/
+        mv tools/dita-ot-4.1.2 tools/dita-ot
+
+    - name: Verify DITA Source
       run: |
         echo "Checking DITA source content..."
         if [ ! -d "dita-source" ]; then
@@ -87,34 +118,7 @@
         </topic>
         EOF
           fi
-        finame: DITA to HTML Build and Deploy
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-
-    - name: Set up JDK 11
-      uses: actions/setup-java@v3
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-
-    - name: Setup DITA-OT
-      run: |
-        mkdir -p tools
-        curl -L https://github.com/dita-ot/dita-ot/releases/download/4.1.2/dita-ot-4.1.2.zip -o tools/dita-ot.zip
-        unzip tools/dita-ot.zip -d tools/
-        mv tools/dita-ot-4.1.2 tools/dita-ot
+        fi
 
     - name: Apply Custom Styling
       run: |
@@ -620,8 +624,8 @@ jobs:
         # If no DITAMAP found, provide a default
         if [ -z "$MAIN_DITAMAP" ]; then
           echo "No DITAMAP found, using a default name"
-          MAIN_DITAMAP="dita-source/main.ditamap"
-          echo "Warning: No DITAMAP file was found. Check if your DITA source files exist."
+          MAIN_DITAMAP="dita-source/sample.ditamap"
+          echo "Warning: No existing DITAMAP file was found. Using the sample file."
         fi
         
         echo "Using DITAMAP: $MAIN_DITAMAP"
@@ -652,7 +656,7 @@ jobs:
         # Copy additional assets
         cp -r themes/automotive-theme/js build/
         cp -r themes/automotive-theme/images build/
-        
+
     - name: Deploy to GitHub Pages
       uses: JamesIves/github-pages-deploy-action@v4
       with:
