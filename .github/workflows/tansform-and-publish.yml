@@ -35,7 +35,7 @@ jobs:
           echo "Generated files:"
           find ./site -type f | sort
 
-      - name: Create Sidebar Navigation
+      - name: Create Simplified Navigation
         run: |
           # Create directories for assets
           mkdir -p ./site/css
@@ -130,35 +130,13 @@ jobs:
             height: auto;
           }
           
-          /* Hide redundant navigation in main content */
+          /* Hide duplicate navigation in main content */
           .main-content > ul:first-of-type {
             display: none;
           }
           EOF
           
-          # Simple script to highlight current page in navigation
-          cat > ./site/js/highlight.js << 'EOF'
-          document.addEventListener('DOMContentLoaded', function() {
-            // Get current page filename
-            var path = window.location.pathname;
-            var page = path.split("/").pop();
-            
-            // If no page specified, assume index.html
-            if(!page || page === "") {
-              page = "index.html";
-            }
-            
-            // Find matching link and add active class
-            var navLinks = document.querySelectorAll('.sidebar a');
-            navLinks.forEach(function(link) {
-              if(link.getAttribute('href') === page) {
-                link.classList.add('active');
-              }
-            });
-          });
-          EOF
-          
-          # Create navigation HTML
+          # Create the navigation HTML
           cat > ./site/navigation.html << 'EOF'
           <ul>
             <li><a href="automotive-theories.html">Automotive Theories</a>
@@ -182,125 +160,123 @@ jobs:
           </ul>
           EOF
           
-          # Gather available HTML files
-          AVAILABLE_FILES=$(find ./site -name "*.html" -not -path "./site/index.html" | sed 's|./site/||g')
-          echo "Available HTML files: $AVAILABLE_FILES"
-          
-          # List of navigation targets (keep in sync with navigation.html)
-          NAVIGATION_TARGETS="automotive-theories.html history-of-automobiles.html types-of-vehicles.html automobile-fundamentals.html major-vehicle-components.html electrical-systems.html engine-systems.html electric-vehicles.html braking-systems.html basic-maintenance.html vehicle-maintenance.html emergency-repairs.html"
-
-          # Directory to store topic content files
-          mkdir -p ./site/topics
-          
-          # Identify available content files and map them to navigation targets
-          for TARGET in $NAVIGATION_TARGETS; do
-            TARGET_BASE=$(echo "$TARGET" | sed 's/\.html$//')
-            echo "Processing target: $TARGET"
+          # Process each HTML file to add navigation
+          find ./site -name "*.html" | while read file; do
+            echo "Processing $file"
             
-            # Look for exact match
-            if echo "$AVAILABLE_FILES" | grep -q "^$TARGET$"; then
-              echo "Found exact match for $TARGET"
-              cp "./site/$TARGET" "./site/topics/$TARGET"
-            else
-              # Look for close match based on filename
-              MATCH=$(echo "$AVAILABLE_FILES" | grep -i "$TARGET_BASE" | head -1)
+            # Create a temporary file
+            tmp_file=$(mktemp)
+            
+            # Get the title from the original file
+            title=$(grep -o "<title>.*</title>" "$file" | head -1 || echo "<title>Automotive Documentation</title>")
+            
+            # Extract the main content (avoiding body tags)
+            content=$(sed -n '/<body/,/<\/body>/p' "$file" | sed '/<body/d;/<\/body>/d')
+            
+            # Create a new HTML file with navigation sidebar and content
+            cat > "$tmp_file" << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            $title
+            <link rel="stylesheet" href="css/style.css">
+            <script>
+              document.addEventListener('DOMContentLoaded', function() {
+                // Highlight current page in navigation
+                var path = window.location.pathname;
+                var page = path.split("/").pop();
+                if(!page) page = "index.html";
+                
+                var links = document.querySelectorAll('.sidebar a');
+                links.forEach(function(link) {
+                  if(link.getAttribute('href') === page) {
+                    link.classList.add('active');
+                  }
+                });
+              });
+            </script>
+          </head>
+          <body>
+            <div class="sidebar">
+              <h2>Navigation</h2>
+              $(cat ./site/navigation.html)
+            </div>
+            <div class="main-content">
+          $content
+            </div>
+          </body>
+          </html>
+          EOF
+            
+            # Replace the original file
+            mv "$tmp_file" "$file"
+          done
+          
+          # Create redirects for navigation items that don't exist
+          for target in automotive-theories.html history-of-automobiles.html types-of-vehicles.html automobile-fundamentals.html major-vehicle-components.html electrical-systems.html engine-systems.html electric-vehicles.html braking-systems.html basic-maintenance.html vehicle-maintenance.html emergency-repairs.html; do
+            if [ ! -f "./site/$target" ]; then
+              echo "Creating redirect for $target"
               
-              if [ -n "$MATCH" ]; then
-                echo "Found close match: $MATCH for $TARGET"
-                cp "./site/$MATCH" "./site/topics/$TARGET"
-              else
-                # No match found, create placeholder content
-                echo "No match found for $TARGET, creating placeholder"
-                cat > "./site/topics/$TARGET" << EOT
-<!DOCTYPE html>
-<html>
-<head>
-  <title>${TARGET_BASE^}</title>
-</head>
-<body>
-  <h1>${TARGET_BASE^}</h1>
-  <p>Content for this topic is under development.</p>
-</body>
-</html>
-EOT
-              fi
+              # Create a simple HTML page with navigation
+              cat > "./site/$target" << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>${target%.*}</title>
+            <link rel="stylesheet" href="css/style.css">
+          </head>
+          <body>
+            <div class="sidebar">
+              <h2>Navigation</h2>
+              $(cat ./site/navigation.html)
+            </div>
+            <div class="main-content">
+              <h1>${target%.*}</h1>
+              <p>Content for this topic is coming soon.</p>
+            </div>
+          </body>
+          </html>
+          EOF
             fi
           done
           
-          # Create template file
-          cat > ./site/template.html << 'EOF'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PAGE_TITLE</title>
-  <link rel="stylesheet" href="css/style.css">
-  <script src="js/highlight.js"></script>
-</head>
-<body>
-  <div class="sidebar">
-    <h2>Navigation</h2>
-    NAVIGATION_CONTENT
-  </div>
-  <div class="main-content">
-    MAIN_CONTENT
-  </div>
-</body>
-</html>
-EOF
-          
-          # Create index page if it doesn't exist
+          # Create index.html if it doesn't exist
           if [ ! -f "./site/index.html" ]; then
-            FIRST_TOPIC=$(echo "$NAVIGATION_TARGETS" | awk '{print $1}')
-            cat > "./site/index.html" << EOF
-<!DOCTYPE html>
-<html>
-<head>
-  <meta http-equiv="refresh" content="0;url=$FIRST_TOPIC">
-  <title>Redirecting...</title>
-</head>
-<body>
-  <p>Redirecting to <a href="$FIRST_TOPIC">$FIRST_TOPIC</a>...</p>
-</body>
-</html>
-EOF
+            echo "Creating index.html"
+            
+            # Copy from an existing file if available
+            if [ -f "./site/automotive-theories.html" ]; then
+              cp "./site/automotive-theories.html" "./site/index.html"
+            else
+              # Create a basic index page
+              cat > "./site/index.html" << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>Automotive Documentation</title>
+            <link rel="stylesheet" href="css/style.css">
+          </head>
+          <body>
+            <div class="sidebar">
+              <h2>Navigation</h2>
+              $(cat ./site/navigation.html)
+            </div>
+            <div class="main-content">
+              <h1>Automotive Documentation</h1>
+              <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>
+            </div>
+          </body>
+          </html>
+          EOF
+            fi
           fi
           
-          # Process each navigation target to create final HTML files
-          for TARGET in $NAVIGATION_TARGETS; do
-            echo "Creating final HTML for $TARGET"
-            
-            # Read the page title and content
-            if [ -f "./site/topics/$TARGET" ]; then
-              PAGE_TITLE=$(grep -o '<title>[^<]*</title>' "./site/topics/$TARGET" | sed 's/<title>\(.*\)<\/title>/\1/' || echo "${TARGET%.*}")
-              
-              # Extract main content 
-              TEMP_CONTENT=$(mktemp)
-              sed -n '/<body/,/<\/body>/p' "./site/topics/$TARGET" > "$TEMP_CONTENT"
-              MAIN_CONTENT=$(sed '/<body/d;/<\/body>/d' "$TEMP_CONTENT")
-              
-              # Clean up temp file
-              rm -f "$TEMP_CONTENT"
-            else
-              PAGE_TITLE="${TARGET%.*}"
-              MAIN_CONTENT="<h1>${TARGET%.*}</h1><p>Content coming soon.</p>"
-            fi
-            
-            # Create final HTML file
-            cat ./site/template.html | 
-              sed "s|PAGE_TITLE|$PAGE_TITLE|g" | 
-              sed "s|NAVIGATION_CONTENT|$(cat ./site/navigation.html)|g" | 
-              sed "s|MAIN_CONTENT|$MAIN_CONTENT|g" > "./site/$TARGET"
-          done
-          
           # Clean up
-          rm -f ./site/template.html ./site/navigation.html
-          rm -rf ./site/topics
-          
-          # List final files
-          echo "Final files:"
-          find ./site -type f | sort
+          rm -f ./site/navigation.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
