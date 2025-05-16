@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="com.example.customstyles">
+
+  <target name="html5-custom-styles.init">
+    <property name="args.hdr" location="${dita.plugin.com.example.customstyles.dir}/include/css-injection.xml"/>
+
+    </target>
+
+  <target name="html5-custom-styles" depends="html5-custom-styles.init, dita2html5"/>
+
+</project>

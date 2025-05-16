@@ -1,0 +1,192 @@
+/*
+ * Custom CSS for Automotive History Publication
+ * This file is included by the DITA-OT plugin to style the HTML output.
+ * It provides your specific visual styles.
+ */
+
+/* Import Figtree font */
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap');
+
+/* Basic body styling */
+body {
+    font-family: 'Figtree', sans-serif; /* Use the imported font */
+    max-width: 1200px; /* Limit content width for readability */
+    margin: 0 auto; /* Center the content block */
+    padding: 20px; /* Add padding around the content */
+    line-height: 1.6; /* Improve line spacing */
+    color: #333; /* Dark grey text for readability */
+    background-color: teal; /* Your desired teal background */
+}
+
+/* Styling for links */
+a {
+    color: #007bff; /* Use a pleasant blue for links */
+    text-decoration: none; /* Remove default underline */
+    transition: color 0.2s ease; /* Smooth color transition on hover */
+}
+
+a:hover {
+    color: #0056b3; /* Darker blue on hover */
+    text-decoration: underline; /* Add underline on hover for clarity */
+}
+
+/* Header styling (These styles will apply if your DITA structure or other customization generates elements with these classes/IDs) */
+#site-header {
+    margin-bottom: 30px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #d3d3d3;
+    background-color: #fff;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.site-title {
+    font-size: 2em;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: #0056b3;
+}
+
+/* Main navigation styling (These styles will apply if your DITA structure or other customization generates elements with these classes) */
+.main-nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    background-color: #e9ecef;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.main-nav li {
+    margin: 0;
+    position: relative;
+}
+
+.main-nav a {
+    color: #007bff;
+    text-decoration: none;
+    display: block;
+    padding: 8px 15px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    font-weight: 500;
+}
+
+.main-nav a:hover {
+    background-color: #007bff;
+    color: #fff;
+}
+
+/* Hide the original DITA title if a custom header is used */
+/* If DITA-OT generates a default title you want to hide when using a custom header */
+/* .title {
+    display: none;
+} */
+
+
+/* Content area headings (These target standard DITA-OT output classes) */
+.topictitle1 {
+    font-size: 2em;
+    font-weight: 700;
+    color: #343a40;
+    border-bottom: 2px solid #007bff;
+    padding-bottom: 10px;
+    margin-bottom: 25px;
+}
+
+.topictitle2 {
+    font-size: 1.6em;
+    font-weight: 600;
+    color: #495057;
+    margin-top: 20px;
+    margin-bottom: 15px;
+}
+
+/* Basic styling for lists (like the ones in your screenshot) */
+ul {
+    margin-left: 20px;
+    padding: 0;
+}
+
+li {
+    margin-bottom: 5px;
+}
+
+/* Styling for nested lists */
+ul ul, ol ul {
+    margin-left: 20px; /* Indent nested lists */
+    margin-top: 5px;
+}
+
+/* Basic styling for tables (if used for a tile layout as in your sample) */
+table {
+    margin: 20px auto; /* Center tables */
+    border-collapse: collapse;
+    width: 100%; /* Example: make tables full width */
+    max-width: 900px; /* Limit table width */
+}
+
+td {
+    padding: 15px;
+    text-align: left;
+    vertical-align: top;
+    border: 1px solid #ddd; /* Example border */
+}
+
+/* Styling for images within content */
+img {
+    max-width: 100%; /* Ensure images are responsive */
+    height: auto;
+}
+
+/* Add specific styles here if you use tables for a tile layout */
+/* Example if using a table for tiles like in your sample */
+.content_area table.tiles td { /* Assuming you add a 'tiles' class to your table in DITA */
+     text-align: center; /* Center content in tiles */
+     vertical-align: middle;
+     padding: 20px;
+     border: none; /* Remove table borders if using divs/padding for separation */
+     box-shadow: 2px 2px 8px rgba(0,0,0,0.1); /* Add shadow for tile effect */
+     margin: 10px; /* Add margin around the 'tiles' */
+     display: inline-block; /* Make cells behave like blocks that can sit next to each other */
+     width: 280px; /* Example fixed width for tiles */
+     box-sizing: border-box; /* Include padding and border in the element's total width and height */
+     background-color: #fff; /* White background for tiles */
+     border-radius: 8px; /* Rounded corners for tiles */
+}
+
+.content_area table.tiles td img {
+     display: block;
+     margin: 0 auto 10px auto; /* Center image and add space below it */
+     max-height: 150px; /* Limit image height in tiles */
+     width: auto; /* Maintain aspect ratio */
+}
+
+.content_area table.tiles td p {
+    font-weight: 600;
+    margin: 0; /* Remove default paragraph margin */
+}
+
+
+/* Styling for a custom footer area (if injected using args.ftr or similar) */
+.custom-footer-area {
+    margin-top: 40px;
+    padding: 20px;
+    background-color: #e9ecef;
+    border-top: 1px solid #ced4da;
+    text-align: center;
+    font-size: 0.9em;
+    color: #555;
+}
+
+.custom-footer-area a {
+     color: #007bff; /* Link color in footer */
+}
+
+
+/* ... add any other specific styles for elements you use in your DITA ... */

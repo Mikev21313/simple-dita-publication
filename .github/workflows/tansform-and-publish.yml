@@ -1,0 +1,78 @@
+# This workflow transforms DITA content using DITA-OT with a custom styling plugin
+# and publishes the resulting HTML to GitHub Pages.
+
+name: Transform and Publish DITA with Custom Styles
+
+on:
+  # Trigger the workflow on push to the main branch
+  push:
+    branches: [ main ]
+  # Allow manual triggering from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest # Use the latest Ubuntu runner
+    permissions:
+      contents: write # Grant permission to write to the GitHub Pages branch
+
+    steps:
+      # Step 1: Check out the repository
+      # This fetches your DITA source and the custom plugin files
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Set up Java 17 (required for DITA-OT 4.0.2)
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin' # Use Temurin distribution
+          java-version: '17'     # Specify Java 17
+
+      # Step 3: Download, set up DITA-OT, and install the custom styling plugin
+      - name: Set up DITA-OT and Custom Plugin
+        run: |
+          echo "Downloading DITA-OT 4.0.2..."
+          wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
+          echo "Unzipping DITA-OT..."
+          unzip dita-ot-4.0.2.zip
+          echo "Setting execute permissions for DITA-OT binary..."
+          chmod +x dita-ot-4.0.2/bin/dita
+
+          echo "Copying custom plugin into DITA-OT plugins directory..."
+          # Assumes your plugin folder 'com.example.customstyles' is inside a 'dita-plugin' folder in your repo
+          cp -R dita-plugin/com.example.customstyles dita-ot-4.0.2/plugins/
+
+          echo "Installing custom plugin using the DITA-OT integrator..."
+          # Run the DITA-OT integrator to install and register the plugin
+          ./dita-ot-4.0.2/bin/dita --install ./dita-ot-4.0.2/plugins/com.example.customstyles
+
+          echo "DITA-OT setup and plugin installation complete."
+
+      # Step 4: Verify DITA-OT and Java version (optional but good for debugging)
+      - name: Verify environment and installed plugin
+        run: |
+          echo "Java Version:"
+          java -version
+          echo "DITA-OT Version:"
+          ./dita-ot-4.0.2/bin/dita --version
+          # Optional: List installed plugins to confirm yours is there (output can be verbose)
+          # echo "Installed DITA-OT Plugins:"
+          # ./dita-ot-4.0.2/bin/dita --list-plugins
+
+      # Step 5: Transform DITA to HTML using the custom format defined by the plugin
+      - name: Transform DITA to HTML with Custom Styles
+        run: |
+          echo "Running DITA-OT transformation with custom styles..."
+          # Use the new 'html5-custom-styles' format defined in your plugin's plugin.xml
+          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5-custom-styles --output=./site
+
+          echo "DITA transformation complete. Output is in ./site"
+
+      # Step 6: Deploy the generated HTML site to GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }} # Token provided by GitHub
+          publish_dir: ./site                       # Directory containing the built site
+          force_orphan: true                        # Create a new history branch
