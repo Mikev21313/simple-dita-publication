@@ -46,10 +46,10 @@ jobs:
           ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
           echo "DITA transformation complete. Output is in ./site"
           
-      # New Step: Add Side Cart Feature
+      # New Step: Add Side Cart Feature and Fix Navigation Links
       - name: Add Side Cart Feature
         run: |
-          echo "Adding side cart navigation feature..."
+          echo "Adding side cart navigation feature and fixing links..."
           
           # Create directories for CSS and JS
           mkdir -p ./site/css
@@ -135,14 +135,26 @@ jobs:
           cat > ./site/js/sidecart.js << 'EOF'
           document.addEventListener('DOMContentLoaded', function() {
             // Get current page filename
-            var currentPage = window.location.pathname.split('/').pop();
+            var currentPath = window.location.pathname;
+            var currentPage = currentPath.split('/').pop();
             if (!currentPage) currentPage = 'index.html';
             
-            // Find and highlight current page in sidebar
+            // Fix navigation links if they're missing .html extension
             var sidebarLinks = document.querySelectorAll('.sidebar a');
             for (var i = 0; i < sidebarLinks.length; i++) {
               var href = sidebarLinks[i].getAttribute('href');
-              if (href === currentPage) {
+              
+              // Skip links that already have .html or are external
+              if (href && !href.includes('.html') && !href.startsWith('http') && !href.startsWith('#')) {
+                // Add .html extension to links without it
+                sidebarLinks[i].setAttribute('href', href + '.html');
+              }
+              
+              // Highlight current page
+              href = sidebarLinks[i].getAttribute('href');
+              if (href === currentPage || 
+                  currentPath.endsWith(href) ||
+                  (currentPage === 'index.html' && href === './')) {
                 sidebarLinks[i].classList.add('active');
                 // Scroll to active link
                 sidebarLinks[i].scrollIntoView({block: 'center', behavior: 'smooth'});
@@ -151,38 +163,59 @@ jobs:
           });
           EOF
           
-          # Find navigation file and extract links
-          echo "Finding navigation and extracting links..."
+          # List all HTML files to understand the file structure
+          echo "Available HTML files in output directory:"
+          find ./site -name "*.html" | sort
+          
+          # Find main navigation file
+          echo "Looking for navigation file..."
           NAV_FILE=$(find ./site -name "toc.html" -o -name "nav.html" -o -name "index.html" | head -1)
           
           if [ -n "$NAV_FILE" ]; then
             echo "Found navigation file: $NAV_FILE"
             
-            # Create temporary files for processing
-            TEMP_LINKS=$(mktemp)
-            TEMP_SIDEBAR=$(mktemp)
+            # Create a copy of navigation for reference
+            cp "$NAV_FILE" "./site/original-nav.html"
             
-            # Extract links - safer approach without complex regex
-            grep -o '<a href=[^>]*>[^<]*</a>' "$NAV_FILE" > "$TEMP_LINKS" || echo "No links found"
+            # Function to fix HTML links (ensure they have .html extension)
+            fix_links() {
+              local content="$1"
+              # Replace links that don't have .html extension or hash
+              echo "$content" | sed -E 's/href="([^"#\.]+)"/href="\1.html"/g'
+            }
             
-            # Create sidebar HTML
-            echo '<div class="sidebar">' > "$TEMP_SIDEBAR"
-            echo '<h2>Navigation</h2>' >> "$TEMP_SIDEBAR"
-            echo '<ul>' >> "$TEMP_SIDEBAR"
+            # Extract navigation from file
+            NAV_CONTENT=$(grep -o '<ul class="nav[^>]*>.*</ul>' "$NAV_FILE" -z || grep -o '<div class="nav[^>]*>.*</div>' "$NAV_FILE" -z || echo "")
             
-            # Add links to sidebar
-            if [ -s "$TEMP_LINKS" ]; then
-              while read -r link; do
-                echo "<li>$link</li>" >> "$TEMP_SIDEBAR"
-              done < "$TEMP_LINKS"
-            else
-              echo "<li>No navigation links available</li>" >> "$TEMP_SIDEBAR"
+            if [ -z "$NAV_CONTENT" ]; then
+              # If we couldn't extract with the pattern above, try getting all links
+              NAV_CONTENT="<ul>"
+              while read -r line; do
+                if [[ "$line" == *"<a href="* && "$line" == *"</a>"* ]]; then
+                  # Extract just the <a> tag from the line
+                  link=$(echo "$line" | grep -o '<a href=[^>]*>[^<]*</a>' || echo "")
+                  if [ -n "$link" ]; then
+                    NAV_CONTENT="${NAV_CONTENT}<li>${link}</li>"
+                  fi
+                fi
+              done < "$NAV_FILE"
+              NAV_CONTENT="${NAV_CONTENT}</ul>"
             fi
             
-            echo '</ul>' >> "$TEMP_SIDEBAR"
-            echo '</div>' >> "$TEMP_SIDEBAR"
+            # Fix links in the navigation content
+            FIXED_NAV_CONTENT=$(fix_links "$NAV_CONTENT")
             
-            # Add sidebar to HTML files using a safer approach
+            # Create sidebar content
+            SIDEBAR_CONTENT="<div class=\"sidebar\">
+            <h2>Navigation</h2>
+            ${FIXED_NAV_CONTENT}
+            </div>"
+            
+            # Create temporary file with sidebar content
+            TEMP_SIDEBAR=$(mktemp)
+            echo "$SIDEBAR_CONTENT" > "$TEMP_SIDEBAR"
+            
+            # Process all HTML files to add sidebar
             find ./site -name "*.html" | while read -r html_file; do
               # Skip navigation files
               if [[ "$html_file" != *"toc.html"* && "$html_file" != *"nav.html"* ]]; then
@@ -191,7 +224,7 @@ jobs:
                 # Create new file with modifications
                 TEMP_HTML=$(mktemp)
                 
-                # Process the file line by line to avoid sed issues
+                # Process the file line by line
                 while IFS= read -r line; do
                   # Add CSS and JS links before head closing tag
                   if [[ "$line" == *"</head>"* ]]; then
@@ -212,8 +245,15 @@ jobs:
                     echo '</div>' >> "$TEMP_HTML"
                   fi
                   
-                  # Write the original line
-                  echo "$line" >> "$TEMP_HTML"
+                  # Fix any internal links in the page content
+                  if [[ "$line" == *"<a href="* && "$line" != *".html"* && "$line" != *"http"* && "$line" != *"#"* ]]; then
+                    # Fix links that don't have .html extension
+                    fixed_line=$(echo "$line" | sed -E 's/href="([^"#\.]+)"/href="\1.html"/g')
+                    echo "$fixed_line" >> "$TEMP_HTML"
+                  else
+                    # Write the original line
+                    echo "$line" >> "$TEMP_HTML"
+                  fi
                 done < "$html_file"
                 
                 # Replace original file with modified version
@@ -222,17 +262,32 @@ jobs:
             done
             
             # Clean up temp files
-            rm -f "$TEMP_LINKS" "$TEMP_SIDEBAR"
+            rm -f "$TEMP_SIDEBAR"
           else
             echo "No navigation file found. Creating basic sidebar."
             
-            # Create a basic sidebar for all HTML files
+            # Scan for all HTML files to build a navigation
+            echo "<div class=\"sidebar\"><h2>Navigation</h2><ul>" > sidebar.html
+            
+            # Find all HTML files and create navigation
+            find ./site -name "*.html" -not -name "toc.html" -not -name "nav.html" | sort | while read -r page; do
+              # Get the filename without path
+              filename=$(basename "$page")
+              # Get the title from the file
+              title=$(grep -o '<title>[^<]*</title>' "$page" | sed 's/<title>\(.*\)<\/title>/\1/' || echo "$filename")
+              # Add to navigation
+              echo "<li><a href=\"$filename\">$title</a></li>" >> sidebar.html
+            done
+            
+            echo "</ul></div>" >> sidebar.html
+            
+            # Process all HTML files to add the generated sidebar
             find ./site -name "*.html" | while read -r html_file; do
               # Skip navigation files
               if [[ "$html_file" != *"toc.html"* && "$html_file" != *"nav.html"* ]]; then
-                echo "Adding basic sidebar to $html_file"
+                echo "Adding generated sidebar to $html_file"
                 
-                # Process with temporary file
+                # Create new file with modifications
                 TEMP_HTML=$(mktemp)
                 
                 # Process the file line by line
@@ -243,10 +298,10 @@ jobs:
                     echo '<script src="js/sidecart.js"></script>' >> "$TEMP_HTML"
                   fi
                   
-                  # Add basic sidebar after body opening tag
+                  # Add sidebar after body opening tag
                   if [[ "$line" == *"<body"*">"* ]]; then
                     echo "$line" >> "$TEMP_HTML"
-                    echo '<div class="sidebar"><h2>Navigation</h2><p>No navigation available</p></div>' >> "$TEMP_HTML"
+                    cat sidebar.html >> "$TEMP_HTML"
                     echo '<div class="main-content">' >> "$TEMP_HTML"
                     continue
                   fi
@@ -256,17 +311,27 @@ jobs:
                     echo '</div>' >> "$TEMP_HTML"
                   fi
                   
-                  # Write the original line
-                  echo "$line" >> "$TEMP_HTML"
+                  # Fix any internal links
+                  if [[ "$line" == *"<a href="* && "$line" != *".html"* && "$line" != *"http"* && "$line" != *"#"* ]]; then
+                    # Fix links that don't have .html extension
+                    fixed_line=$(echo "$line" | sed -E 's/href="([^"#\.]+)"/href="\1.html"/g')
+                    echo "$fixed_line" >> "$TEMP_HTML"
+                  else
+                    # Write the original line
+                    echo "$line" >> "$TEMP_HTML"
+                  fi
                 done < "$html_file"
                 
                 # Replace original file with modified version
                 mv "$TEMP_HTML" "$html_file"
               fi
             done
+            
+            # Clean up
+            rm -f sidebar.html
           fi
           
-          echo "Side cart feature added successfully."
+          echo "Side cart feature added and links fixed successfully."
           
       # Step 6: Deploy the generated HTML site to GitHub Pages
       - name: Deploy to GitHub Pages
