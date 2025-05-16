@@ -35,12 +35,12 @@ jobs:
           echo "Generated files:"
           find ./site -type f | sort
 
-      - name: Create Simplified Navigation
+      - name: Add Sidebar Navigation
         run: |
           # Create directories for assets
           mkdir -p ./site/css
           
-          # Create CSS file
+          # Create CSS file for the layout
           cat > ./site/css/style.css << 'EOF'
           * {
             margin: 0;
@@ -60,7 +60,7 @@ jobs:
             width: 250px;
             background-color: #f5f5f5;
             padding: 20px;
-            min-height: 100vh;
+            height: 100vh;
             position: fixed;
             left: 0;
             top: 0;
@@ -115,7 +115,12 @@ jobs:
             font-weight: bold;
           }
           
-          /* Improve readability in main content */
+          /* Hide navigation in main content */
+          .main-content > ul:first-of-type {
+            display: none;
+          }
+          
+          /* Preserve other styles from DITA output */
           .main-content h1, .main-content h2, .main-content h3 {
             margin-top: 1em;
             margin-bottom: 0.5em;
@@ -129,127 +134,128 @@ jobs:
             max-width: 100%;
             height: auto;
           }
-          
-          /* Hide duplicate navigation in main content */
-          .main-content > ul:first-of-type {
-            display: none;
-          }
           EOF
           
-          # Create the navigation HTML
-          cat > ./site/navigation.html << 'EOF'
-          <ul>
-            <li><a href="automotive-theories.html">Automotive Theories</a>
-              <ul>
-                <li><a href="history-of-automobiles.html">History of Automobiles</a></li>
-                <li><a href="types-of-vehicles.html">Types of Vehicles</a></li>
-                <li><a href="automobile-fundamentals.html">Automobile Fundamentals</a></li>
-                <li><a href="major-vehicle-components.html">Major Vehicle Components</a>
-                  <ul>
-                    <li><a href="electrical-systems.html">Electrical Systems</a></li>
-                    <li><a href="engine-systems.html">Engine Systems</a></li>
-                    <li><a href="electric-vehicles.html">Electric Vehicles</a></li>
-                    <li><a href="braking-systems.html">Braking Systems</a></li>
-                  </ul>
-                </li>
-              </ul>
-            </li>
-            <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
-            <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
-            <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
-          </ul>
+          # Create JS file to highlight active navigation item
+          cat > ./site/highlight.js << 'EOF'
+          document.addEventListener('DOMContentLoaded', function() {
+            var currentPage = window.location.pathname.split('/').pop();
+            if (!currentPage) currentPage = 'index.html';
+            
+            var navLinks = document.querySelectorAll('.sidebar a');
+            navLinks.forEach(function(link) {
+              if (link.getAttribute('href') === currentPage) {
+                link.classList.add('active');
+              }
+            });
+          });
           EOF
           
-          # Process each HTML file to add navigation
-          find ./site -name "*.html" | while read file; do
-            echo "Processing $file"
-            
-            # Create a temporary file
-            tmp_file=$(mktemp)
-            
-            # Get the title from the original file
-            title=$(grep -o "<title>.*</title>" "$file" | head -1 || echo "<title>Automotive Documentation</title>")
-            
-            # Extract the main content (avoiding body tags)
-            content=$(sed -n '/<body/,/<\/body>/p' "$file" | sed '/<body/d;/<\/body>/d')
-            
-            # Create a new HTML file with navigation sidebar and content
-            cat > "$tmp_file" << EOF
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            $title
-            <link rel="stylesheet" href="css/style.css">
-            <script>
-              document.addEventListener('DOMContentLoaded', function() {
-                // Highlight current page in navigation
-                var path = window.location.pathname;
-                var page = path.split("/").pop();
-                if(!page) page = "index.html";
-                
-                var links = document.querySelectorAll('.sidebar a');
-                links.forEach(function(link) {
-                  if(link.getAttribute('href') === page) {
-                    link.classList.add('active');
-                  }
-                });
-              });
-            </script>
-          </head>
-          <body>
-            <div class="sidebar">
-              <h2>Navigation</h2>
-              $(cat ./site/navigation.html)
-            </div>
-            <div class="main-content">
-          $content
-            </div>
-          </body>
-          </html>
+          # Create navigation HTML
+          cat > ./site/nav.html << 'EOF'
+          <div class="sidebar">
+            <h2>Navigation</h2>
+            <ul>
+              <li><a href="automotive-theories.html">Automotive Theories</a>
+                <ul>
+                  <li><a href="history-of-automobiles.html">History of Automobiles</a></li>
+                  <li><a href="types-of-vehicles.html">Types of Vehicles</a></li>
+                  <li><a href="automobile-fundamentals.html">Automobile Fundamentals</a></li>
+                  <li><a href="major-vehicle-components.html">Major Vehicle Components</a>
+                    <ul>
+                      <li><a href="electrical-systems.html">Electrical Systems</a></li>
+                      <li><a href="engine-systems.html">Engine Systems</a></li>
+                      <li><a href="electric-vehicles.html">Electric Vehicles</a></li>
+                      <li><a href="braking-systems.html">Braking Systems</a></li>
+                    </ul>
+                  </li>
+                </ul>
+              </li>
+              <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
+              <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
+              <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
+            </ul>
+          </div>
           EOF
+          
+          # Get files that need processing
+          HTML_FILES=$(find ./site -name "*.html")
+          
+          # Define the navigation targets (files to create if missing)
+          NAV_TARGETS="automotive-theories.html history-of-automobiles.html types-of-vehicles.html automobile-fundamentals.html major-vehicle-components.html electrical-systems.html engine-systems.html electric-vehicles.html braking-systems.html basic-maintenance.html vehicle-maintenance.html emergency-repairs.html"
+          
+          # Process HTML files to add navigation
+          for FILE in $HTML_FILES; do
+            FILENAME=$(basename "$FILE")
+            echo "Processing $FILENAME"
             
-            # Replace the original file
-            mv "$tmp_file" "$file"
+            # Create a temp file
+            TEMP_FILE=$(mktemp)
+            
+            # Extract everything before <body> tag
+            sed -n '1,/<body/p' "$FILE" | sed '/<body/d' > "$TEMP_FILE"
+            
+            # Add stylesheet link and script
+            sed -i '/<\/head>/i \    <link rel="stylesheet" href="css/style.css">' "$TEMP_FILE"
+            sed -i '/<\/head>/i \    <script src="highlight.js"></script>' "$TEMP_FILE"
+            
+            # Start body tag and add navigation
+            echo '<body>' >> "$TEMP_FILE"
+            cat ./site/nav.html >> "$TEMP_FILE"
+            
+            # Add main-content wrapper
+            echo '<div class="main-content">' >> "$TEMP_FILE"
+            
+            # Extract and add existing content (keeping original structure)
+            sed -n '/<body/,/<\/body>/p' "$FILE" | sed '/<body/d;/<\/body>/d' >> "$TEMP_FILE"
+            
+            # Close main content and body
+            echo '</div>' >> "$TEMP_FILE"
+            echo '</body>' >> "$TEMP_FILE"
+            
+            # Add closing html tag
+            echo '</html>' >> "$TEMP_FILE"
+            
+            # Replace original file
+            mv "$TEMP_FILE" "$FILE"
           done
           
-          # Create redirects for navigation items that don't exist
-          for target in automotive-theories.html history-of-automobiles.html types-of-vehicles.html automobile-fundamentals.html major-vehicle-components.html electrical-systems.html engine-systems.html electric-vehicles.html braking-systems.html basic-maintenance.html vehicle-maintenance.html emergency-repairs.html; do
-            if [ ! -f "./site/$target" ]; then
-              echo "Creating redirect for $target"
+          # Create missing files from navigation if needed
+          for TARGET in $NAV_TARGETS; do
+            if [ ! -f "./site/$TARGET" ]; then
+              echo "Creating missing file: $TARGET"
               
-              # Create a simple HTML page with navigation
-              cat > "./site/$target" << EOF
+              # Generate a basic page with the same structure
+              cat > "./site/$TARGET" << EOF
           <!DOCTYPE html>
           <html>
           <head>
             <meta charset="UTF-8">
-            <title>${target%.*}</title>
+            <title>${TARGET%.*}</title>
             <link rel="stylesheet" href="css/style.css">
+            <script src="highlight.js"></script>
           </head>
           <body>
-            <div class="sidebar">
-              <h2>Navigation</h2>
-              $(cat ./site/navigation.html)
-            </div>
-            <div class="main-content">
-              <h1>${target%.*}</h1>
-              <p>Content for this topic is coming soon.</p>
-            </div>
+          $(cat ./site/nav.html)
+          <div class="main-content">
+            <h1>${TARGET%.*}</h1>
+            <p>Content for this section is currently under development.</p>
+          </div>
           </body>
           </html>
           EOF
             fi
           done
           
-          # Create index.html if it doesn't exist
+          # Create index.html if missing
           if [ ! -f "./site/index.html" ]; then
             echo "Creating index.html"
             
-            # Copy from an existing file if available
-            if [ -f "./site/automotive-theories.html" ]; then
-              cp "./site/automotive-theories.html" "./site/index.html"
+            # Find a suitable file to use as index
+            FIRST_FILE=$(find ./site -name "*.html" | head -1)
+            
+            if [ -n "$FIRST_FILE" ]; then
+              cp "$FIRST_FILE" "./site/index.html"
             else
               # Create a basic index page
               cat > "./site/index.html" << EOF
@@ -259,16 +265,14 @@ jobs:
             <meta charset="UTF-8">
             <title>Automotive Documentation</title>
             <link rel="stylesheet" href="css/style.css">
+            <script src="highlight.js"></script>
           </head>
           <body>
-            <div class="sidebar">
-              <h2>Navigation</h2>
-              $(cat ./site/navigation.html)
-            </div>
-            <div class="main-content">
-              <h1>Automotive Documentation</h1>
-              <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>
-            </div>
+          $(cat ./site/nav.html)
+          <div class="main-content">
+            <h1>Automotive Documentation</h1>
+            <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>
+          </div>
           </body>
           </html>
           EOF
@@ -276,7 +280,7 @@ jobs:
           fi
           
           # Clean up
-          rm -f ./site/navigation.html
+          rm -f ./site/nav.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
