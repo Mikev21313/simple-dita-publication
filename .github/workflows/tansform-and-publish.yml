@@ -35,7 +35,7 @@ jobs:
           echo "Generated files:"
           find ./site -type f | sort
 
-      - name: Add Side Navigation
+      - name: Create Sidebar Navigation
         run: |
           # Create directories for assets
           mkdir -p ./site/css
@@ -126,6 +126,30 @@ jobs:
           }
           EOF
           
+          # Create navigation HTML with direct content
+          cat > ./site/navigation.html << 'EOF'
+          <ul>
+            <li><a href="automotive-theories.html">Automotive Theories</a>
+              <ul>
+                <li><a href="history-of-automobiles.html">History of Automobiles</a></li>
+                <li><a href="types-of-vehicles.html">Types of Vehicles</a></li>
+                <li><a href="automobile-fundamentals.html">Automobile Fundamentals</a></li>
+                <li><a href="major-vehicle-components.html">Major Vehicle Components</a>
+                  <ul>
+                    <li><a href="electrical-systems.html">Electrical Systems</a></li>
+                    <li><a href="engine-systems.html">Engine Systems</a></li>
+                    <li><a href="electric-vehicles.html">Electric Vehicles</a></li>
+                    <li><a href="braking-systems.html">Braking Systems</a></li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+            <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
+            <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
+            <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
+          </ul>
+          EOF
+          
           # Check if index.html exists
           if [ ! -f "./site/index.html" ]; then
             # Find main HTML file
@@ -138,84 +162,56 @@ jobs:
             fi
           fi
           
-          # Extract navigation from the first HTML file for consistency
-          FIRST_HTML=$(find ./site -name "*.html" | grep -v "index.html" | head -1)
-          
-          # Create a temporary file to store navigation list
-          NAV_CONTENT=""
-          
-          if [ -n "$FIRST_HTML" ]; then
-            echo "Extracting navigation from $FIRST_HTML"
-            
-            # Check if the file contains a UL element that looks like navigation
-            if grep -q '<ul.*>' "$FIRST_HTML"; then
-              # Extract the top-level navigation list
-              NAV_CONTENT=$(grep -oP '(<ul>.*?</ul>)' "$FIRST_HTML" -z | head -1)
-              
-              if [ -z "$NAV_CONTENT" ]; then
-                # Try a different pattern if first one fails
-                NAV_CONTENT=$(grep -oP '(<ul class=".*?">.*?</ul>)' "$FIRST_HTML" -z | head -1)
-              fi
-              
-              echo "Navigation content extracted successfully"
-            else
-              echo "No navigation list found in the HTML"
-              NAV_CONTENT="<ul><li>No navigation found</li></ul>"
-            fi
-          else
-            echo "No HTML files found!"
-            NAV_CONTENT="<ul><li>No navigation found</li></ul>"
-          fi
-          
-          # Save navigation to file for debugging
-          echo "$NAV_CONTENT" > ./site/nav-debug.html
-          
           # Process all HTML files
           find ./site -name "*.html" | while read -r file; do
             echo "Processing $file"
-            # Create a temporary file
-            TEMP_FILE=$(mktemp)
             
-            # Insert CSS and create sidebar structure
-            cat > "$TEMP_FILE" << EOF
+            # Extract the title and main content from the original file
+            TITLE=$(grep -o '<title>[^<]*</title>' "$file" | sed 's/<title>\(.*\)<\/title>/\1/' || echo "Automotive Documentation")
+            
+            # Extract body content - safer approach that doesn't rely on complex regex
+            TEMP_CONTENT=$(mktemp)
+            # Get everything from body tag and save to temp file
+            sed -n '/<body/,/<\/body>/p' "$file" > "$TEMP_CONTENT"
+            
+            # Create a new file with our structure
+            NEW_FILE=$(mktemp)
+            
+            cat > "$NEW_FILE" << EOF
           <!DOCTYPE html>
           <html>
           <head>
             <meta charset="UTF-8">
-            <title>$(grep -oP '<title>\K(.*?)(?=</title>)' "$file" || echo "Automotive Documentation")</title>
+            <title>$TITLE</title>
             <link rel="stylesheet" href="css/style.css">
           </head>
           <body>
             <div class="sidebar">
               <h2>Navigation</h2>
-              $NAV_CONTENT
+              $(cat ./site/navigation.html)
             </div>
             <div class="main-content">
           EOF
             
-            # Extract the content from the original file
-            # Skip everything before the body and navigation list
-            sed -n '/<body/,/<\/body>/p' "$file" | 
-              # Remove the opening body tag
-              sed 's/<body[^>]*>//g' |
-              # Remove the closing body tag
-              sed 's/<\/body>//g' |
-              # Remove navigation list if present (exactly the same one we extracted)
-              sed "s|$NAV_CONTENT||g" >> "$TEMP_FILE"
+            # Add the body content, skipping the body tags themselves
+            sed '/<body/d; /<\/body>/d' "$TEMP_CONTENT" >> "$NEW_FILE"
             
             # Add closing tags
-            cat >> "$TEMP_FILE" << EOF
+            cat >> "$NEW_FILE" << EOF
             </div>
           </body>
           </html>
           EOF
             
             # Replace original file with our processed version
-            mv "$TEMP_FILE" "$file"
+            mv "$NEW_FILE" "$file"
+            
+            # Cleanup
+            rm -f "$TEMP_CONTENT"
           done
           
-          # Clean up debug file
-          rm -f ./site/nav-debug.html
+          # Clean up
+          rm -f ./site/navigation.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
