@@ -125,27 +125,47 @@ jobs:
             echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
           done
 
-      # Step 6: Create navigation configuration
+      # Step 6: Create hierarchical navigation configuration
       - name: Create Navigation Config
         run: |
           mkdir -p ./site/js ./site/css
           
-          # Create navigation config matching the structure in Image 1
+          # Create hierarchical navigation config matching the structure in the image
           cat > ./site/js/navigation-config.js << 'EOF'
-          // Navigation structure from DITA map
+          // Hierarchical navigation structure from DITA map
           const navigationConfig = [
-            { id: "automotive-information", title: "Automotive Information" },
-            { id: "basic-maintenance", title: "Basic Maintenance" },
-            { id: "braking-systems", title: "Braking Systems" },
-            { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
-            { id: "major-vehicle-components", title: "Major Vehicle Components" },
-            { id: "history-of-automobiles", title: "History of Automobiles" },
-            { id: "vehicle-maintenance", title: "Vehicle Maintenance" },
-            { id: "types-of-vehicles", title: "Types of Vehicles" },
-            { id: "electrical-systems", title: "Electrical Systems" },
-            { id: "emergency-repairs", title: "Emergency Repairs" },
-            { id: "engine-systems", title: "Engine Systems" },
-            { id: "electric-vehicles", title: "Electric Vehicles" }
+            {
+              id: "automotive-information",
+              title: "Automotive Information",
+              children: [
+                { id: "history-of-automobiles", title: "History of Automobiles" },
+                { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
+                { 
+                  id: "types-of-vehicles", 
+                  title: "Types of Vehicles",
+                  children: [
+                    { id: "electric-vehicles", title: "Electric Vehicles" }
+                  ]
+                }
+              ]
+            },
+            {
+              id: "basic-maintenance",
+              title: "Basic Maintenance",
+              children: [
+                { id: "emergency-repairs", title: "Emergency Repairs" },
+                { id: "vehicle-maintenance", title: "Vehicle Maintenance" }
+              ]
+            },
+            {
+              id: "major-vehicle-components",
+              title: "Major Vehicle Components",
+              children: [
+                { id: "electrical-systems", title: "Electrical Systems" },
+                { id: "braking-systems", title: "Braking Systems" },
+                { id: "engine-systems", title: "Engine Systems" }
+              ]
+            }
           ];
           EOF
           
@@ -179,7 +199,7 @@ jobs:
           # Clean up temp file
           rm -f ./site/content-list.tmp
 
-      # Step 7: Create SPA CSS
+      # Step 7: Create SPA CSS with improved navigation styling
       - name: Create SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
@@ -222,14 +242,42 @@ jobs:
             padding-bottom: 10px;
           }
           
+          /* Improved navigation styling for hierarchy */
           .sidebar ul {
             list-style-type: none;
             padding-left: 0;
-            margin-bottom: 15px;
+            margin-bottom: 5px;
+          }
+          
+          .sidebar ul ul {
+            padding-left: 20px;
+            margin-top: 5px;
+            margin-bottom: 0;
           }
           
           .sidebar li {
-            margin-bottom: 8px;
+            margin-bottom: 5px;
+            position: relative;
+          }
+          
+          .sidebar li.has-children > a:before {
+            content: "▶";
+            display: inline-block;
+            font-size: 10px;
+            margin-right: 5px;
+            transition: transform 0.2s;
+          }
+          
+          .sidebar li.has-children.expanded > a:before {
+            transform: rotate(90deg);
+          }
+          
+          .sidebar li.has-children > ul {
+            display: none;
+          }
+          
+          .sidebar li.has-children.expanded > ul {
+            display: block;
           }
           
           .sidebar a {
@@ -318,11 +366,11 @@ jobs:
           }
           EOF
 
-      # Step 8: Create SPA JavaScript Application
+      # Step 8: Create SPA JavaScript Application with hierarchical navigation
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // SPA Application
+          // SPA Application with hierarchical navigation
           
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -354,7 +402,7 @@ jobs:
             debug('Initializing app with base path:', basePath);
             
             // Render navigation
-            renderNavigation();
+            renderNavigation(navigationConfig);
             
             // Set up event listeners
             window.addEventListener('popstate', handlePopState);
@@ -365,12 +413,17 @@ jobs:
             navigateToPage(initialPageId, false);
           }
           
-          // Render the navigation menu
-          function renderNavigation() {
+          // Render the navigation menu with hierarchy
+          function renderNavigation(items, parentEl = navigationEl) {
             const ul = document.createElement('ul');
             
-            navigationConfig.forEach(item => {
+            items.forEach(item => {
               const li = document.createElement('li');
+              
+              // Add class if item has children
+              if (item.children && item.children.length > 0) {
+                li.classList.add('has-children');
+              }
               
               const a = document.createElement('a');
               a.textContent = item.title;
@@ -378,14 +431,67 @@ jobs:
               a.href = `#${item.id}`;
               a.addEventListener('click', (e) => {
                 e.preventDefault();
-                navigateToPage(item.id);
+                
+                // If item has children, toggle expansion
+                if (item.children && item.children.length > 0) {
+                  li.classList.toggle('expanded');
+                }
+                
+                // Navigate only if item doesn't have children
+                if (!item.children || item.children.length === 0) {
+                  navigateToPage(item.id);
+                } else if (!li.classList.contains('expanded')) {
+                  // If collapsing, navigate to the parent
+                  navigateToPage(item.id);
+                }
               });
               
               li.appendChild(a);
+              
+              // Recursively render children if any
+              if (item.children && item.children.length > 0) {
+                renderNavigation(item.children, li);
+              }
+              
               ul.appendChild(li);
             });
             
-            navigationEl.appendChild(ul);
+            parentEl.appendChild(ul);
+          }
+          
+          // Expand navigation path to the current page
+          function expandNavigationTo(pageId) {
+            // Helper to search for a page in the navigation tree
+            function findPageInNavigation(items, id, path = []) {
+              for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                const currentPath = [...path, item];
+                
+                if (item.id === id) {
+                  return currentPath;
+                }
+                
+                if (item.children && item.children.length > 0) {
+                  const result = findPageInNavigation(item.children, id, currentPath);
+                  if (result) {
+                    return result;
+                  }
+                }
+              }
+              
+              return null;
+            }
+            
+            // Find the path to the page
+            const path = findPageInNavigation(navigationConfig, pageId);
+            if (!path) return;
+            
+            // Expand all parent items in the path
+            for (let i = 0; i < path.length - 1; i++) {
+              const item = path[i];
+              const li = document.querySelector(`.sidebar li a[data-id="${item.id}"]`).parentElement;
+              li.classList.add('expanded');
+            }
           }
           
           // Navigate to a specific page
@@ -394,6 +500,9 @@ jobs:
             
             // Update active state in navigation
             updateActiveNavItem(pageId);
+            
+            // Expand navigation to show the current page
+            expandNavigationTo(pageId);
             
             // Update the URL
             if (pushState) {
@@ -477,6 +586,15 @@ jobs:
             const activeItem = document.querySelector(`.sidebar a[data-id="${pageId}"]`);
             if (activeItem) {
               activeItem.classList.add('active');
+              
+              // Make sure the parents are expanded
+              let parent = activeItem.parentElement;
+              while (parent && !parent.classList.contains('sidebar')) {
+                if (parent.classList.contains('has-children')) {
+                  parent.classList.add('expanded');
+                }
+                parent = parent.parentElement;
+              }
             }
           }
           
@@ -612,6 +730,12 @@ jobs:
           <h1>Automotive Information</h1>
           <p>Welcome to the automotive documentation. This comprehensive guide provides information about various aspects of automotive technology, maintenance, and repair.</p>
           <p>Use the navigation menu to explore different topics related to automobiles.</p>
+          <p><strong>Main sections include:</strong></p>
+          <ul>
+            <li>History of Automobiles</li>
+            <li>Automobile Fundamentals</li>
+            <li>Types of Vehicles</li>
+          </ul>
           EOF
           
           # Ensure all navigation items have content files by checking and creating if missing
