@@ -1,208 +1,62 @@
-name: DITA to HTML with Side Cart
+name: Transform and Publish DITA # Original name
 
 on:
+  # Trigger the workflow on push to the main branch
   push:
     branches: [ main ]
+  # Allow manual triggering from the Actions tab
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    
+  build-and-deploy:
+    runs-on: ubuntu-latest # Use the latest Ubuntu runner
+    permissions:
+      contents: write # Grant permission to write to the GitHub Pages branch
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      # Step 1: Check out the repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up JDK 11
-      uses: actions/setup-java@v3
-      with:
-        java-version: '11'
-        distribution: 'temurin'
+      # Step 2: Set up Java 17 (required for DITA-OT 4.0.2)
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin' # Use Temurin distribution
+          java-version: '17'     # Specify Java 17
 
-    - name: Setup DITA-OT
-      run: |
-        mkdir -p tools
-        curl -L https://github.com/dita-ot/dita-ot/releases/download/3.7.4/dita-ot-3.7.4.zip -o tools/dita-ot.zip
-        unzip tools/dita-ot.zip -d tools/
-        mv tools/dita-ot-3.7.4 tools/dita-ot
-        
-        # Verify DITA-OT installation
-        tools/dita-ot/bin/dita --version
+      # Step 3: Download and set up DITA-OT
+      # This step only downloads and unzips the standard DITA-OT
+      - name: Set up DITA-OT
+        run: |
+          echo "Downloading DITA-OT 4.0.2..."
+          wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
+          echo "Unzipping DITA-OT..."
+          unzip dita-ot-4.0.2.zip
+          echo "Setting execute permissions for DITA-OT binary..."
+          chmod +x dita-ot-4.0.2/bin/dita
+          echo "DITA-OT setup complete."
 
-    - name: Build DITA
-      run: |
-        # Find your main DITA map
-        MAIN_DITAMAP=$(find dita-source -name "*.ditamap" -type f | head -1)
-        
-        # If no DITAMAP found, provide a default message
-        if [ -z "$MAIN_DITAMAP" ]; then
-          echo "Error: No DITAMAP found in dita-source directory!"
-          exit 1
-        fi
-        
-        echo "Using DITAMAP: $MAIN_DITAMAP"
-        
-        # Create site directory
-        mkdir -p site
-        
-        # Run DITA-OT transformation
-        tools/dita-ot/bin/dita --input=$MAIN_DITAMAP \
-          --format=html5 \
-          --output=site
+      # Step 4: Verify DITA-OT and Java version (optional but good for debugging)
+      - name: Verify environment
+        run: |
+          echo "Java Version:"
+          java -version
+          echo "DITA-OT Version:"
+          ./dita-ot-4.0.2/bin/dita --version
 
-    - name: Add Side Cart Feature
-      run: |
-        echo "Adding side cart navigation..."
-        
-        # Create directories if they don't exist
-        mkdir -p site/css
-        mkdir -p site/js
-        
-        # Create CSS for side cart layout
-        cat > site/css/sidecart.css << 'EOF'
-        body {
-          display: flex;
-          margin: 0;
-          padding: 0;
-          height: 100vh;
-          font-family: Arial, sans-serif;
-        }
-        
-        .sidebar {
-          width: 250px;
-          height: 100vh;
-          overflow-y: auto;
-          background-color: #f5f5f5;
-          border-right: 1px solid #ddd;
-          padding: 15px;
-          position: fixed;
-          left: 0;
-          top: 0;
-          box-sizing: border-box;
-        }
-        
-        .main-content {
-          margin-left: 250px;
-          padding: 20px;
-          flex: 1;
-          max-width: calc(100% - 250px);
-          box-sizing: border-box;
-          overflow-y: auto;
-        }
-        
-        .sidebar ul {
-          list-style-type: none;
-          padding: 0;
-          margin: 0;
-        }
-        
-        .sidebar li {
-          margin-bottom: 8px;
-        }
-        
-        .sidebar a {
-          display: block;
-          padding: 5px 10px;
-          color: #333;
-          text-decoration: none;
-          border-radius: 4px;
-        }
-        
-        .sidebar a:hover {
-          background-color: #e0e0e0;
-        }
-        
-        .sidebar a.active {
-          background-color: #ddd;
-          font-weight: bold;
-        }
-        
-        .sidebar h3 {
-          margin-top: 20px;
-          font-size: 16px;
-          color: #555;
-        }
-        
-        @media (max-width: 768px) {
-          .sidebar {
-            width: 200px;
-          }
-          .main-content {
-            margin-left: 200px;
-            max-width: calc(100% - 200px);
-          }
-        }
-        EOF
-        
-        # Create JavaScript for sidebar functionality
-        cat > site/js/sidecart.js << 'EOF'
-        document.addEventListener('DOMContentLoaded', function() {
-          // Get current page filename
-          var currentPage = window.location.pathname.split('/').pop();
-          if (!currentPage) currentPage = 'index.html';
-          
-          // Find and highlight current page in sidebar
-          var sidebarLinks = document.querySelectorAll('.sidebar a');
-          for (var i = 0; i < sidebarLinks.length; i++) {
-            var href = sidebarLinks[i].getAttribute('href');
-            if (href === currentPage) {
-              sidebarLinks[i].classList.add('active');
-              // Scroll to active link
-              sidebarLinks[i].scrollIntoView({block: 'center', behavior: 'smooth'});
-            }
-          }
-        });
-        EOF
-        
-        # Extract navigation from DITA-OT output
-        echo "Extracting navigation for sidebar..."
-        
-        # Find navigation file (could be toc.html, nav.html, or index.html)
-        NAV_FILE=$(find site -name "toc.html" -o -name "nav.html" -o -name "index.html" | head -1)
-        
-        if [ -n "$NAV_FILE" ]; then
-          echo "Found navigation file: $NAV_FILE"
-          
-          # Extract links from navigation file
-          LINKS=$(grep -o '<a href="[^"]*"[^>]*>[^<]*</a>' "$NAV_FILE" || echo "")
-          
-          if [ -n "$LINKS" ]; then
-            # Format links for sidebar
-            SIDEBAR_LINKS=$(echo "$LINKS" | sed 's/<a /<li><a /g; s/<\/a>/<\/a><\/li>/g')
-            
-            # Create sidebar HTML
-            SIDEBAR_HTML="<div class=\"sidebar\">\n<h2>Navigation</h2>\n<ul>\n$SIDEBAR_LINKS\n</ul>\n</div>"
-          else
-            echo "No links found in navigation file, creating empty sidebar."
-            SIDEBAR_HTML="<div class=\"sidebar\">\n<h2>Navigation</h2>\n<p>No navigation links found.</p>\n</div>"
-          fi
-        else
-          echo "No navigation file found, creating empty sidebar."
-          SIDEBAR_HTML="<div class=\"sidebar\">\n<h2>Navigation</h2>\n<p>No navigation available.</p>\n</div>"
-        fi
-        
-        # Add sidebar to all HTML files and wrap content
-        echo "Adding sidebar to HTML files..."
-        find site -name "*.html" | while read file; do
-          # Skip navigation files
-          if [[ "$file" != *"toc.html"* && "$file" != *"nav.html"* ]]; then
-            # Add CSS and JavaScript references
-            sed -i 's/<\/head>/<link rel="stylesheet" type="text\/css" href="css\/sidecart.css">\n<script src="js\/sidecart.js"><\/script>\n<\/head>/' "$file"
-            
-            # Add sidebar and wrap content
-            sed -i 's/<body>/<body>\n'"$SIDEBAR_HTML"'\n<div class="main-content">/' "$file"
-            sed -i 's/<\/body>/<\/div>\n<\/body>/' "$file"
-          fi
-        done
-        
-        echo "Side cart feature added successfully."
+      # Step 5: Transform DITA to HTML using the standard html5 format
+      # This uses the default HTML5 transformation without custom plugin styling
+      - name: Transform DITA to HTML
+        run: |
+          echo "Running standard DITA-OT HTML5 transformation..."
+          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
+          echo "DITA transformation complete. Output is in ./site"
 
-    # Step 6: Deploy the generated HTML site to GitHub Pages
-    - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }} # Token provided by GitHub
-        publish_dir: ./site                       # Directory containing the built site
-        force_orphan: true                        # Create a new history branch
+      # Step 6: Deploy the generated HTML site to GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }} # Token provided by GitHub
+          publish_dir: ./site                       # Directory containing the built site
+          force_orphan: true                        # Create a new history branch
