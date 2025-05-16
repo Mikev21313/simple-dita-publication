@@ -1,4 +1,4 @@
-name: DITA to HTML Build and Deploy
+name: Basic DITA-OT Test
 
 on:
   push:
@@ -20,10 +20,13 @@ jobs:
         java-version: '11'
         distribution: 'temurin'
 
-    - name: Install Additional Tools
+    - name: Debug Repository Structure
       run: |
-        sudo apt-get update
-        sudo apt-get install -y libxml2-utils
+        echo "Current directory: $(pwd)"
+        echo "Repository contents:"
+        ls -la
+        echo "DITA source directory content:"
+        ls -la dita-source/ || echo "dita-source directory not found"
 
     - name: Setup DITA-OT
       run: |
@@ -37,167 +40,105 @@ jobs:
         ls -la tools/dita-ot/bin/
         tools/dita-ot/bin/dita --version
 
-    - name: Verify DITA Source
+    - name: Create Test DITA Content
       run: |
-        echo "Checking DITA source content..."
-        if [ ! -d "dita-source" ]; then
-          echo "dita-source directory not found! Creating directory and sample files."
-          mkdir -p dita-source
-          
-          # Create a simple sample DITA map
-          cat > dita-source/sample.ditamap << 'EOF'
+        echo "Creating minimal test DITA content..."
+        mkdir -p test-dita
+        
+        # Create a minimal DITA map
+        cat > test-dita/test.ditamap << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
         <map>
-          <title>Automotive Information</title>
-          <topicref href="sample-topic.dita" type="topic"/>
+          <title>Test Map</title>
+          <topicref href="test-topic.dita"/>
         </map>
         EOF
-          
-          # Create a simple sample DITA topic
-          cat > dita-source/sample-topic.dita << 'EOF'
+        
+        # Create a minimal DITA topic
+        cat > test-dita/test-topic.dita << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
-        <topic id="sample">
-          <title>Automotive Information</title>
+        <topic id="test">
+          <title>Test Topic</title>
           <body>
-            <p>Welcome to our automotive documentation.</p>
-            <section>
-              <title>Automotive Theories</title>
-              <p>Learn about automotive theories and concepts.</p>
-            </section>
+            <p>This is a test topic.</p>
           </body>
         </topic>
         EOF
+        
+        echo "Test DITA content created:"
+        ls -la test-dita/
+
+    - name: Run Basic DITA-OT Test
+      run: |
+        echo "Running basic DITA-OT test..."
+        
+        # Create temp directory for logs
+        mkdir -p logs
+        
+        # Run DITA-OT with our test content and capture all output
+        tools/dita-ot/bin/dita --input=test-dita/test.ditamap --format=html5 --output=test-output --verbose > logs/dita-output.log 2>&1 || true
+        
+        # Display the log regardless of success/failure
+        echo "==== DITA-OT OUTPUT LOG ===="
+        cat logs/dita-output.log
+        
+        # Check if the output directory was created
+        echo "==== OUTPUT DIRECTORY STATUS ===="
+        if [ -d "test-output" ]; then
+          echo "Output directory exists. Contents:"
+          ls -la test-output/
         else
-          echo "dita-source directory found. Content:"
-          ls -la dita-source/
-          
-          # Validate any DITA files
-          find dita-source -name "*.dita*" -type f | while read file; do
-            echo "Validating $file"
-            xmllint --noout "$file" 2>/dev/null || echo "Warning: XML validation failed for $file"
-          done
-          
-          # If no DITA files found, create sample files
-          if [ $(find dita-source -name "*.dita*" -type f | wc -l) -eq 0 ]; then
-            echo "No DITA files found. Creating sample files."
-            cat > dita-source/sample.ditamap << 'EOF'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
-        <map>
-          <title>Automotive Information</title>
-          <topicref href="sample-topic.dita" type="topic"/>
-        </map>
-        EOF
-            
-            cat > dita-source/sample-topic.dita << 'EOF'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
-        <topic id="sample">
-          <title>Automotive Information</title>
-          <body>
-            <p>Welcome to our automotive documentation.</p>
-            <section>
-              <title>Automotive Theories</title>
-              <p>Learn about automotive theories and concepts.</p>
-            </section>
-          </body>
-        </topic>
-        EOF
-          fi
-        fi
-
-    - name: Build DITA (Basic)
-      run: |
-        # Find the main DITA map
-        MAIN_DITAMAP=$(find dita-source -name "*.ditamap" -type f | head -1)
-        if [ -z "$MAIN_DITAMAP" ]; then
-          MAIN_DITAMAP="dita-source/sample.ditamap"
+          echo "Output directory was not created!"
         fi
         
-        echo "Using DITAMAP: $MAIN_DITAMAP"
-        echo "DITA-OT version:"
-        tools/dita-ot/bin/dita --version
-        
-        # Run a basic transformation without any customization first
-        echo "Running basic HTML5 transformation..."
-        tools/dita-ot/bin/dita --input=$MAIN_DITAMAP --format=html5 --output=build --verbose
-        
-        # Check the build result
-        if [ $? -ne 0 ]; then
-          echo "Basic DITA-OT build failed!"
-          echo "Checking DITA-OT log files:"
-          find tools/dita-ot -name "*.log" | while read logfile; do
-            echo "==== Contents of $logfile ===="
-            cat "$logfile"
-          done
-          exit 1
-        fi
-        
-        echo "Basic DITA-OT build succeeded! Output:"
-        ls -la build/
-
-    - name: Add Simple CSS Styling
-      if: success()
-      run: |
-        echo "Adding simple CSS styling..."
-        mkdir -p css
-        
-        # Create a simple CSS file
-        cat > css/automotive.css << 'EOF'
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        header {
-            background-color: #2c3e50;
-            color: white;
-            padding: 10px 20px;
-            margin-bottom: 20px;
-        }
-        
-        footer {
-            background-color: #e74c3c;
-            color: white;
-            padding: 10px 20px;
-            margin-top: 20px;
-            text-align: center;
-        }
-        
-        a {
-            color: #2c3e50;
-            text-decoration: none;
-        }
-        
-        a:hover {
-            text-decoration: underline;
-        }
-        
-        .section {
-            margin: 20px 0;
-            padding: 15px;
-            background-color: #f5f5f5;
-            border-radius: 5px;
-        }
-        EOF
-        
-        # Copy CSS to the build directory
-        cp css/automotive.css build/
-        
-        # Add a link to the CSS in the HTML files
-        find build -name "*.html" | while read htmlfile; do
-          sed -i 's/<\/head>/<link rel="stylesheet" type="text\/css" href="automotive.css"\/>\n<\/head>/' "$htmlfile"
+        # Look for any log files
+        echo "==== DITA-OT LOG FILES ===="
+        find tools/dita-ot -name "*.log" | while read logfile; do
+          echo "Contents of $logfile:"
+          cat "$logfile"
+          echo "----------------"
         done
+        
+        # Check for DITA-OT temp directory
+        echo "==== DITA-OT TEMP DIRECTORY ===="
+        if [ -d "tools/dita-ot/temp" ]; then
+          echo "Temp directory exists. Contents:"
+          ls -la tools/dita-ot/temp/
+        else
+          echo "Temp directory does not exist!"
+        fi
 
-    - name: Deploy to GitHub Pages
-      if: success()
-      uses: JamesIves/github-pages-deploy-action@v4
+    - name: Test Original DITA Content
+      if: always()  # Run this step even if previous steps failed
+      run: |
+        echo "Attempting to process original DITA content..."
+        if [ -d "dita-source" ]; then
+          DITAMAP=$(find dita-source -name "*.ditamap" -type f | head -1)
+          if [ -n "$DITAMAP" ]; then
+            echo "Found DITAMAP: $DITAMAP"
+            echo "Contents of $DITAMAP:"
+            cat "$DITAMAP"
+            
+            echo "Running DITA-OT on original content..."
+            tools/dita-ot/bin/dita --input="$DITAMAP" --format=html5 --output=original-output --verbose > logs/original-output.log 2>&1 || true
+            
+            echo "==== ORIGINAL CONTENT OUTPUT LOG ===="
+            cat logs/original-output.log
+          else
+            echo "No DITAMAP found in dita-source directory!"
+          fi
+        else
+          echo "dita-source directory does not exist!"
+        fi
+
+    - name: Upload Debug Information
+      if: always()
+      uses: actions/upload-artifact@v3
       with:
-        folder: build
-        branch: gh-pages
+        name: dita-debug-info
+        path: |
+          logs/
+          test-dita/
+          tools/dita-ot/temp/
