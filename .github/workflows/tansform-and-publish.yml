@@ -1,4 +1,4 @@
-name: Transform DITA to HTML
+name: Transform DITA to HTML SPA
 
 on:
   push:
@@ -31,22 +31,33 @@ jobs:
           ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
           echo "DITA transformation complete"
           
+          # Create content directory to store raw HTML content
+          mkdir -p ./site/content
+          
           # List files for debugging
           echo "Generated files:"
           find ./site -type f | sort
 
-      - name: Add Layout and Remove Duplicate Navigation
+      - name: Create SPA Structure
         run: |
-          # Create CSS directory
-          mkdir -p ./site/css
+          # Create directories for assets
+          mkdir -p ./site/js ./site/css
           
-          # Create CSS file for layout
+          # Create CSS file for the SPA
           cat > ./site/css/style.css << 'EOF'
-          body {
+          * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+          }
+          
+          body {
             font-family: Arial, sans-serif;
+            line-height: 1.6;
             display: flex;
+            height: 100vh;
+            width: 100%;
+            overflow: hidden;
           }
           
           .sidebar {
@@ -54,101 +65,389 @@ jobs:
             background-color: #f5f5f5;
             padding: 20px;
             height: 100vh;
-            position: fixed;
             overflow-y: auto;
+            border-right: 1px solid #ddd;
           }
           
           .main-content {
-            margin-left: 250px;
+            flex: 1;
             padding: 20px;
-            width: calc(100% - 250px);
+            height: 100vh;
+            overflow-y: auto;
           }
           
-          /* Hide the duplicate navigation in the main content */
-          .main-content > ul:first-of-type {
+          .sidebar h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #333;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+          }
+          
+          .sidebar ul {
+            list-style-type: none;
+            padding-left: 0;
+            margin-bottom: 15px;
+          }
+          
+          .sidebar ul ul {
+            padding-left: 20px;
+            margin-top: 5px;
+          }
+          
+          .sidebar li {
+            margin-bottom: 8px;
+          }
+          
+          .sidebar a {
+            color: #2c3e50;
+            text-decoration: none;
+            display: block;
+            padding: 5px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+            cursor: pointer;
+          }
+          
+          .sidebar a:hover {
+            background-color: #e0e0e0;
+          }
+          
+          .sidebar a.active {
+            background-color: #dbeafe;
+            font-weight: bold;
+          }
+          
+          /* Improve readability in main content */
+          .main-content h1, .main-content h2, .main-content h3 {
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+          }
+          
+          .main-content p {
+            margin-bottom: 1em;
+          }
+          
+          .main-content img {
+            max-width: 100%;
+            height: auto;
+          }
+          
+          #loading {
             display: none;
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+          }
+          
+          .loading #loading {
+            display: block;
           }
           EOF
-          
-          # Create the sidebar navigation HTML
-          cat > ./site/sidebar.html << 'EOF'
-          <div class="sidebar">
-            <h2>Navigation</h2>
-            <ul>
-              <li><a href="automotive-theories.html">Automotive Theories</a>
-                <ul>
-                  <li><a href="history-of-automobiles.html">History of Automobiles</a></li>
-                  <li><a href="types-of-vehicles.html">Types of Vehicles</a></li>
-                  <li><a href="automobile-fundamentals.html">Automobile Fundamentals</a></li>
-                  <li><a href="major-vehicle-components.html">Major Vehicle Components</a>
-                    <ul>
-                      <li><a href="electrical-systems.html">Electrical Systems</a></li>
-                      <li><a href="engine-systems.html">Engine Systems</a></li>
-                      <li><a href="electric-vehicles.html">Electric Vehicles</a></li>
-                      <li><a href="braking-systems.html">Braking Systems</a></li>
-                    </ul>
-                  </li>
-                </ul>
-              </li>
-              <li><a href="basic-maintenance.html">Basic Maintenance</a></li>
-              <li><a href="vehicle-maintenance.html">Vehicle Maintenance</a></li>
-              <li><a href="emergency-repairs.html">Emergency Repairs</a></li>
-            </ul>
-          </div>
+
+      - name: Process HTML Content
+        run: |
+          # Process each HTML file to extract content only
+          for file in ./site/*.html; do
+            # Skip processing if this is the index.html file we'll create later
+            if [[ "$file" == "./site/index.html" ]]; then
+              continue
+            fi
+            
+            filename=$(basename "$file")
+            id="${filename%.html}"
+            echo "Processing $filename (ID: $id)"
+            
+            # Extract content from file (body content excluding navigation)
+            content=$(sed -n '/<body/,/<\/body>/p' "$file" | 
+                      sed '/<body/d;/<\/body>/d' | 
+                      awk '
+                        BEGIN { skip=0; count=0; }
+                        /<ul>/ { 
+                          if (count == 0 && $0 ~ /Automotive Theories|History of Automobiles|Types of Vehicles/) {
+                            skip=1; count=1; 
+                          }
+                        }
+                        /<\/ul>/ { 
+                          if (skip == 1) { 
+                            skip=0; 
+                          }
+                        }
+                        { if (skip == 0) print $0; }
+                      ')
+            
+            # Get title from the original file
+            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
+            if [ -z "$title" ]; then
+              # Create a title from the filename if none found
+              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+            fi
+            
+            # Create a clean HTML fragment file in the content directory
+            echo "$content" > "./site/content/$id.html"
+            
+            # Add to the list of available content
+            echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
+          done
+
+      - name: Create Content Manifest
+        run: |
+          # Create navigation config
+          cat > ./site/js/navigation-config.js << 'EOF'
+          // Navigation structure
+          const navigationConfig = [
+            {
+              id: "automotive-theories",
+              title: "Automotive Theories",
+              children: [
+                { id: "history-of-automobiles", title: "History of Automobiles" },
+                { id: "types-of-vehicles", title: "Types of Vehicles" },
+                { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
+                { 
+                  id: "major-vehicle-components", 
+                  title: "Major Vehicle Components",
+                  children: [
+                    { id: "electrical-systems", title: "Electrical Systems" },
+                    { id: "engine-systems", title: "Engine Systems" },
+                    { id: "electric-vehicles", title: "Electric Vehicles" },
+                    { id: "braking-systems", title: "Braking Systems" }
+                  ]
+                }
+              ]
+            },
+            { id: "basic-maintenance", title: "Basic Maintenance" },
+            { id: "vehicle-maintenance", title: "Vehicle Maintenance" },
+            { id: "emergency-repairs", title: "Emergency Repairs" }
+          ];
           EOF
           
-          # Process each HTML file
-          for file in ./site/*.html; do
-            echo "Processing $file"
+          # Create content manifest
+          echo "// Content manifest - maps IDs to content files" > ./site/js/content-manifest.js
+          echo "const contentManifest = {" >> ./site/js/content-manifest.js
+          
+          # Add entries from our temp file if it exists
+          if [ -f "./site/content-list.tmp" ]; then
+            cat ./site/content-list.tmp >> ./site/js/content-manifest.js
+          fi
+          
+          # Close the manifest object
+          echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-manifest.js
+          echo "};" >> ./site/js/content-manifest.js
+          
+          # Clean up temp file
+          rm -f ./site/content-list.tmp
+
+      - name: Create SPA Application
+        run: |
+          # Create the app.js file
+          cat > ./site/js/app.js << 'EOF'
+          // SPA Application
+          
+          // DOM Elements
+          const contentEl = document.getElementById('content');
+          const contentTitleEl = document.getElementById('content-title');
+          const navigationEl = document.getElementById('navigation');
+          
+          // Current state
+          let currentPage = null;
+          
+          // Initialize the application
+          function initApp() {
+            // Render navigation
+            renderNavigation(navigationConfig);
             
-            # Create a temporary file
-            temp_file=$(mktemp)
+            // Set up event listeners
+            window.addEventListener('popstate', handlePopState);
             
-            # Extract content from the file, skipping the navigation section
-            content=$(sed -n '/<body/,/<\/body>/p' "$file" | 
-                     sed '/<body/d;/<\/body>/d' | 
-                     awk '
-                       BEGIN { skip=0; count=0; }
-                       /<ul>/ { 
-                         if (count == 0 && $0 ~ /Automotive Theories|History of Automobiles|Types of Vehicles/) {
-                           skip=1; count=1; 
-                         }
-                       }
-                       /<\/ul>/ { 
-                         if (skip == 1) { 
-                           skip=0; 
-                         }
-                       }
-                       { if (skip == 0) print $0; }
-                     ')
+            // Load initial page based on URL or default
+            const initialPageId = getPageIdFromUrl() || "automotive-theories";
+            navigateToPage(initialPageId, false);
+          }
+          
+          // Render the navigation menu
+          function renderNavigation(items, parentEl = navigationEl) {
+            const ul = document.createElement('ul');
             
-            # Get the title
-            title=$(grep -o "<title>.*</title>" "$file" | head -1)
+            items.forEach(item => {
+              const li = document.createElement('li');
+              
+              const a = document.createElement('a');
+              a.textContent = item.title;
+              a.setAttribute('data-id', item.id);
+              a.href = `#${item.id}`;
+              a.addEventListener('click', (e) => {
+                e.preventDefault();
+                navigateToPage(item.id);
+              });
+              li.appendChild(a);
+              
+              // Recursively render children if any
+              if (item.children && item.children.length > 0) {
+                renderNavigation(item.children, li);
+              }
+              
+              ul.appendChild(li);
+            });
             
-            # Create the new file with the sidebar
-            cat > "$temp_file" << EOF
+            parentEl.appendChild(ul);
+          }
+          
+          // Navigate to a specific page
+          function navigateToPage(pageId, pushState = true) {
+            // Update active state in navigation
+            updateActiveNavItem(pageId);
+            
+            // Update the URL
+            if (pushState) {
+              history.pushState({ pageId }, '', `#${pageId}`);
+            }
+            
+            // Show loading indicator
+            document.body.classList.add('loading');
+            
+            // Update current page
+            currentPage = pageId;
+            
+            // Load content
+            loadContent(pageId)
+              .then(content => {
+                // Update title
+                const title = getPageTitle(pageId);
+                contentTitleEl.textContent = title;
+                document.title = title;
+                
+                // Update content
+                contentEl.innerHTML = content;
+                
+                // Hide loading indicator
+                document.body.classList.remove('loading');
+              })
+              .catch(error => {
+                console.error('Error loading content:', error);
+                contentEl.innerHTML = `<div class="error">Failed to load content: ${error.message}</div>`;
+                document.body.classList.remove('loading');
+              });
+          }
+          
+          // Load content for a page
+          async function loadContent(pageId) {
+            try {
+              const response = await fetch(`content/${pageId}.html`);
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              return await response.text();
+            } catch (error) {
+              console.error(`Error loading content for ${pageId}:`, error);
+              return `<div class="error">
+                <h2>Content Not Found</h2>
+                <p>The requested content "${pageId}" could not be loaded.</p>
+                <p>Please select another topic from the navigation menu.</p>
+              </div>`;
+            }
+          }
+          
+          // Update active state in navigation
+          function updateActiveNavItem(pageId) {
+            // Remove active class from all nav items
+            const allNavItems = document.querySelectorAll('.sidebar a');
+            allNavItems.forEach(item => item.classList.remove('active'));
+            
+            // Add active class to current page nav item
+            const activeItem = document.querySelector(`.sidebar a[data-id="${pageId}"]`);
+            if (activeItem) {
+              activeItem.classList.add('active');
+              
+              // Expand parent sections if needed
+              let parent = activeItem.parentElement;
+              while (parent && parent !== navigationEl) {
+                if (parent.tagName === 'LI') {
+                  const parentLink = parent.querySelector('a');
+                  if (parentLink) {
+                    parentLink.classList.add('active');
+                  }
+                }
+                parent = parent.parentElement;
+              }
+            }
+          }
+          
+          // Handle popstate event (browser back/forward)
+          function handlePopState(event) {
+            const pageId = event.state?.pageId || getPageIdFromUrl() || 'default';
+            navigateToPage(pageId, false);
+          }
+          
+          // Get page ID from URL hash
+          function getPageIdFromUrl() {
+            return window.location.hash.substring(1) || null;
+          }
+          
+          // Get page title from content manifest
+          function getPageTitle(pageId) {
+            return (contentManifest[pageId] || contentManifest.default).title;
+          }
+          
+          // Initialize the app when DOM is ready
+          document.addEventListener('DOMContentLoaded', initApp);
+          EOF
+
+      - name: Create Index HTML
+        run: |
+          # Create the index.html file for the SPA
+          cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
-          <html>
+          <html lang="en">
           <head>
             <meta charset="UTF-8">
-            $title
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Automotive Documentation</title>
             <link rel="stylesheet" href="css/style.css">
+            <!-- Load JavaScript files -->
+            <script src="js/navigation-config.js"></script>
+            <script src="js/content-manifest.js"></script>
+            <script src="js/app.js"></script>
           </head>
           <body>
-          $(cat ./site/sidebar.html)
-          <div class="main-content">
-          $content
-          </div>
+            <div class="sidebar">
+              <h2>Navigation</h2>
+              <div id="navigation"></div>
+            </div>
+            <div class="main-content">
+              <h1 id="content-title">Loading...</h1>
+              <div id="loading">Loading content...</div>
+              <div id="content"></div>
+            </div>
           </body>
           </html>
           EOF
-            
-            # Replace the original file
-            mv "$temp_file" "$file"
-          done
           
-          # Clean up
-          rm -f ./site/sidebar.html
+          # Create a default content for new pages
+          mkdir -p ./site/content
+          
+          # Create default content page
+          cat > ./site/content/default.html << 'EOF'
+          <h1>Automotive Documentation</h1>
+          <p>Welcome to the automotive documentation. Please select a topic from the navigation menu.</p>
+          EOF
+          
+          # Ensure all navigation targets have content files
+          # If content doesn't exist, create placeholder
+          for target in automotive-theories history-of-automobiles types-of-vehicles automobile-fundamentals major-vehicle-components electrical-systems engine-systems electric-vehicles braking-systems basic-maintenance vehicle-maintenance emergency-repairs; do
+            if [ ! -f "./site/content/$target.html" ]; then
+              echo "Creating placeholder content for $target"
+              
+              # Create title from ID
+              title=$(echo "$target" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+              
+              # Create placeholder content
+              cat > "./site/content/$target.html" << EOF
+          <h1>${title}</h1>
+          <p>Content for this section is currently under development.</p>
+          EOF
+            fi
+          done
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
