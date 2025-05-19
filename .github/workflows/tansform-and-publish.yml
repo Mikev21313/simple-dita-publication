@@ -177,9 +177,12 @@ jobs:
           # Create content directory for SPA fragments
           mkdir -p ./site/content
           mkdir -p ./site/js
+          
+          # Create a folder to store folder-based content
+          mkdir -p ./site/content/folders
 
           # Process each HTML file to extract content
-          for file in ./site/*.html; do
+          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
             # Skip processing if this is the index.html we'll create later
             if [[ "$file" == "./site/index.html" ]]; then
               continue
@@ -203,6 +206,19 @@ jobs:
               title=$(echo "$id" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
             fi
             
+            # Determine parent folder (if any)
+            parent_dir=$(dirname "$file" | xargs basename)
+            if [[ "$parent_dir" != "site" ]]; then
+              echo "File is in subdirectory: $parent_dir"
+              # Create folder content path to handle nested structure
+              mkdir -p "./site/content/$parent_dir"
+              echo "$content" > "./site/content/$parent_dir/$id.html"
+              echo "Created folder-based content: ./site/content/$parent_dir/$id.html"
+              
+              # Also create a path mapping entry
+              echo "  \"$hyphenated_id\": { \"path\": \"$parent_dir/$id.html\" }," >> ./site/js/path-mapping.tmp
+            fi
+            
             # Create content file with original filename
             echo "$content" > "./site/content/$id.html"
             
@@ -213,7 +229,7 @@ jobs:
             fi
           done
           
-          # Create a mapping file directly (skip the shell script)
+          # Create a mapping file directly
           echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
           echo "const contentIdMap = {" >> ./site/js/content-id-map.js
           
@@ -242,6 +258,19 @@ jobs:
           # Close the mapping object
           echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-id-map.js
           echo "};" >> ./site/js/content-id-map.js
+          
+          # Create path mapping if needed
+          if [ -f "./site/js/path-mapping.tmp" ]; then
+            echo "// Auto-generated path mapping" > ./site/js/path-mapping.js
+            echo "const pathMapping = {" >> ./site/js/path-mapping.js
+            cat ./site/js/path-mapping.tmp >> ./site/js/path-mapping.js
+            echo "  \"default\": { \"path\": \"\" }" >> ./site/js/path-mapping.js
+            echo "};" >> ./site/js/path-mapping.js
+            rm ./site/js/path-mapping.tmp
+          else
+            echo "// Auto-generated path mapping" > ./site/js/path-mapping.js
+            echo "const pathMapping = { \"default\": { \"path\": \"\" } };" >> ./site/js/path-mapping.js
+          fi
 
       # Step 7: Generate Navigation Configuration
       - name: Generate Navigation Configuration
@@ -836,7 +865,7 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Update index.html to include search functionality
+      # Step 10: Update index.html to include path mapping
       - name: Update Index HTML with Search
         run: |
           cat > ./site/index.html << 'EOF'
@@ -901,6 +930,7 @@ jobs:
             <!-- Load JavaScript files -->
             <script src="js/navigation-config.js"></script>
             <script src="js/content-id-map.js"></script>
+            <script src="js/path-mapping.js"></script>
             <script src="js/search-index.js"></script>
             <script src="js/search.js"></script>
             <script src="js/app.js"></script>
