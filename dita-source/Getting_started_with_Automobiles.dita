@@ -2,7 +2,6 @@
 <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
 <map>
     <title>Automotive Information</title>
-    <topicref href="Getting_Started_With_Cars.dita"/>
     <topicref href="car_basics.dita"/>
     <topicref href="car_types.dita">
         <topicref href="evs.dita"/>
