@@ -469,16 +469,18 @@ jobs:
             border-radius: 0 4px 4px 0;
             cursor: pointer;
             margin-left: -1px;
+            min-width: 70px;
+            transition: all 0.2s ease;
           }
           
           #search-button:hover {
-            background-color: #3a7fcf;
+            background-color: #357abf;
           }
           
           #search-input:focus {
             outline: none;
-            border-color: #4a90e2;
-            box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+            border-color: #ffd600;
+            box-shadow: 0 0 0 2px rgba(255, 214, 0, 0.2);
           }
           
           .search-scope {
@@ -604,6 +606,8 @@ jobs:
             border-radius: 4px;
             transition: background-color 0.2s;
             cursor: pointer;
+            position: relative;
+            transition: all 0.2s ease-out;
           }
           
           .sidebar a:hover {
@@ -675,6 +679,8 @@ jobs:
           /* Search results in main content area */
           .search-results-container {
             padding: 10px 0;
+            max-width: 800px;
+            margin: 0 auto;
           }
           
           .search-results-count {
@@ -691,14 +697,17 @@ jobs:
           
           .content-search-result {
             padding: 15px;
-            border: 1px solid #eee;
-            border-radius: 5px;
-            transition: background-color 0.2s;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            transition: all 0.2s ease;
             margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
           }
           
           .content-search-result:hover {
-            background-color: #f9f9f9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border-color: #ccc;
           }
           
           .content-search-result h3 {
@@ -716,14 +725,17 @@ jobs:
           }
           
           .search-result-excerpt {
-            color: #666;
+            color: #555;
             font-size: 14px;
-            margin-top: 5px;
+            line-height: 1.5;
+            margin-top: 8px;
           }
           
           .search-result-excerpt strong {
-            background-color: rgba(255, 230, 0, 0.4);
-            font-weight: normal;
+            background-color: #fff59d;
+            padding: 2px 0;
+            font-weight: bold;
+            border-radius: 2px;
           }
           
           /* Loading indicator for search index */
@@ -749,13 +761,99 @@ jobs:
             animation: spin 1s linear infinite;
           }
           
+          /* Search feedback notification */
+          .search-feedback {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 1000;
+            max-width: 250px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            display: none;
+            animation: fadeInOut 3s ease-in-out;
+          }
+          
+          @keyframes fadeInOut {
+            0% { opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { opacity: 0; }
+          }
+          
+          /* Loading indicator for background processing */
+          .search-status-indicator {
+            display: inline-block;
+            margin-left: 8px;
+            font-size: 11px;
+            color: #777;
+            margin-top: 10px;
+          }
+          
+          .search-status-indicator .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #4a90e2;
+            margin-right: 4px;
+            animation: pulse 1.5s infinite;
+          }
+          
+          /* Throbber animation for loading */
+          @keyframes pulse {
+            0% { opacity: 0.2; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0.2; transform: scale(0.8); }
+          }
+          
+          /* Make sidebar items stand out more during search */
+          .sidebar a.quick-match {
+            background-color: #fffde7;
+            border-left: 3px solid #ffd600;
+            padding-left: 17px;
+            margin-left: -3px;
+            animation: highlight-pulse 2s infinite;
+          }
+          
+          .sidebar a.quick-match:hover {
+            background-color: #fff8c4;
+          }
+          
+          /* Item highlight animation */
+          @keyframes highlight-pulse {
+            0% { background-color: #fffde7; }
+            50% { background-color: #fff8c4; }
+            100% { background-color: #fffde7; }
+          }
+          
+          /* Highlighted match text */
+          .highlight-match {
+            background-color: #fff59d;
+            padding: 2px 0;
+            font-weight: bold;
+            border-radius: 2px;
+            box-shadow: 0 0 0 2px #fff59d;
+          }
+          
+          /* Active search styling */
+          .sidebar a.active.quick-match {
+            background-color: #fff8e1 !important;
+            border-left: 3px solid #ffd600 !important;
+          }
+          
+          /* Show more prominent loading indicator in search status */
           #search-status {
-            margin-top: 20px;
-            font-size: 12px;
-            color: #666;
-            background-color: #f9f9f9;
+            position: relative;
             padding: 10px;
             border-radius: 4px;
+            margin-top: 15px;
+            background-color: #f0f4f8;
+            border-left: 3px solid #4a90e2;
           }
           
           /* Responsive design for mobile */
@@ -1107,6 +1205,155 @@ jobs:
           EOF
 
       # Step 10: Create Search JavaScript
+      - name: Create Search JavaScript
+        run: |
+          cat > ./site/js/search-index.js << 'EOF'
+          // This file will be populated at runtime by the search.js script
+          const searchIndexData = {};
+          EOF
+          
+          cat > ./site/js/search.js << 'EOF'
+          // Lightweight Search Implementation for DITA SPA
+          let searchIndex = {};
+          let searchIndexReady = true; // Always ready because we use titles first
+
+          // Initialize search functionality
+          function initSearch() {
+            const searchInput = document.getElementById('search-input');
+            const searchButton = document.getElementById('search-button');
+            
+            console.log('[DITA-SPA] Initializing lightweight search');
+            
+            // Add event listeners
+            searchInput.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter') {
+                performSearch();
+              }
+            });
+            
+            searchInput.addEventListener('input', function() {
+              highlightNavigationMatches(this.value.trim());
+            });
+            
+            searchButton.addEventListener('click', performSearch);
+            
+            // Update welcome screen to show search is active
+            updateWelcomeScreen();
+            
+            // Create lightweight search index just from navigation
+            createLightweightIndex();
+            
+            // Start content indexing in the background with low priority
+            setTimeout(() => {
+              // This will run after the UI is responsive
+              enhanceSearchIndexInBackground();
+            }, 2000);
+          }
+
+          // Update welcome screen with search info
+          function updateWelcomeScreen() {
+            const contentEl = document.getElementById('content');
+            if (!contentEl) return;
+            
+            const welcomeScreen = contentEl.querySelector('.welcome-screen');
+            if (welcomeScreen) {
+              const statusDiv = document.createElement('div');
+              statusDiv.id = 'search-status';
+              statusDiv.innerHTML = `
+                <p>Search is ready! Type to highlight matches in navigation, press Enter or click Search to view full results.</p>
+                <div class="search-status-indicator">
+                  <span>Full content indexing in progress</span>
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                </div>
+              `;
+              welcomeScreen.appendChild(statusDiv);
+            }
+          }
+
+          // Create a lightweight search index just from navigation items
+          function createLightweightIndex() {
+            if (!window.navigationConfig || !Array.isArray(window.navigationConfig)) {
+              console.error('[DITA-SPA] Navigation configuration missing');
+              return;
+            }
+            
+            function processItems(items) {
+              items.forEach(item => {
+                if (!item || !item.id) return;
+                
+                // Create a simple index entry with just the title
+                searchIndex[item.id] = {
+                  id: item.id,
+                  title: item.title || 'Untitled',
+                  content: item.title || 'Untitled', // Initially just title
+                  filename: item.filename || item.id
+                };
+                
+                // Process children recursively
+                if (item.children && item.children.length > 0) {
+                  processItems(item.children);
+                }
+              });
+            }
+            
+            // Process all navigation items
+            processItems(window.navigationConfig);
+            console.log(`[DITA-SPA] Lightweight index created with ${Object.keys(searchIndex).length} items`);
+          }
+
+          // Highlight matching items in the navigation panel
+          function highlightNavigationMatches(term) {
+            if (!term) {
+              // Clear all highlights if term is empty
+              clearNavigationHighlights();
+              return;
+            }
+            
+            const navItems = document.querySelectorAll('.sidebar a');
+            let matches = 0;
+            
+            // First clear existing highlights
+            clearNavigationHighlights();
+            
+            // Then add new highlights
+            navItems.forEach(item => {
+              const title = item.textContent.toLowerCase();
+              
+              if (title.includes(term.toLowerCase())) {
+                matches++;
+                // Add highlight class
+                item.classList.add('quick-match');
+                
+                // Highlight the matching text portion
+                try {
+                  const regex = new RegExp(`(${escapeRegExp(term)})`, 'gi');
+                  item.innerHTML = item.textContent.replace(
+                    regex, 
+                    '<span class="highlight-match">$1</span>'
+                  );
+                } catch (e) {
+                  // Fall back to simple class-based highlighting if regex fails
+                  console.warn('Regex highlight failed:', e);
+                }
+                
+                // Expand parent folders
+                expandParents(item);
+              }
+            });
+            
+            // Show feedback
+            if (matches > 0) {
+              showFeedback(`Found ${matches} matching topics`);
+            } else {
+              showFeedback('No matching topics found');
+            }
+          }
+
+          // Helper function to escape regex special characters
+          function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\# Step 10: Create Search JavaScript
       - name: Create Search JavaScript
         run: |
           cat > ./site/js/search-index.js << 'EOF'
@@ -1593,6 +1840,334 @@ jobs:
           // Initialize search when DOM is ready
           document.addEventListener('DOMContentLoaded', function() {
             console.log('[DITA-SPA] DOM loaded, initializing search');
+            initSearch();
+          });
+          EOF');
+          }
+
+          // Clear all navigation highlights
+          function clearNavigationHighlights() {
+            const navItems = document.querySelectorAll('.sidebar a');
+            navItems.forEach(item => {
+              item.classList.remove('quick-match');
+              // Restore original text content
+              const text = item.textContent;
+              item.innerHTML = text;
+            });
+          }
+
+          // Expand all parent folders of a navigation item
+          function expandParents(item) {
+            let parent = item.parentElement;
+            while (parent && !parent.classList.contains('sidebar')) {
+              if (parent.classList.contains('has-children')) {
+                parent.classList.add('expanded');
+              }
+              parent = parent.parentElement;
+            }
+          }
+
+          // Show user feedback
+          function showFeedback(message) {
+            let feedback = document.getElementById('search-feedback');
+            if (!feedback) {
+              feedback = document.createElement('div');
+              feedback.id = 'search-feedback';
+              feedback.className = 'search-feedback';
+              document.body.appendChild(feedback);
+            }
+            
+            feedback.textContent = message;
+            feedback.style.display = 'block';
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+              feedback.style.display = 'none';
+            }, 3000);
+          }
+
+          // Perform search based on the current search term
+          function performSearch() {
+            const searchInput = document.getElementById('search-input');
+            const searchTerm = searchInput.value.trim();
+            
+            if (!searchTerm) return;
+            
+            console.log(`[DITA-SPA] Searching for: ${searchTerm}`);
+            
+            // Check if we're only searching current page
+            const searchScope = document.getElementById('search-toggle').checked;
+            
+            // Get all matches from the search index
+            const results = [];
+            
+            if (searchScope && window.currentPage) {
+              // Search only in current page
+              const id = window.currentPage;
+              const item = searchIndex[id];
+              
+              if (item && (item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  item.content.toLowerCase().includes(searchTerm.toLowerCase()))) {
+                  
+                // Add the single result
+                results.push(buildSearchResult(id, item, searchTerm));
+              }
+            } else {
+              // Search all content
+              for (const id in searchIndex) {
+                const item = searchIndex[id];
+                if (item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    item.content.toLowerCase().includes(searchTerm.toLowerCase())) {
+                  
+                  // Add this result  
+                  results.push(buildSearchResult(id, item, searchTerm));
+                }
+              }
+            }
+            
+            // Sort results by score
+            results.sort((a, b) => b.score - a.score);
+            
+            // Display results
+            displaySearchResults(results, searchTerm);
+          }
+
+          // Build a search result object
+          function buildSearchResult(id, item, searchTerm) {
+            // Calculate a basic relevance score
+            let score = 0;
+            if (item.title.toLowerCase().includes(searchTerm.toLowerCase())) {
+              score += 10; // Title matches are higher priority
+            }
+            if (item.content.toLowerCase().includes(searchTerm.toLowerCase())) {
+              score += 1;
+            }
+            
+            // Create excerpt
+            let excerpt = '';
+            const content = item.content.toLowerCase();
+            const index = content.indexOf(searchTerm.toLowerCase());
+            if (index !== -1) {
+              const start = Math.max(0, index - 40);
+              const end = Math.min(content.length, index + searchTerm.length + 40);
+              excerpt = '...' + content.substring(start, end) + '...';
+              // Highlight the search term
+              excerpt = excerpt.replace(
+                new RegExp(escapeRegExp(searchTerm), 'gi'), 
+                match => `<strong>${match}</strong>`
+              );
+            } else {
+              excerpt = item.title;
+            }
+            
+            return {
+              id: id,
+              title: item.title,
+              excerpt: excerpt,
+              score: score
+            };
+          }
+
+          // Display search results in the main content area
+          function displaySearchResults(results, searchTerm) {
+            const contentEl = document.getElementById('content');
+            const titleEl = document.getElementById('content-title');
+            
+            titleEl.textContent = `Search Results for "${searchTerm}"`;
+            document.title = `Search Results - ${searchTerm}`;
+            
+            if (results.length === 0) {
+              contentEl.innerHTML = `
+                <div class="search-results-container">
+                  <p class="search-no-results">No results found for "${searchTerm}".</p>
+                  <p>Try a different search term or browse topics from the navigation menu.</p>
+                  <ul style="margin-top: 20px; margin-left: 20px;">
+                    <li>Check your spelling</li>
+                    <li>Try more general keywords</li>
+                    <li>Try different keywords</li>
+                  </ul>
+                  <p style="margin-top: 20px; font-size: 12px; color: #666;">
+                    Note: Full content search is still indexing. More results may appear for future searches.
+                  </p>
+                </div>
+              `;
+              return;
+            }
+            
+            // Build results HTML
+            let html = `
+              <div class="search-results-container">
+                <p class="search-results-count">Found ${results.length} result${results.length !== 1 ? 's' : ''} for "${searchTerm}"</p>
+                <div class="search-results-list">
+            `;
+            
+            // Add each result
+            results.forEach(result => {
+              html += `
+                <div class="content-search-result" data-id="${result.id}">
+                  <h3><a href="#${result.id}" class="search-result-link">${result.title}</a></h3>
+                  <p class="search-result-excerpt">${result.excerpt}</p>
+                </div>
+              `;
+            });
+            
+            html += `
+                </div>
+                <p style="margin-top: 20px; font-size: 12px; color: #666;">
+                  Tip: Full content search is still building. Future searches may find more matches.
+                </p>
+              </div>
+            `;
+            
+            contentEl.innerHTML = html;
+            
+            // Add click handlers to results
+            document.querySelectorAll('.search-result-link').forEach(link => {
+              link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const id = this.closest('.content-search-result').getAttribute('data-id');
+                if (typeof window.navigateToPage === 'function') {
+                  window.navigateToPage(id);
+                } else {
+                  window.location.hash = id;
+                }
+              });
+            });
+          }
+
+          // Enhance the search index in the background with low priority
+          function enhanceSearchIndexInBackground() {
+            console.log('[DITA-SPA] Starting background index enhancement');
+            
+            const ids = Object.keys(searchIndex);
+            let processedCount = 0;
+            
+            // Process one item at a time with significant pauses to avoid UI freezing
+            function processNextItem(index) {
+              if (index >= ids.length) {
+                console.log('[DITA-SPA] Background indexing complete');
+                // Update status indicator when complete
+                updateIndexingStatus(true);
+                return;
+              }
+              
+              const id = ids[index];
+              
+              // Fetch and process content for this ID
+              fetchContentForId(id).then(() => {
+                processedCount++;
+                
+                // Log progress occasionally
+                if (processedCount % 10 === 0 || processedCount === ids.length) {
+                  const percentage = Math.round(processedCount/ids.length*100);
+                  console.log(`[DITA-SPA] Background indexing: ${processedCount}/${ids.length} (${percentage}%)`);
+                  updateIndexingStatus(false, percentage);
+                }
+                
+                // Continue with next item after a delay
+                setTimeout(() => {
+                  processNextItem(index + 1);
+                }, 300); // Significant delay to keep UI responsive
+              });
+            }
+            
+            // Start processing
+            processNextItem(0);
+          }
+
+          // Update the indexing status display
+          function updateIndexingStatus(isComplete, percentage) {
+            const statusEl = document.getElementById('search-status');
+            if (!statusEl) return;
+            
+            if (isComplete) {
+              statusEl.innerHTML = `
+                <p>Search index is complete! All content is now searchable.</p>
+              `;
+              return;
+            }
+            
+            if (percentage) {
+              const indicator = statusEl.querySelector('.search-status-indicator');
+              if (indicator) {
+                indicator.innerHTML = `
+                  <span>Full content indexing: ${percentage}% complete</span>
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                `;
+              }
+            }
+          }
+
+          // Fetch content for a single ID
+          async function fetchContentForId(id) {
+            try {
+              const basePath = getBasePathForSearch();
+              const contentPath = `${basePath}/content/${id}.html`;
+              
+              // Use AbortController to set a timeout
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 3000);
+              
+              const response = await fetch(contentPath, { 
+                signal: controller.signal,
+                cache: 'force-cache'
+              });
+              clearTimeout(timeoutId);
+              
+              if (!response.ok) return;
+              
+              const html = await response.text();
+              
+              // Extract plain text and add to index
+              const text = extractTextFromHtml(html);
+              if (text) {
+                searchIndex[id].content = text;
+              }
+            } catch (error) {
+              // Silently fail for background processing
+              console.debug(`[DITA-SPA] Background fetch failed for ${id}`);
+            }
+          }
+
+          // Fast HTML text extraction using regex instead of DOM
+          function extractTextFromHtml(html) {
+            if (!html) return '';
+            
+            // Remove all scripts and styles
+            let text = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ');
+            text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ');
+            
+            // Remove all HTML tags
+            text = text.replace(/<\/?[^>]+(>|$)/g, ' ');
+            
+            // Decode HTML entities
+            text = text.replace(/&nbsp;/g, ' ')
+                       .replace(/&amp;/g, '&')
+                       .replace(/&lt;/g, '<')
+                       .replace(/&gt;/g, '>')
+                       .replace(/&quot;/g, '"')
+                       .replace(/&#39;/g, "'");
+            
+            // Remove extra whitespace
+            text = text.replace(/\s+/g, ' ').trim();
+            
+            return text;
+          }
+
+          // Get base path helper function
+          function getBasePathForSearch() {
+            if (location.hostname.includes('github.io')) {
+              const pathSegments = location.pathname.split('/');
+              if (pathSegments.length > 1) {
+                return '/' + pathSegments[1];
+              }
+            }
+            return '';
+          }
+
+          // Initialize search when DOM is ready
+          document.addEventListener('DOMContentLoaded', function() {
             initSearch();
           });
           EOF
