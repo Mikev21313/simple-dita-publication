@@ -916,262 +916,396 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create simple search script
-      - name: Create Simple Search Script
-        run: |
-          # Create the search script file
-          cat > ./site/js/simple-search.js << 'EOF'
-          // Simple search implementation for DITA SPA
-          
-          // Global variables
-          let searchIndex = {};
-          let isIndexBuilt = false;
-          let isIndexBuilding = false;
-          
-          // Initialize search
-          function initSearch() {
-            // Get references to DOM elements
-            const searchInput = document.getElementById('search-input');
-            const searchButton = document.getElementById('search-button');
-            
-            // Add event listeners
-            searchButton.addEventListener('click', handleSearch);
-            searchInput.addEventListener('keypress', function(e) {
-              if (e.key === 'Enter') {
-                handleSearch();
-              }
-            });
-            
-            // Log initialization
-            console.log('[DITA-Search] Simple search initialized');
+      # Step 10: Create Enhanced Search Script
+- name: Create Enhanced Search Script
+  run: |
+    # Create the enhanced search script file
+    cat > ./site/js/enhanced-search.js << 'EOF'
+    // Enhanced search implementation for DITA SPA
+    
+    // Global variables
+    let searchIndex = {};
+    let isIndexBuilt = false;
+    let isIndexBuilding = false;
+    
+    // Initialize search
+    function initSearch() {
+      console.log('[DITA-Search] Initializing search...');
+      
+      // Get references to DOM elements
+      const searchInput = document.getElementById('search-input');
+      const searchButton = document.getElementById('search-button');
+      
+      if (!searchInput || !searchButton) {
+        console.error('[DITA-Search] Search elements not found in the DOM');
+        return;
+      }
+      
+      // Add event listeners
+      searchButton.addEventListener('click', handleSearch);
+      searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          handleSearch();
+        }
+      });
+      
+      // Pre-build the index when the page loads
+      // This ensures the index is ready when the user searches
+      setTimeout(() => {
+        buildSearchIndex().then(() => {
+          console.log('[DITA-Search] Index pre-built successfully');
+          isIndexBuilt = true;
+          isIndexBuilding = false;
+        });
+      }, 1000); // Delay to ensure navigation and content are loaded
+      
+      console.log('[DITA-Search] Search initialized');
+    }
+    
+    // Handle search action
+    function handleSearch() {
+      const searchInput = document.getElementById('search-input');
+      const searchResults = document.getElementById('search-results');
+      
+      if (!searchInput || !searchResults) {
+        console.error('[DITA-Search] Search elements not found');
+        return;
+      }
+      
+      const query = searchInput.value.trim().toLowerCase();
+      
+      // Validate search query
+      if (query.length < 2) {
+        searchResults.innerHTML = '<div class="search-message">Please enter at least 2 characters to search.</div>';
+        return;
+      }
+      
+      // Show loading state
+      searchResults.innerHTML = '<div class="search-loading">Searching...</div>';
+      
+      // Build index if not already built
+      if (!isIndexBuilt && !isIndexBuilding) {
+        isIndexBuilding = true;
+        buildSearchIndex().then(() => {
+          isIndexBuilt = true;
+          isIndexBuilding = false;
+          performSearch(query);
+        }).catch(error => {
+          console.error('[DITA-Search] Error building index:', error);
+          searchResults.innerHTML = '<div class="search-message">Error building search index. Please try again.</div>';
+          isIndexBuilding = false;
+        });
+      } else if (isIndexBuilding) {
+        // If index is currently building, wait for it
+        searchResults.innerHTML = '<div class="search-loading">Preparing search index...</div>';
+        const checkInterval = setInterval(() => {
+          if (isIndexBuilt) {
+            clearInterval(checkInterval);
+            performSearch(query);
+          }
+        }, 200);
+      } else {
+        // Index is ready, perform search immediately
+        performSearch(query);
+      }
+    }
+    
+    // Build search index by loading content files
+    async function buildSearchIndex() {
+      console.log('[DITA-Search] Building search index...');
+      
+      // Get all topic IDs from navigation configuration
+      const topicIds = collectTopicIds();
+      console.log(`[DITA-Search] Found ${topicIds.length} topics to index`);
+      
+      if (topicIds.length === 0) {
+        console.error('[DITA-Search] No topics found to index');
+        return;
+      }
+      
+      // Process each topic
+      for (const topicId of topicIds) {
+        try {
+          await indexTopic(topicId);
+        } catch (error) {
+          console.error(`[DITA-Search] Error indexing topic ${topicId}:`, error);
+        }
+      }
+      
+      console.log(`[DITA-Search] Indexing complete. Indexed ${Object.keys(searchIndex).length} topics.`);
+      console.log('[DITA-Search] Sample entry:', Object.keys(searchIndex)[0], searchIndex[Object.keys(searchIndex)[0]]);
+    }
+    
+    // Collect all topic IDs from navigation
+    function collectTopicIds() {
+      const ids = new Set();
+      
+      // Recursive function to extract IDs from navigation tree
+      function extractIds(items) {
+        if (!items || !Array.isArray(items)) return;
+        
+        items.forEach(item => {
+          if (item.id) {
+            ids.add(item.id);
           }
           
-          // Handle search action
-          function handleSearch() {
-            const searchInput = document.getElementById('search-input');
-            const searchResults = document.getElementById('search-results');
-            const query = searchInput.value.trim().toLowerCase();
-            
-            // Validate search query
-            if (query.length < 2) {
-              searchResults.innerHTML = '<div class="search-message">Please enter at least 2 characters to search.</div>';
-              return;
-            }
-            
-            // Show loading state
-            searchResults.innerHTML = '<div class="search-loading">Searching...</div>';
-            
-            // Build index if not already built
-            if (!isIndexBuilt && !isIndexBuilding) {
-              isIndexBuilding = true;
-              buildSearchIndex().then(() => {
-                isIndexBuilt = true;
-                isIndexBuilding = false;
-                performSearch(query);
-              });
-            } else if (isIndexBuilding) {
-              // If index is currently building, wait for it
-              const checkInterval = setInterval(() => {
-                if (isIndexBuilt) {
-                  clearInterval(checkInterval);
-                  performSearch(query);
-                }
-              }, 200);
-            } else {
-              // Index is ready, perform search immediately
-              performSearch(query);
-            }
+          if (item.children) {
+            extractIds(item.children);
           }
+        });
+      }
+      
+      // Check if navigation config is available
+      if (typeof navigationConfig !== 'undefined') {
+        console.log('[DITA-Search] Extracting IDs from navigation config');
+        extractIds(navigationConfig);
+      } else {
+        console.warn('[DITA-Search] Navigation config not available');
+      }
+      
+      // Also check content ID map
+      if (typeof contentIdMap !== 'undefined') {
+        console.log('[DITA-Search] Extracting IDs from content ID map');
+        Object.keys(contentIdMap).forEach(id => {
+          if (id !== 'default') {
+            ids.add(id);
+          }
+        });
+      } else {
+        console.warn('[DITA-Search] Content ID map not available');
+      }
+      
+      return Array.from(ids);
+    }
+    
+    // Index a single topic
+    async function indexTopic(topicId) {
+      try {
+        // Get topic title
+        let title = '';
+        
+        if (typeof getPageTitle === 'function') {
+          title = getPageTitle(topicId);
+        } else if (window.contentIdMap && contentIdMap[topicId]) {
+          title = contentIdMap[topicId].title;
+        } else {
+          // Generate title from ID
+          title = topicId.split(/-|_/).map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ');
+        }
+        
+        // Try to load content
+        let content;
+        try {
+          if (typeof loadContent === 'function') {
+            content = await loadContent(topicId);
+          } else {
+            // If loadContent is not available, use fetch directly
+            const basePath = window.getBasePath ? getBasePath() : '';
+            const response = await fetch(`${basePath}/content/${topicId}.html`);
+            if (!response.ok) {
+              throw new Error(`Failed to load content for ${topicId}`);
+            }
+            content = await response.text();
+          }
+        } catch (error) {
+          console.warn(`[DITA-Search] Could not load content for ${topicId}, trying alternative names`);
           
-          // Build search index by loading content files
-          async function buildSearchIndex() {
-            console.log('[DITA-Search] Building search index...');
-            
-            // Get all topic IDs from navigation configuration
-            const topicIds = collectTopicIds();
-            console.log(`[DITA-Search] Found ${topicIds.length} topics to index`);
-            
-            // Process each topic
-            for (const topicId of topicIds) {
+          // Try with alternative filename if content ID map is available
+          if (window.contentIdMap && contentIdMap[topicId] && contentIdMap[topicId].filename) {
+            const filename = contentIdMap[topicId].filename;
+            if (filename !== topicId) {
               try {
-                await indexTopic(topicId);
-              } catch (error) {
-                console.error(`[DITA-Search] Error indexing topic ${topicId}:`, error);
+                const basePath = window.getBasePath ? getBasePath() : '';
+                const response = await fetch(`${basePath}/content/${filename}.html`);
+                if (!response.ok) {
+                  throw new Error(`Failed to load content for ${filename}`);
+                }
+                content = await response.text();
+              } catch (altError) {
+                console.error(`[DITA-Search] Also failed to load content for ${filename}`);
+                return false;
               }
             }
-            
-            console.log(`[DITA-Search] Indexing complete. Indexed ${Object.keys(searchIndex).length} topics.`);
           }
           
-          // Collect all topic IDs from navigation
-          function collectTopicIds() {
-            const ids = new Set();
+          // If we still don't have content, skip this topic
+          if (!content) {
+            return false;
+          }
+        }
+        
+        // Extract text content from HTML
+        const tempElement = document.createElement('div');
+        tempElement.innerHTML = content;
+        
+        // Remove scripts, styles, etc.
+        tempElement.querySelectorAll('script, style').forEach(el => el.remove());
+        
+        // Get text content
+        const textContent = tempElement.textContent || tempElement.innerText || '';
+        
+        // Only index if we have actual content
+        if (textContent.trim().length > 0) {
+          // Store in search index
+          searchIndex[topicId] = {
+            id: topicId,
+            title: title,
+            content: textContent
+          };
+          
+          return true;
+        } else {
+          console.warn(`[DITA-Search] No text content found for ${topicId}`);
+          return false;
+        }
+      } catch (error) {
+        console.error(`[DITA-Search] Failed to index topic ${topicId}:`, error);
+        return false;
+      }
+    }
+    
+    // Perform search on the built index
+    function performSearch(query) {
+      const searchResults = document.getElementById('search-results');
+      console.log(`[DITA-Search] Searching for: "${query}"`);
+      console.log(`[DITA-Search] Index size: ${Object.keys(searchIndex).length} topics`);
+      
+      // Search through indexed topics
+      const results = [];
+      
+      for (const topicId in searchIndex) {
+        const topic = searchIndex[topicId];
+        
+        // Skip topics with no content or title
+        if (!topic.content || !topic.title) {
+          continue;
+        }
+        
+        const contentLower = topic.content.toLowerCase();
+        const titleLower = topic.title.toLowerCase();
+        
+        // Check for matches in title or content
+        if (titleLower.includes(query) || contentLower.includes(query)) {
+          // Find context around the match for display
+          let context = '';
+          let matchIndex = contentLower.indexOf(query);
+          
+          if (matchIndex !== -1) {
+            // Extract context around the match
+            const startPos = Math.max(0, matchIndex - 40);
+            const endPos = Math.min(contentLower.length, matchIndex + query.length + 40);
             
-            // Recursive function to extract IDs from navigation tree
-            function extractIds(items) {
-              if (!items || !Array.isArray(items)) return;
-              
-              items.forEach(item => {
-                if (item.id) {
-                  ids.add(item.id);
-                }
-                
-                if (item.children) {
-                  extractIds(item.children);
-                }
-              });
+            // Get surrounding text
+            context = topic.content.substring(startPos, endPos);
+            
+            // Add ellipsis if we're not at the beginning/end
+            if (startPos > 0) {
+              context = '...' + context;
             }
             
-            // Extract from navigation configuration
-            if (window.navigationConfig) {
-              extractIds(window.navigationConfig);
+            if (endPos < topic.content.length) {
+              context = context + '...';
             }
-            
-            // Also check content ID map
-            if (window.contentIdMap) {
-              Object.keys(window.contentIdMap).forEach(id => {
-                if (id !== 'default') {
-                  ids.add(id);
-                }
-              });
-            }
-            
-            return Array.from(ids);
+          } else if (topic.content.length > 0) {
+            // If no direct match in content but the topic is still a match (title match)
+            // Show the beginning of the content
+            context = topic.content.substring(0, 80) + '...';
           }
           
-          // Index a single topic
-          async function indexTopic(topicId) {
-            try {
-              // Get topic title
-              const title = getPageTitle(topicId);
-              
-              // Load content using the SPA's existing content loading function
-              const content = await loadContent(topicId);
-              
-              // Extract text content from HTML
-              const tempElement = document.createElement('div');
-              tempElement.innerHTML = content;
-              
-              // Get text content
-              const textContent = tempElement.textContent || tempElement.innerText || '';
-              
-              // Store in search index
-              searchIndex[topicId] = {
-                id: topicId,
-                title: title,
-                content: textContent
-              };
-              
-              return true;
-            } catch (error) {
-              console.error(`[DITA-Search] Failed to index topic ${topicId}:`, error);
-              return false;
-            }
+          // Add to results
+          results.push({
+            id: topicId,
+            title: topic.title,
+            context: context,
+            score: titleLower.includes(query) ? 2 : 1 // Title matches score higher
+          });
+        }
+      }
+      
+      // Log search results for debugging
+      console.log(`[DITA-Search] Found ${results.length} results for "${query}"`);
+      
+      // Sort results by score (title matches first)
+      results.sort((a, b) => b.score - a.score);
+      
+      // Display results
+      if (results.length === 0) {
+        searchResults.innerHTML = '<div class="search-message">No results found. Try different keywords.</div>';
+        return;
+      }
+      
+      // Create results HTML
+      let resultsHtml = `<div class="search-results-count">Found ${results.length} results</div>`;
+      
+      // Add each result
+      results.forEach(result => {
+        const highlightedContext = highlightText(result.context, query);
+        const highlightedTitle = highlightText(result.title, query);
+        
+        resultsHtml += `
+          <div class="search-result" data-id="${result.id}">
+            <div class="search-result-title">${highlightedTitle}</div>
+            <div class="search-result-context">${highlightedContext}</div>
+          </div>
+        `;
+      });
+      
+      // Update results container
+      searchResults.innerHTML = resultsHtml;
+      
+      // Add click event handlers
+      document.querySelectorAll('.search-result').forEach(resultElement => {
+        resultElement.addEventListener('click', function() {
+          const topicId = this.getAttribute('data-id');
+          if (typeof navigateToPage === 'function') {
+            navigateToPage(topicId);
+            searchResults.innerHTML = ''; // Clear results after navigation
+          } else {
+            console.error('[DITA-Search] navigateToPage function not found');
+            // Fallback to changing the hash
+            window.location.hash = `#${topicId}`;
           }
-          
-          // Perform search on the built index
-          function performSearch(query) {
-            const searchResults = document.getElementById('search-results');
-            console.log(`[DITA-Search] Searching for: ${query}`);
-            
-            // Search through indexed topics
-            const results = [];
-            
-            for (const topicId in searchIndex) {
-              const topic = searchIndex[topicId];
-              const contentLower = topic.content.toLowerCase();
-              const titleLower = topic.title.toLowerCase();
-              
-              // Check for matches in title or content
-              if (titleLower.includes(query) || contentLower.includes(query)) {
-                // Find context around the match for display
-                let context = '';
-                let matchIndex = contentLower.indexOf(query);
-                
-                if (matchIndex !== -1) {
-                  // Extract context around the match
-                  const startPos = Math.max(0, matchIndex - 40);
-                  const endPos = Math.min(contentLower.length, matchIndex + query.length + 40);
-                  
-                  // Get surrounding text
-                  context = topic.content.substring(startPos, endPos);
-                  
-                  // Add ellipsis if we're not at the beginning/end
-                  if (startPos > 0) {
-                    context = '...' + context;
-                  }
-                  
-                  if (endPos < topic.content.length) {
-                    context = context + '...';
-                  }
-                }
-                
-                // Add to results
-                results.push({
-                  id: topicId,
-                  title: topic.title,
-                  context: context,
-                  score: titleLower.includes(query) ? 2 : 1 // Title matches score higher
-                });
-              }
-            }
-            
-            // Sort results by score (title matches first)
-            results.sort((a, b) => b.score - a.score);
-            
-            // Display results
-            if (results.length === 0) {
-              searchResults.innerHTML = '<div class="search-message">No results found. Try different keywords.</div>';
-              return;
-            }
-            
-            // Create results HTML
-            let resultsHtml = `<div class="search-results-count">Found ${results.length} results</div>`;
-            
-            // Add each result
-            results.forEach(result => {
-              const highlightedContext = highlightText(result.context, query);
-              const highlightedTitle = highlightText(result.title, query);
-              
-              resultsHtml += `
-                <div class="search-result" data-id="${result.id}">
-                  <div class="search-result-title">${highlightedTitle}</div>
-                  <div class="search-result-context">${highlightedContext}</div>
-                </div>
-              `;
-            });
-            
-            // Update results container
-            searchResults.innerHTML = resultsHtml;
-            
-            // Add click event handlers
-            document.querySelectorAll('.search-result').forEach(resultElement => {
-              resultElement.addEventListener('click', function() {
-                const topicId = this.getAttribute('data-id');
-                navigateToPage(topicId);
-                searchResults.innerHTML = ''; // Clear results after navigation
-              });
-            });
-          }
-          
-          // Highlight search term in text
-          function highlightText(text, query) {
-            if (!text) return '';
-            
-            // Escape special regex characters
-            const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-            
-            // Create regex to find the query (case insensitive)
-            const regex = new RegExp(`(${escapedQuery})`, 'gi');
-            
-            // Replace with highlighted version
-            return text.replace(regex, '<span class="search-highlight">$1</span>');
-          }
-          
-          // Initialize search when DOM is ready
-          document.addEventListener('DOMContentLoaded', initSearch);
-          EOF
-
+        });
+      });
+    }
+    
+    // Highlight search term in text
+    function highlightText(text, query) {
+      if (!text) return '';
+      
+      // Escape special regex characters
+      const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      
+      // Create regex to find the query (case insensitive)
+      const regex = new RegExp(`(${escapedQuery})`, 'gi');
+      
+      // Replace with highlighted version
+      return text.replace(regex, '<span class="search-highlight">$1</span>');
+    }
+    
+    // Check if DOM is already loaded
+    if (document.readyState === 'loading') {
+      // Document still loading, add event listener
+      document.addEventListener('DOMContentLoaded', initSearch);
+    } else {
+      // Document already loaded, run init
+      initSearch();
+    }
+    
+    // Export functions for testing
+    window.DITA_Search = {
+      buildIndex: buildSearchIndex,
+      search: performSearch,
+      getIndexSize: () => Object.keys(searchIndex).length
+    };
+    EOF
+    
+    # Update script reference in index.html - replace simple-search with enhanced-search
+    sed -i 's/<script src="js\/simple-search.js"><\/script>/<script src="js\/enhanced-search.js"><\/script>/' ./site/index.html
+    
+    echo "Enhanced search functionality added successfully"
       # Step 11: Create index.html
       - name: Create Index HTML
         run: |
