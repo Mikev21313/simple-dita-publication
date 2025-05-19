@@ -3,17 +3,17 @@
   run: |
     # Add search container to the sidebar in index.html
     sed -i '/<div class="sidebar">/a \
-      <div class="search-container">\
-        <div class="search-input-container">\
-          <input type="text" id="search-input" placeholder="Search documentation...">\
-          <button id="search-button">Search</button>\
-        </div>\
-        <div id="search-results" class="search-results"></div>\
-      </div>' ./site/index.html
+    <div class="search-container">\
+      <div class="search-input-container">\
+        <input type="text" id="search-input" placeholder="Search documentation...">\
+        <button id="search-button">Search</button>\
+      </div>\
+      <div id="search-results" class="search-results"></div>\
+    </div>' ./site/index.html
     
     # Add search styles to style.css
     cat >> ./site/css/style.css << 'EOF'
-    
+
     /* Search Styles */
     .search-container {
       margin-bottom: 20px;
