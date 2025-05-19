@@ -361,64 +361,6 @@ jobs:
             padding-bottom: 10px;
           }
           
-          /* Search bar styling */
-          .search-container {
-            margin-bottom: 20px;
-            position: relative;
-          }
-          
-          .search-input-wrap {
-            position: relative;
-            display: flex;
-            margin-bottom: 5px;
-          }
-          
-          #search-input {
-            width: calc(100% - 80px);
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px 0 0 4px;
-            font-size: 14px;
-          }
-          
-          #search-button {
-            width: 80px;
-            padding: 8px 12px;
-            background-color: #4a90e2;
-            color: white;
-            border: none;
-            border-radius: 0 4px 4px 0;
-            cursor: pointer;
-          }
-          
-          #search-button:hover {
-            background-color: #357abf;
-          }
-          
-          #search-input:focus {
-            outline: none;
-            border-color: #4a90e2;
-            box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
-          }
-          
-          .search-scope {
-            display: flex;
-            align-items: center;
-            font-size: 12px;
-            color: #666;
-          }
-          
-          .search-scope input {
-            margin-right: 5px;
-          }
-          
-          /* Search highlighting */
-          .search-highlight {
-            background-color: #ffeb3b !important;
-            border-left: 3px solid #ffc107 !important;
-            font-weight: bold;
-          }
-          
           /* Navigation styling */
           .sidebar-nav {
             flex: 1;
@@ -517,43 +459,6 @@ jobs:
             margin-bottom: 20px;
           }
           
-          /* Search results styling */
-          .search-results-container {
-            padding: 20px 0;
-          }
-          
-          .search-results-title {
-            margin-bottom: 20px;
-            font-size: 1.5em;
-          }
-          
-          .search-result-item {
-            padding: 15px;
-            margin-bottom: 15px;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-          }
-          
-          .search-result-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-          }
-          
-          .search-result-item h3 {
-            margin-top: 0;
-            margin-bottom: 5px;
-          }
-          
-          .search-result-item a {
-            color: #4a90e2;
-            text-decoration: none;
-          }
-          
-          .search-result-item a:hover {
-            text-decoration: underline;
-          }
-          
           /* Loading state */
           #loading {
             display: none;
@@ -579,27 +484,6 @@ jobs:
           .error h2 {
             color: #e74c3c;
             margin-top: 0;
-          }
-          
-          /* Debug panel */
-          #search-debug-panel {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            z-index: 9999;
-            max-width: 300px;
-            animation: fadeOut 3s forwards;
-          }
-          
-          @keyframes fadeOut {
-            0% { opacity: 1; }
-            70% { opacity: 1; }
-            100% { opacity: 0; }
           }
           
           /* Responsive design */
@@ -683,8 +567,7 @@ jobs:
             contentEl.innerHTML = `
               <div class="welcome-screen">
                 <h2>Welcome to Automotive Documentation</h2>
-                <p>Please select a topic from the navigation menu or use the search bar to find specific information.</p>
-                <div id="search-status"></div>
+                <p>Please select a topic from the navigation menu to begin.</p>
               </div>
             `;
             
@@ -938,194 +821,7 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create Search Functionality
-      - name: Create Search JavaScript
-        run: |
-          cat > ./site/js/search.js << 'EOF'
-          // Simple, reliable search implementation
-          
-          // Wait for DOM to be fully loaded before initializing
-          document.addEventListener('DOMContentLoaded', function() {
-            console.log('[SEARCH] Initializing search functionality');
-            
-            // Find key elements
-            const searchInput = document.getElementById('search-input');
-            const searchButton = document.getElementById('search-button');
-            const contentEl = document.getElementById('content');
-            const contentTitleEl = document.getElementById('content-title');
-            
-            // Ensure elements exist
-            if (!searchInput || !contentEl) {
-              console.error('[SEARCH] Required elements not found');
-              return;
-            }
-            
-            // Add event listeners
-            searchInput.addEventListener('input', function() {
-              highlightMatches(this.value);
-            });
-            
-            searchInput.addEventListener('keydown', function(e) {
-              if (e.key === 'Enter') {
-                performSearch(this.value);
-              }
-            });
-            
-            searchButton.addEventListener('click', function() {
-              performSearch(searchInput.value);
-            });
-            
-            // Function to highlight matching navigation items
-            function highlightMatches(term) {
-              // Skip if term is empty
-              if (!term.trim()) {
-                clearHighlights();
-                return;
-              }
-              
-              console.log('[SEARCH] Highlighting matches for:', term);
-              
-              // Clear existing highlights
-              clearHighlights();
-              
-              // Find all navigation links
-              const navLinks = document.querySelectorAll('.sidebar a');
-              let matchCount = 0;
-              
-              // Add highlight to any links containing the search term
-              navLinks.forEach(link => {
-                if (link.textContent.toLowerCase().includes(term.toLowerCase())) {
-                  link.classList.add('search-highlight');
-                  matchCount++;
-                  
-                  // Expand parent folders
-                  let parent = link.parentElement;
-                  while (parent && !parent.classList.contains('sidebar')) {
-                    if (parent.classList.contains('has-children')) {
-                      parent.classList.add('expanded');
-                    }
-                    parent = parent.parentElement;
-                  }
-                }
-              });
-              
-              // Show debug message
-              showDebug(`Found ${matchCount} navigation matches`);
-            }
-            
-            // Clear all highlights
-            function clearHighlights() {
-              document.querySelectorAll('.search-highlight').forEach(item => {
-                item.classList.remove('search-highlight');
-              });
-            }
-            
-            // Perform search and display results
-            function performSearch(term) {
-              term = term.trim();
-              if (!term) return;
-              
-              console.log('[SEARCH] Performing search for:', term);
-              
-              // Update page title
-              contentTitleEl.textContent = `Search Results: ${term}`;
-              document.title = `Search: ${term}`;
-              
-              // Find all navigation items
-              const navLinks = document.querySelectorAll('.sidebar a');
-              const results = [];
-              
-              // Collect items that match the search term
-              navLinks.forEach(link => {
-                const id = link.getAttribute('data-id');
-                if (!id) return;
-                
-                if (link.textContent.toLowerCase().includes(term.toLowerCase())) {
-                  results.push({
-                    id: id,
-                    title: link.textContent,
-                  });
-                }
-              });
-              
-              // Display results
-              if (results.length === 0) {
-                contentEl.innerHTML = `
-                  <div class="search-results-container">
-                    <h2 class="search-results-title">Search Results: ${term}</h2>
-                    <p>No results found for "${term}".</p>
-                    <p>Try a different search term or browse topics from the navigation menu.</p>
-                  </div>
-                `;
-              } else {
-                let html = `
-                  <div class="search-results-container">
-                    <h2 class="search-results-title">Search Results: ${term}</h2>
-                    <p>Found ${results.length} result${results.length !== 1 ? 's' : ''}</p>
-                    <div class="search-results-list">
-                `;
-                
-                results.forEach(result => {
-                  html += `
-                    <div class="search-result-item">
-                      <h3><a href="#${result.id}" data-id="${result.id}" class="search-result-link">${result.title}</a></h3>
-                    </div>
-                  `;
-                });
-                
-                html += `
-                    </div>
-                  </div>
-                `;
-                
-                contentEl.innerHTML = html;
-                
-                // Add click handlers to results
-                document.querySelectorAll('.search-result-link').forEach(link => {
-                  link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const id = this.getAttribute('data-id');
-                    window.navigateToPage(id);
-                  });
-                });
-              }
-              
-              console.log(`[SEARCH] Displayed ${results.length} results`);
-            }
-            
-            // Show debug message
-            function showDebug(message) {
-              let debugPanel = document.getElementById('search-debug-panel');
-              
-              if (!debugPanel) {
-                debugPanel = document.createElement('div');
-                debugPanel.id = 'search-debug-panel';
-                document.body.appendChild(debugPanel);
-              }
-              
-              debugPanel.textContent = message;
-              
-              // Auto-hide after 3 seconds
-              setTimeout(() => {
-                if (debugPanel && debugPanel.parentNode) {
-                  debugPanel.parentNode.removeChild(debugPanel);
-                }
-              }, 3000);
-            }
-            
-            // Status update on welcome screen
-            const searchStatus = document.getElementById('search-status');
-            if (searchStatus) {
-              searchStatus.innerHTML = `
-                <p>Search is ready! Type in the search box to highlight matching topics.</p>
-              `;
-            }
-            
-            console.log('[SEARCH] Search initialization complete');
-          });
-          EOF
-
-      # Step 11: Create index.html with Search UI
+      # Step 10: Create index.html
       - name: Create Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
@@ -1156,17 +852,6 @@ jobs:
           </head>
           <body>
             <div class="sidebar">
-              <div class="search-container">
-                <div class="search-input-wrap">
-                  <input type="text" id="search-input" placeholder="Search documentation...">
-                  <button id="search-button">Search</button>
-                </div>
-                <div class="search-scope">
-                  <input type="checkbox" id="search-toggle">
-                  <label for="search-toggle">Search only current article</label>
-                </div>
-              </div>
-              
               <div class="sidebar-nav">
                 <h2>Navigation</h2>
                 <div id="navigation"></div>
@@ -1187,13 +872,12 @@ jobs:
             <!-- Load JavaScript files -->
             <script src="js/navigation-config.js"></script>
             <script src="js/content-id-map.js"></script>
-            <script src="js/search.js"></script>
             <script src="js/app.js"></script>
           </body>
           </html>
           EOF
 
-      # Step 12: Create 404.html for SPA routing
+      # Step 11: Create 404.html for SPA routing
       - name: Create 404 Page
         run: |
           cat > ./site/404.html << 'EOF'
@@ -1232,7 +916,7 @@ jobs:
           </html>
           EOF
 
-      # Step 13: Create default content for container nodes
+      # Step 12: Create default content for container nodes
       - name: Create Default Content
         run: |
           # Create content directory if it doesn't exist
@@ -1273,7 +957,7 @@ jobs:
             done
           fi
 
-      # Step 14: Deploy to GitHub Pages
+      # Step 13: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
