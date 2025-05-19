@@ -243,7 +243,7 @@ jobs:
           echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-id-map.js
           echo "};" >> ./site/js/content-id-map.js
 
-      # Step 7: Convert parsed DITAMAP to JavaScript navigation config
+      # Step 7: Generate Navigation Configuration
       - name: Generate Navigation Configuration
         run: |
           mkdir -p ./site/js ./site/css
@@ -260,7 +260,7 @@ jobs:
           
           echo "Navigation configuration generated from DITAMAP structure"
 
-      # Step 8: Create SPA CSS with improved navigation styling
+      # Step 8: Create SPA CSS with improved navigation styling and search UI
       - name: Create SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
@@ -286,6 +286,8 @@ jobs:
             height: 100vh;
             overflow-y: auto;
             border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
           }
           
           .main-content {
@@ -303,7 +305,99 @@ jobs:
             padding-bottom: 10px;
           }
           
+          /* Search bar styling */
+          .search-container {
+            margin-bottom: 20px;
+            position: relative;
+          }
+          
+          .search-input-wrap {
+            position: relative;
+            display: flex;
+            margin-bottom: 5px;
+          }
+          
+          #search-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+          }
+          
+          #search-input:focus {
+            outline: none;
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+          }
+          
+          .search-scope {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+          }
+          
+          .search-scope input {
+            margin-right: 5px;
+          }
+          
+          #search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 100;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: none;
+          }
+          
+          .search-result-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+          }
+          
+          .search-result-item:hover {
+            background-color: #f5f5f5;
+          }
+          
+          .search-result-item h4 {
+            font-size: 14px;
+            margin-bottom: 5px;
+            color: #2c3e50;
+          }
+          
+          .search-result-item p {
+            font-size: 12px;
+            color: #666;
+            margin: 0;
+          }
+          
+          .search-result-item strong {
+            background-color: rgba(255, 230, 0, 0.4);
+            font-weight: normal;
+          }
+          
+          .search-no-results {
+            padding: 15px;
+            text-align: center;
+            color: #666;
+            font-style: italic;
+          }
+          
           /* Improved navigation styling for hierarchy */
+          .sidebar-nav {
+            flex: 1;
+            overflow-y: auto;
+          }
+          
           .sidebar ul {
             list-style-type: none;
             padding-left: 0;
@@ -434,6 +528,14 @@ jobs:
             .main-content {
               height: auto;
               min-height: 60vh;
+            }
+            
+            #search-results {
+              position: fixed;
+              top: auto;
+              left: 10px;
+              right: 10px;
+              max-height: 50vh;
             }
           }
           EOF
@@ -734,8 +836,8 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create index.html
-      - name: Create Index HTML
+      # Step 10: Update index.html to include search functionality
+      - name: Update Index HTML with Search
         run: |
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
@@ -768,9 +870,23 @@ jobs:
           </head>
           <body>
             <div class="sidebar">
-              <h2>Navigation</h2>
-              <div id="navigation"></div>
+              <div class="search-container">
+                <div class="search-input-wrap">
+                  <input type="text" id="search-input" placeholder="Search documentation...">
+                </div>
+                <div class="search-scope">
+                  <input type="checkbox" id="search-toggle">
+                  <label for="search-toggle">Search only current article</label>
+                </div>
+                <div id="search-results"></div>
+              </div>
+              
+              <div class="sidebar-nav">
+                <h2>Navigation</h2>
+                <div id="navigation"></div>
+              </div>
             </div>
+            
             <div class="main-content">
               <h1 id="content-title">Loading...</h1>
               <div id="loading">Loading content...</div>
@@ -785,6 +901,8 @@ jobs:
             <!-- Load JavaScript files -->
             <script src="js/navigation-config.js"></script>
             <script src="js/content-id-map.js"></script>
+            <script src="js/search-index.js"></script>
+            <script src="js/search.js"></script>
             <script src="js/app.js"></script>
           </body>
           </html>
