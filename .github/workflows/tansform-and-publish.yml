@@ -1,95 +1,158 @@
-// Navigate to a specific page
-function navigateToPage(pageId, pushState = true) {
-  debug('Navigating to page:', pageId);
-  
-  // Update active state in navigation
-  updateActiveNavItem(pageId);
-  
-  // Expand navigation to show the current page
-  expandNavigationTo(pageId);
-  
-  // Update the URL
-  if (pushState) {
-    history.pushState({ pageId }, '', `#${pageId}`);
-  }
-  
-  // Show loading indicator
-  document.body.classList.add('loading');
-  
-  // Update current page
-  currentPage = pageId;
-  
-  // Get alternate ID (convert underscores to hyphens)
-  const altPageId = pageId.replace(/_/g, '-');
-  
-  // Load content
-  loadContent(pageId)
-    .then(content => {
-      // Update title
-      const title = getPageTitle(pageId);
-      contentTitleEl.textContent = title;
-      document.title = title;
+# Step: Extract Navigation from DITA Map
+- name: Extract Navigation from DITA Map
+  run: |
+    # Create directory for transformed content
+    mkdir -p ./site/js
+    
+    # Install xmlstarlet for XML processing
+    apt-get update && apt-get install -y xmlstarlet
+    
+    # Extract navigation structure from DITA map
+    echo "Extracting navigation from DITA map..."
+    xmlstarlet sel -T -t -m "//topicref" -v "concat(@id,'|',@navtitle,'|',@href,'|',count(ancestor::*))" -n dita-source/automotive.ditamap > nav-structure.txt
+    
+    # Create JavaScript file to process the extracted data
+    cat > process-navigation.js << 'EOF'
+    const fs = require('fs');
+    
+    // Read the extracted structure
+    const navData = fs.readFileSync('nav-structure.txt', 'utf8');
+    const lines = navData.trim().split('\n');
+    
+    // Process into navigation structure
+    const navItems = [];
+    const parentMap = new Map();
+    
+    lines.forEach(line => {
+      if (!line.trim()) return;
       
-      // IMPROVED SOLUTION FOR DUPLICATE HEADINGS:
-      // Create a temporary div to hold the content for manipulation
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = content;
+      const [id, navtitle, href, depthStr] = line.split('|');
+      const depth = parseInt(depthStr, 10);
       
-      // Find all h1 elements in the content
-      const h1Elements = tempDiv.querySelectorAll('h1');
+      // Create nav item
+      const filename = href ? href.replace('.dita', '') : id;
+      const itemId = filename.replace(/_/g, '-');
+      const title = navtitle || filename.split('_').map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1)
+      ).join(' ');
       
-      // Check each h1 for duplicate with our title
-      h1Elements.forEach(h1 => {
-        // Compare text content (case-insensitive and ignoring extra whitespace)
-        if (h1.textContent.trim().toLowerCase() === title.trim().toLowerCase()) {
-          // Remove this h1 element
-          h1.parentNode.removeChild(h1);
+      const item = { id: itemId, title, children: [] };
+      
+      if (depth === 0) {
+        // Root level item
+        navItems.push(item);
+        parentMap.set(depth, item);
+      } else {
+        // Child item, add to parent
+        const parent = parentMap.get(depth - 1);
+        if (parent) {
+          parent.children.push(item);
+          parentMap.set(depth, item);
+        } else {
+          navItems.push(item);
+          parentMap.set(depth, item);
         }
-      });
-      
-      // Get the modified content
-      content = tempDiv.innerHTML;
-      
-      // Update content
-      contentEl.innerHTML = content;
-      
-      // Hide loading indicator
-      document.body.classList.remove('loading');
-      debug('Content loaded successfully');
-    })
-    .catch(error => {
-      debug('Error loading content:', error.message);
-      // Try alternate ID
-      loadContent(altPageId)
-        .then(content => {
-          contentTitleEl.textContent = getPageTitle(pageId);
-          document.title = getPageTitle(pageId);
-          
-          // Apply the same duplicate heading fix
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = content;
-          
-          const h1Elements = tempDiv.querySelectorAll('h1');
-          h1Elements.forEach(h1 => {
-            if (h1.textContent.trim().toLowerCase() === getPageTitle(pageId).trim().toLowerCase()) {
-              h1.parentNode.removeChild(h1);
-            }
-          });
-          
-          contentEl.innerHTML = tempDiv.innerHTML;
-          document.body.classList.remove('loading');
-          debug('Content loaded from alternate ID');
-        })
-        .catch(altError => {
-          console.error('Failed to load content:', altError);
-          contentEl.innerHTML = `
-            <div class="error">
-              <h2>Content Not Found</h2>
-              <p>The requested content "${pageId}" could not be loaded.</p>
-              <p>Please select another topic from the navigation menu.</p>
-            </div>
-          `;
-          document.body.classList.remove('loading');
-        });
+      }
     });
-}
+    
+    // Write navigation config
+    const jsCode = "// Navigation structure generated from DITA map\nconst navigationConfig = " + 
+                 JSON.stringify(navItems, null, 2) + ";";
+    fs.writeFileSync('./site/js/navigation-config.js', jsCode);
+    
+    // Generate content manifest
+    let manifestCode = '// Content manifest - maps IDs to content files\nconst contentManifest = {\n';
+    
+    // Add predefined mappings
+    const mappings = {
+      "automotive-information": "Automotive Information",
+      "basic-maintenance": "Basic Maintenance",
+      "major-vehicle-components": "Major Vehicle Components",
+      "history-of-automobiles": "History of Automobiles",
+      "automobile-fundamentals": "Automobile Fundamentals",
+      "types-of-vehicles": "Types of Vehicles",
+      "vehicle-maintenance": "Vehicle Maintenance",
+      "electrical-systems": "Electrical Systems",
+      "braking-systems": "Braking Systems",
+      "engine-systems": "Engine Systems",
+      "electric-vehicles": "Electric Vehicles",
+      "emergency-repairs": "Emergency Repairs",
+      "default": "Automotive Documentation"
+    };
+    
+    Object.entries(mappings).forEach(([id, title], index, array) => {
+      const isLast = index === array.length - 1;
+      manifestCode += `  "${id}": { "title": "${title}" }${isLast ? '' : ','}\n`;
+    });
+    
+    manifestCode += '};';
+    fs.writeFileSync('./site/js/content-manifest.js', manifestCode);
+    
+    console.log('Navigation configuration generated from DITA map');
+    EOF
+    
+    # Run the processing script
+    node process-navigation.js
+    
+    # If navigation generation failed, use the default
+    if [ ! -f "./site/js/navigation-config.js" ]; then
+      echo "Navigation generation failed, using default configuration"
+      
+      cat > ./site/js/navigation-config.js << 'EOF'
+      // Default navigation structure
+      const navigationConfig = [
+        {
+          id: "automotive-information",
+          title: "Automotive Information",
+          children: [
+            { id: "history-of-automobiles", title: "History of Automobiles" },
+            { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
+            { 
+              id: "types-of-vehicles", 
+              title: "Types of Vehicles",
+              children: [
+                { id: "electric-vehicles", title: "Electric Vehicles" }
+              ]
+            }
+          ]
+        },
+        {
+          id: "basic-maintenance",
+          title: "Basic Maintenance",
+          children: [
+            { id: "emergency-repairs", title: "Emergency Repairs" },
+            { id: "vehicle-maintenance", title: "Vehicle Maintenance" }
+          ]
+        },
+        {
+          id: "major-vehicle-components",
+          title: "Major Vehicle Components",
+          children: [
+            { id: "electrical-systems", title: "Electrical Systems" },
+            { id: "braking-systems", title: "Braking Systems" },
+            { id: "engine-systems", title: "Engine Systems" }
+          ]
+        }
+      ];
+      EOF
+      
+      # Create content manifest
+      cat > ./site/js/content-manifest.js << 'EOF'
+      // Content manifest - maps IDs to content files
+      const contentManifest = {
+        "automotive-information": { "title": "Automotive Information" },
+        "basic-maintenance": { "title": "Basic Maintenance" },
+        "major-vehicle-components": { "title": "Major Vehicle Components" },
+        "history-of-automobiles": { "title": "History of Automobiles" },
+        "automobile-fundamentals": { "title": "Automobile Fundamentals" },
+        "types-of-vehicles": { "title": "Types of Vehicles" },
+        "vehicle-maintenance": { "title": "Vehicle Maintenance" },
+        "electrical-systems": { "title": "Electrical Systems" },
+        "braking-systems": { "title": "Braking Systems" },
+        "engine-systems": { "title": "Engine Systems" },
+        "electric-vehicles": { "title": "Electric Vehicles" },
+        "emergency-repairs": { "title": "Emergency Repairs" },
+        "default": { "title": "Automotive Documentation" }
+      };
+      EOF
+    fi
