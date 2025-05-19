@@ -122,6 +122,9 @@ jobs:
             echo "$id" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g'
           }
           
+          # Ensure directory exists
+          mkdir -p ./site/js
+          
           # Generate ID to title mapping as JavaScript
           echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
           echo "const contentIdMap = {" >> ./site/js/content-id-map.js
@@ -137,6 +140,10 @@ jobs:
               title=$(id_to_title "$id")
             fi
             
+            # Handle special characters for shell safety
+            title=$(echo "$title" | sed 's/"/\\"/g')
+            
+            # Add to content map file directly
             echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$filename\" }," >> ./site/js/content-id-map.js
           done
           
@@ -167,6 +174,10 @@ jobs:
       # Step 6: Process HTML files into content fragments
       - name: Process HTML Content
         run: |
+          # Create content directory for SPA fragments
+          mkdir -p ./site/content
+          mkdir -p ./site/js
+
           # Process each HTML file to extract content
           for file in ./site/*.html; do
             # Skip processing if this is the index.html we'll create later
@@ -202,8 +213,35 @@ jobs:
             fi
           done
           
-          # Run the ID map generator script
-          ./generate-id-map.sh
+          # Create a mapping file directly (skip the shell script)
+          echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
+          echo "const contentIdMap = {" >> ./site/js/content-id-map.js
+          
+          # Process each HTML file for the mapping
+          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
+            filename=$(basename "$file" .html)
+            id="${filename//_/-}"
+            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
+            
+            # Skip if already processed
+            if grep -q "\"$id\":" ./site/js/content-id-map.js; then
+              continue
+            fi
+            
+            # If no title found, generate one from the ID
+            if [ -z "$title" ]; then
+              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+            fi
+            
+            # Escape quotes in title
+            title=$(echo "$title" | sed 's/"/\\"/g')
+            
+            echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$filename\" }," >> ./site/js/content-id-map.js
+          done
+          
+          # Close the mapping object
+          echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-id-map.js
+          echo "};" >> ./site/js/content-id-map.js
 
       # Step 7: Convert parsed DITAMAP to JavaScript navigation config
       - name: Generate Navigation Configuration
@@ -794,11 +832,21 @@ jobs:
       # Step 12: Create default content for navigation containers
       - name: Create Default Content
         run: |
+          # Create content directory if it doesn't exist
+          mkdir -p ./site/content
+
           # Extract container nodes from navigation structure
-          jq -r '.[] | select(.children != null) | .id' ./navigation-structure.json > container-nodes.txt
+          if command -v jq >/dev/null 2>&1; then
+            # Use jq if available
+            jq -r '.[] | select(.children != null) | .id' ./navigation-structure.json > container-nodes.txt
+          else
+            # Fallback to grep and sed
+            grep -o '"id": "[^"]*".*"children"' ./navigation-structure.json | 
+            sed 's/"id": "\([^"]*\)".*/\1/' > container-nodes.txt
+          fi
           
           # Create default content for container nodes
-          while IFS= read -r id; do
+          while IFS= read -r id || [ -n "$id" ]; do
             if [ ! -f "./site/content/$id.html" ]; then
               title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
               
@@ -810,6 +858,23 @@ jobs:
           EOF
             fi
           done < container-nodes.txt
+          
+          # Handle error if no container nodes were found
+          if [ ! -s container-nodes.txt ]; then
+            echo "No container nodes found in navigation. Creating default containers."
+            
+            # Create default containers
+            for id in automotive-information basic-maintenance major-vehicle-components; do
+              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+              
+              echo "Creating default container: $id ($title)"
+              cat > "./site/content/$id.html" << EOF
+          <h1>${title}</h1>
+          <p>This section contains information about ${title}.</p>
+          <p>Use the navigation menu to explore topics within this section.</p>
+          EOF
+            done
+          fi
 
       # Step 13: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
