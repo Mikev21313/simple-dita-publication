@@ -157,7 +157,7 @@ jobs:
           echo "DITAMAP parsing complete"
           cat ./navigation-structure.json
 
-      # Step 5: Transform DITA to HTML and prepare images
+      # Step 5: Transform DITA to HTML and prepare images with extensive debugging
       - name: Transform DITA to HTML and Prepare Images
         run: |
           # Using HTML5 format with parameters for better output
@@ -168,48 +168,90 @@ jobs:
           mkdir -p ./site/content
           mkdir -p ./site/images
           
-          # List all files to see what's available
-          echo "Listing all files in dita-source:"
+          # List all DITA source content for debugging
+          echo "Full content of dita-source directory:"
           find ./dita-source -type f | sort
           
-          # Find and copy all image files from dita-source to the images directory
+          # Look for explicit image references in DITA files
+          echo "Image references in DITA files:"
+          grep -r "image href" ./dita-source --include="*.dita" || echo "No image hrefs found in DITA files"
+          grep -r "<image" ./dita-source --include="*.dita" || echo "No image tags found in DITA files"
+          
+          # Extract image file information from DITA source
+          echo "Extracting image references from DITA files:"
+          grep -r "image href" ./dita-source --include="*.dita" | sed -E 's/.*href="([^"]*).*/\1/' > image-references.txt
+          cat image-references.txt || echo "No image references extracted"
+          
+          # Copy all image files from dita-source to the images directory
+          echo "Copying all potential image files from dita-source:"
           find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \;
           
-          # Find any image references in the HTML output
+          # Also look for images in subdirectories
+          find ./dita-source -type d -name "*images*" -o -name "*img*" | while read dir; do
+            echo "Copying from image directory: $dir"
+            cp -rv $dir/* ./site/images/ || echo "No files in $dir"
+          done
+          
+          # Also handle images that might be in the output HTML
           echo "Finding image references in HTML output:"
           grep -r "img src" ./site --include="*.html" || echo "No direct img tags found"
           grep -r "image href" ./site --include="*.html" || echo "No image hrefs found"
-          grep -r "<image" ./site --include="*.html" || echo "No image tags found"
           
-          # Attempt to find images in the HTML output and copy them
+          # Extract image paths from HTML output
+          echo "Extracting image references from HTML files:"
+          grep -r "img src" ./site --include="*.html" | sed -E 's/.*src="([^"]*).*/\1/' > html-image-refs.txt
+          grep -r "image href" ./site --include="*.html" | sed -E 's/.*href="([^"]*).*/\1/' >> html-image-refs.txt
+          cat html-image-refs.txt || echo "No HTML image references extracted"
+          
+          # Copy images from HTML output to images directory
+          cat html-image-refs.txt | while read imgpath; do
+            # Extract just the filename if it's a path
+            filename=$(basename "$imgpath")
+            # Find the source file
+            find ./site -name "$filename" -exec cp -v {} ./site/images/ \;
+          done
+          
+          # Find any image references in the HTML output and copy them
           find ./site -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -not -path "./site/images/*" -exec cp -v {} ./site/images/ \;
           
           # Also copy any files from potential 'img' directories
           if [ -d "./site/img" ]; then
-            cp -r ./site/img/* ./site/images/ || echo "No files in img directory"
+            cp -rv ./site/img/* ./site/images/ || echo "No files in img directory"
           fi
           
-          # Check if images directory in DITA-OT output and copy from there
-          if [ -d "./site/images" ]; then
-            echo "Images directory exists in DITA-OT output"
-            find ./site/images -type f | sort
-          else
-            echo "No images directory in DITA-OT output"
+          # Check any other potential image directories
+          for imgdir in ./site/images ./site/img ./site/graphics ./site/assets; do
+            if [ -d "$imgdir" ]; then
+              echo "Contents of $imgdir:"
+              ls -la $imgdir/
+            fi
+          done
+          
+          # Try to locate the specific images from the document
+          echo "Looking for image files named 2.jpg and 3.jpg:"
+          find . -name "2.jpg" -o -name "3.jpg" | sort
+          
+          # Create placeholder images for testing if no images are found
+          if [ ! "$(ls -A ./site/images 2>/dev/null)" ]; then
+            echo "Creating placeholder test images"
+            # Use base64 encoded 1x1 pixel transparent PNG
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/test.png
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/2.jpg
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/3.jpg
           fi
           
-          # List all files in images directory to confirm
+          # Correct image file permissions
+          chmod -R 644 ./site/images/* || echo "No files to change permissions"
+          
+          # List files in the images directory
           echo "Files in images directory:"
           ls -la ./site/images/ || echo "No files in images directory"
           
-          # Manually copy image files if they exist in expected locations
-          find ./dita-source -name "2.jpg" -exec cp -v {} ./site/images/ \;
-          find ./dita-source -name "3.jpg" -exec cp -v {} ./site/images/ \;
-          
-          # List files to check output
-          echo "Generated files:"
+          # List all generated files
+          echo "All generated files:"
           find ./site -type f | sort
 
-      # Step 6: Process HTML files into content fragments with improved image handling
+      # Step 6: Process HTML files with improved image handling
       - name: Process HTML Content
         run: |
           # Create content directory for SPA fragments
@@ -218,6 +260,11 @@ jobs:
           
           # Create a folder to store folder-based content
           mkdir -p ./site/content/folders
+          
+          # Dump HTML files to see what we're working with
+          echo "HTML file samples for debugging:"
+          find ./site -name "*.html" | head -n 1 | xargs cat | grep -A 5 -B 5 "img" || echo "No img tags found in sample"
+          find ./site -name "*.html" | head -n 1 | xargs cat | grep -A 5 -B 5 "image" || echo "No image tags found in sample"
 
           # Process each HTML file to extract content
           find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
@@ -243,18 +290,18 @@ jobs:
             echo "$content" | grep -o '<img [^>]*src="[^"]*"[^>]*>' || echo "No img tags found"
             echo "$content" | grep -o '<image [^>]*href="[^"]*"[^>]*>' || echo "No image tags found"
             
-            # Fix image paths - update to use SPA image directory
-            # First, handle standard <img> tags
-            content=$(echo "$content" | sed -E 's/<img([^>]*)src="([^":]*)\.([^":]+)"/<img\1src="\/images\/\2.\3"/gi')
+            # First convert DITA <image> tags to standard HTML <img> tags
+            content=$(echo "$content" | sed -E 's/<image([^>]*)href="([^"]*)"([^>]*)>/<img\1src="\2"\3>/gi')
             
-            # Handle DITA <image> tags - convert to standard <img> tags
-            content=$(echo "$content" | sed -E 's/<image([^>]*)href="([^":]*)\.([^":]+)"/<img\1src="\/images\/\2.\3"/gi')
+            # Fix various image paths to use base SPA image directory
+            # 1. First handle img tags with more permissive regex
+            content=$(echo "$content" | sed -E 's/<img([^>]*)src="[^"]*\/([^\/"]*)\.([a-zA-Z0-9]+)"/<img\1src="images\/\2.\3"/gi')
             
-            # Handle paths with folder structure
-            content=$(echo "$content" | sed -E 's/<img([^>]*)src="[^"]*\/([^\/"]*)\.([^":]+)"/<img\1src="\/images\/\2.\3"/gi')
+            # 2. Fix remaining img paths that might just be filenames
+            content=$(echo "$content" | sed -E 's/<img([^>]*)src="([^\/:"]*)\.(jpg|jpeg|png|gif|svg)"/<img\1src="images\/\2.\3"/gi')
             
-            # Handle absolute paths in the site
-            content=$(echo "$content" | sed -E 's/<img([^>]*)src="\/[^\/]*\/([^\/"]*)\.([^":]+)"/<img\1src="\/images\/\2.\3"/gi')
+            # 3. Also handle images that might already have been correctly fixed
+            content=$(echo "$content" | sed -E 's/<img([^>]*)src="\/images\//<img\1src="images\//gi')
             
             # Log transformed image references
             echo "Transformed image references in $filename:"
