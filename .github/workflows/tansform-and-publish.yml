@@ -377,11 +377,11 @@ jobs:
           }
           EOF
 
-      # Step 8: Create SPA JavaScript Application with hierarchical navigation
+      # Step 8: Create SPA JavaScript Application with section collapsing
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // SPA Application with hierarchical navigation and arrow toggling
+          // SPA Application with collapsible section headers
           
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -449,8 +449,17 @@ jobs:
               a.textContent = item.title;
               a.setAttribute('data-id', item.id);
               a.href = `#${item.id}`;
+              
+              // IMPORTANT CHANGE: Modified click handler for section titles
               a.addEventListener('click', (e) => {
                 e.preventDefault();
+                
+                // If this is a parent item with children, toggle expansion
+                if (item.children && item.children.length > 0) {
+                  li.classList.toggle('expanded');
+                }
+                
+                // Always navigate to the page
                 navigateToPage(item.id);
               });
               
