@@ -726,6 +726,38 @@ jobs:
             font-weight: normal;
           }
           
+          /* Loading indicator for search index */
+          .loading-indicator {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px 0;
+          }
+          
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          
+          .loading-indicator div {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #eee;
+            border-radius: 50%;
+            border-top-color: #4a90e2;
+            animation: spin 1s linear infinite;
+          }
+          
+          #search-status {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #666;
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+          }
+          
           /* Responsive design for mobile */
           @media (max-width: 768px) {
             body {
@@ -1086,11 +1118,16 @@ jobs:
           // Search functionality for DITA SPA
           let searchIndex = {};
           let contentCache = {};
+          let searchIndexReady = false;
+          let searchIndexError = false;
 
           // Initialize search functionality
           function initSearch() {
             const searchInput = document.getElementById('search-input');
             const searchButton = document.getElementById('search-button');
+            
+            // Log initialization
+            console.log('[DITA-SPA] Initializing search functionality');
             
             // Add event listeners
             searchInput.addEventListener('keydown', function(e) {
@@ -1101,50 +1138,111 @@ jobs:
             
             searchButton.addEventListener('click', performSearch);
             
-            // Create simple search index from navigation
+            // Status indicator for debugging
+            const contentEl = document.getElementById('content');
+            const statusHtml = `
+              <div class="welcome-screen">
+                <h2>Welcome to Automotive Documentation</h2>
+                <p>Please select a topic from the navigation menu or use the search bar to find specific information.</p>
+                <div id="search-status" style="margin-top: 20px; font-size: 12px; color: #666;">
+                  <p>Search index is building... This may take a moment.</p>
+                </div>
+              </div>
+            `;
+            
+            // Only update if we're on the welcome screen
+            if (contentEl.querySelector('.welcome-screen')) {
+              contentEl.innerHTML = statusHtml;
+            }
+            
+            // Create search index from navigation structure
             createSearchIndexFromNavigation();
           }
 
-          // Create a basic search index from navigation structure
+          // Create a basic search index from navigation structure with better error handling
           function createSearchIndexFromNavigation() {
-            function processItems(items) {
-              items.forEach(item => {
-                // Add item to search index
-                searchIndex[item.id] = {
-                  id: item.id,
-                  title: item.title,
-                  content: item.title, // Initially just use title as content
-                  filename: item.filename || item.id
-                };
-                
-                // Process children if any
-                if (item.children && item.children.length > 0) {
-                  processItems(item.children);
-                }
-              });
+            console.log('[DITA-SPA] Starting to build search index from navigation');
+            
+            if (!window.navigationConfig || !Array.isArray(window.navigationConfig)) {
+              console.error('[DITA-SPA] Navigation configuration is missing or invalid');
+              searchIndexError = true;
+              updateSearchStatus('Search index failed: Navigation data is missing');
+              return;
             }
             
-            // Process all navigation items
-            processItems(window.navigationConfig);
-            
-            // Pre-fetch content for search indexing
-            prefetchContent();
+            try {
+              // Process items recursively
+              function processItems(items) {
+                items.forEach(item => {
+                  if (!item || !item.id) {
+                    console.warn('[DITA-SPA] Invalid navigation item:', item);
+                    return;
+                  }
+                  
+                  // Add item to search index
+                  searchIndex[item.id] = {
+                    id: item.id,
+                    title: item.title || 'Untitled',
+                    content: item.title || 'Untitled', // Initially just use title as content
+                    filename: item.filename || item.id
+                  };
+                  
+                  // Log item added
+                  console.log(`[DITA-SPA] Added to search index: ${item.id} - ${item.title}`);
+                  
+                  // Process children if any
+                  if (item.children && item.children.length > 0) {
+                    processItems(item.children);
+                  }
+                });
+              }
+              
+              // Process all navigation items
+              processItems(window.navigationConfig);
+              
+              // Update status
+              console.log(`[DITA-SPA] Navigation processed, found ${Object.keys(searchIndex).length} items`);
+              updateSearchStatus(`Processing ${Object.keys(searchIndex).length} content items...`);
+              
+              // Pre-fetch content for search indexing
+              prefetchContent();
+            } catch (error) {
+              console.error('[DITA-SPA] Error building search index:', error);
+              searchIndexError = true;
+              updateSearchStatus('Search index failed: ' + error.message);
+            }
           }
 
-          // Load content for a page - duplicated from app.js for proper encapsulation
+          // Update search status display
+          function updateSearchStatus(message) {
+            const statusEl = document.getElementById('search-status');
+            if (statusEl) {
+              statusEl.innerHTML = `<p>${message}</p>`;
+            }
+          }
+
+          // Load content for a page with improved error handling
           async function fetchContentForSearch(pageId) {
-            const basePath = getBasePathForSearch();
-            const contentPath = `${basePath}/content/${pageId}.html`;
-            
-            const response = await fetch(contentPath);
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
+            try {
+              const basePath = getBasePathForSearch();
+              const contentPath = `${basePath}/content/${pageId}.html`;
+              
+              console.log(`[DITA-SPA] Fetching content for search index: ${contentPath}`);
+              
+              const response = await fetch(contentPath);
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status} for ${contentPath}`);
+              }
+              
+              return await response.text();
+            } catch (error) {
+              console.warn(`[DITA-SPA] Failed to fetch content for ${pageId}:`, error);
+              // Return empty string instead of null to prevent further errors
+              return "";
             }
-            
-            return await response.text();
           }
 
-          // Get base path helper function - duplicated from app.js
+          // Get base path helper function
           function getBasePathForSearch() {
             if (location.hostname.includes('github.io')) {
               const pathSegments = location.pathname.split('/');
@@ -1155,87 +1253,155 @@ jobs:
             return '';
           }
 
-          // Pre-fetch content for search indexing
+          // Pre-fetch content for search indexing with improved error handling and progress tracking
           async function prefetchContent() {
-            for (const id in searchIndex) {
-              try {
-                const content = await fetchContentForSearch(id);
-                
-                // Store in cache
-                contentCache[id] = content;
-                
-                // Extract text content for search
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = content;
-                const textContent = tempDiv.textContent || tempDiv.innerText;
-                
-                // Update search index with actual content
-                searchIndex[id].content = textContent;
-              } catch (error) {
-                console.warn(`Failed to prefetch content for ${id}:`, error);
+            const ids = Object.keys(searchIndex);
+            console.log(`[DITA-SPA] Starting content prefetch for ${ids.length} items`);
+            
+            let completed = 0;
+            const updateProgress = () => {
+              completed++;
+              if (completed % 5 === 0 || completed === ids.length) {
+                const percentage = Math.round((completed / ids.length) * 100);
+                updateSearchStatus(`Building search index: ${percentage}% complete (${completed}/${ids.length})`);
+                console.log(`[DITA-SPA] Search index build progress: ${percentage}%`);
               }
+            };
+            
+            // Process in batches to avoid overwhelming the browser
+            const batchSize = 5;
+            let indexSize = 0;
+            
+            for (let i = 0; i < ids.length; i += batchSize) {
+              const batch = ids.slice(i, i + batchSize);
+              await Promise.all(batch.map(async (id) => {
+                try {
+                  const content = await fetchContentForSearch(id);
+                  
+                  // Store in cache
+                  contentCache[id] = content;
+                  
+                  // Skip if content is empty
+                  if (!content) {
+                    console.warn(`[DITA-SPA] Empty content for ${id}, using title only`);
+                    updateProgress();
+                    return;
+                  }
+                  
+                  // Extract text content for search
+                  const tempDiv = document.createElement('div');
+                  tempDiv.innerHTML = content;
+                  const textContent = tempDiv.textContent || tempDiv.innerText || '';
+                  
+                  // Calculate content size for logging
+                  indexSize += textContent.length;
+                  
+                  // Update search index with actual content
+                  searchIndex[id].content = textContent;
+                  console.log(`[DITA-SPA] Added content for ${id}: ${textContent.length} characters`);
+                } catch (error) {
+                  console.error(`[DITA-SPA] Error processing content for ${id}:`, error);
+                } finally {
+                  updateProgress();
+                }
+              }));
             }
             
-            console.log('[DITA-SPA] Search index created with', Object.keys(searchIndex).length, 'entries');
+            searchIndexReady = true;
+            console.log(`[DITA-SPA] Search index created with ${Object.keys(searchIndex).length} entries, total size: ${Math.round(indexSize / 1024)}KB`);
+            updateSearchStatus(`Search index complete with ${Object.keys(searchIndex).length} articles`);
+            
+            // Trigger an initial search if there's a value in the search box
+            const searchInput = document.getElementById('search-input');
+            if (searchInput && searchInput.value.trim()) {
+              performSearch();
+            }
           }
 
-          // Perform the search
+          // Perform the search with better error handling
           function performSearch() {
             const searchInput = document.getElementById('search-input');
             const searchTerm = searchInput.value.trim().toLowerCase();
-            const searchScope = document.getElementById('search-toggle').checked;
+            
+            console.log(`[DITA-SPA] Search requested for: "${searchTerm}"`);
             
             if (!searchTerm) {
+              console.log('[DITA-SPA] Empty search term, ignoring');
               return;
             }
             
-            // If search scope is checked, only search current article
-            if (searchScope && window.currentPage) {
-              // Search only in current page
-              const results = searchInPage(window.currentPage, searchTerm);
-              if (results) {
-                displaySearchResults([results], searchTerm);
+            // Check if search index is ready
+            if (!searchIndexReady) {
+              console.log('[DITA-SPA] Search index not ready yet, showing message');
+              displaySearchResults([], searchTerm, true);
+              return;
+            }
+            
+            // Capture search scope setting
+            const searchScope = document.getElementById('search-toggle').checked;
+            console.log(`[DITA-SPA] Search scope: ${searchScope ? 'current article only' : 'all content'}`);
+            
+            try {
+              // If search scope is checked, only search current article
+              if (searchScope && window.currentPage) {
+                console.log(`[DITA-SPA] Searching only current page: ${window.currentPage}`);
+                const results = searchInPage(window.currentPage, searchTerm);
+                if (results) {
+                  displaySearchResults([results], searchTerm);
+                } else {
+                  displaySearchResults([], searchTerm);
+                }
               } else {
-                displaySearchResults([], searchTerm);
+                // Search all content
+                console.log('[DITA-SPA] Searching all content');
+                const results = searchAllContent(searchTerm);
+                console.log(`[DITA-SPA] Found ${results.length} results`);
+                displaySearchResults(results, searchTerm);
               }
-            } else {
-              // Search all content
-              const results = searchAllContent(searchTerm);
-              displaySearchResults(results, searchTerm);
+            } catch (error) {
+              console.error('[DITA-SPA] Error during search:', error);
+              displaySearchError(searchTerm, error);
             }
           }
 
           // Search within a specific page
           function searchInPage(pageId, term) {
             if (!searchIndex[pageId]) {
+              console.warn(`[DITA-SPA] Page not found in search index: ${pageId}`);
               return null;
             }
             
             const item = searchIndex[pageId];
-            const content = item.content.toLowerCase();
+            const titleLower = (item.title || '').toLowerCase();
+            const contentLower = (item.content || '').toLowerCase();
             
-            if (content.includes(term) || item.title.toLowerCase().includes(term)) {
+            if (contentLower.includes(term) || titleLower.includes(term)) {
               return {
                 id: item.id,
                 title: item.title,
                 score: calculateScore(item, term),
-                excerpt: generateExcerpt(content, term)
+                excerpt: generateExcerpt(contentLower, term)
               };
             }
             
             return null;
           }
 
-          // Search all content
+          // Search all content with improved error handling
           function searchAllContent(term) {
             const results = [];
+            const searchKeys = Object.keys(searchIndex);
             
-            for (const id in searchIndex) {
+            console.log(`[DITA-SPA] Searching across ${searchKeys.length} items for "${term}"`);
+            
+            let matchCount = 0;
+            for (const id of searchKeys) {
               const item = searchIndex[id];
-              const titleLower = item.title.toLowerCase();
-              const contentLower = item.content.toLowerCase();
+              const titleLower = (item.title || '').toLowerCase();
+              const contentLower = (item.content || '').toLowerCase();
               
-              if (titleLower.includes(term) || contentLower.includes(term)) {
+              if (contentLower.includes(term) || titleLower.includes(term)) {
+                matchCount++;
                 results.push({
                   id: item.id,
                   title: item.title,
@@ -1248,14 +1414,15 @@ jobs:
             // Sort results by score
             results.sort((a, b) => b.score - a.score);
             
+            console.log(`[DITA-SPA] Found ${matchCount} matches for "${term}"`);
             return results;
           }
 
           // Calculate search relevance score
           function calculateScore(item, term) {
             let score = 0;
-            const titleLower = item.title.toLowerCase();
-            const contentLower = item.content.toLowerCase();
+            const titleLower = (item.title || '').toLowerCase();
+            const contentLower = (item.content || '').toLowerCase();
             
             // Higher score for title matches
             if (titleLower === term) {
@@ -1265,16 +1432,20 @@ jobs:
             }
             
             // Score based on content matches
-            const contentMatches = contentLower.split(term).length - 1;
+            const contentMatches = (contentLower.split(term).length - 1) || 0;
             score += contentMatches;
             
             return score;
           }
 
-          // Generate a search result excerpt
+          // Generate a search result excerpt with improved error handling
           function generateExcerpt(content, term) {
+            if (!content || typeof content !== 'string') {
+              return 'No content preview available';
+            }
+            
             const index = content.indexOf(term);
-            if (index === -1) return '';
+            if (index === -1) return 'Content match found but context not available';
             
             const start = Math.max(0, index - 50);
             const end = Math.min(content.length, index + term.length + 50);
@@ -1284,11 +1455,34 @@ jobs:
             if (end < content.length) excerpt += '...';
             
             // Highlight the search term
-            return excerpt.replace(new RegExp(term, 'gi'), match => `<strong>${match}</strong>`);
+            try {
+              return excerpt.replace(new RegExp(term, 'gi'), match => `<strong>${match}</strong>`);
+            } catch (error) {
+              console.warn('[DITA-SPA] Error highlighting search term:', error);
+              return excerpt;
+            }
           }
 
-          // Display search results in the main content area
-          function displaySearchResults(results, searchTerm) {
+          // Display search error
+          function displaySearchError(searchTerm, error) {
+            const contentEl = document.getElementById('content');
+            const contentTitleEl = document.getElementById('content-title');
+            
+            contentTitleEl.textContent = `Search Error`;
+            document.title = `Search Error`;
+            
+            contentEl.innerHTML = `
+              <div class="error">
+                <h2>Search Error</h2>
+                <p>An error occurred while searching for "${searchTerm}".</p>
+                <p>Error details: ${error.message}</p>
+                <p>Please try a different search term or browse topics from the navigation menu.</p>
+              </div>
+            `;
+          }
+
+          // Display search results in the main content area with improved error handling
+          function displaySearchResults(results, searchTerm, stillIndexing = false) {
             const contentEl = document.getElementById('content');
             const contentTitleEl = document.getElementById('content-title');
             
@@ -1296,59 +1490,109 @@ jobs:
             contentTitleEl.textContent = `Search Results for "${searchTerm}"`;
             document.title = `Search Results - ${searchTerm}`;
             
+            // If still indexing
+            if (stillIndexing) {
+              contentEl.innerHTML = `
+                <div class="search-results-container">
+                  <p class="search-results-count">Building search index, please wait...</p>
+                  <p>The search index is still being built. Your search will be processed as soon as it's ready.</p>
+                  <div class="loading-indicator" style="text-align: center; margin: 20px 0;">
+                    <div style="display: inline-block; width: 20px; height: 20px; border: 3px solid #ddd; border-radius: 50%; border-top-color: #4a90e2; animation: spin 1s linear infinite;"></div>
+                  </div>
+                  <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+                </div>
+              `;
+              return;
+            }
+            
+            // If search index had errors
+            if (searchIndexError) {
+              contentEl.innerHTML = `
+                <div class="search-results-container">
+                  <p class="search-no-results">Unable to search: The search index could not be built correctly.</p>
+                  <p>Please browse topics from the navigation menu instead, or reload the page to try again.</p>
+                </div>
+              `;
+              return;
+            }
+            
+            // Log result count
+            console.log(`[DITA-SPA] Displaying ${results.length} search results for "${searchTerm}"`);
+            
             // Filter out null results
             const validResults = results.filter(result => result !== null);
             
+            // No results found
             if (validResults.length === 0) {
               contentEl.innerHTML = `
                 <div class="search-results-container">
                   <p class="search-no-results">No results found for "${searchTerm}".</p>
                   <p>Try a different search term or browse topics from the navigation menu.</p>
+                  <ul style="margin-top: 20px; margin-left: 20px;">
+                    <li>Check your spelling</li>
+                    <li>Try more general keywords</li>
+                    <li>Try different keywords</li>
+                  </ul>
                 </div>
               `;
               return;
             }
             
             // Build HTML for search results
-            let resultsHtml = `
-              <div class="search-results-container">
-                <p class="search-results-count">Found ${validResults.length} result${validResults.length !== 1 ? 's' : ''} for "${searchTerm}"</p>
-                <div class="search-results-list">
-            `;
-            
-            validResults.forEach(result => {
+            try {
+              let resultsHtml = `
+                <div class="search-results-container">
+                  <p class="search-results-count">Found ${validResults.length} result${validResults.length !== 1 ? 's' : ''} for "${searchTerm}"</p>
+                  <div class="search-results-list">
+              `;
+              
+              validResults.forEach(result => {
+                resultsHtml += `
+                  <div class="content-search-result" data-id="${result.id}">
+                    <h3><a href="#${result.id}" class="search-result-link">${result.title || 'Untitled'}</a></h3>
+                    <p class="search-result-excerpt">${result.excerpt || 'No preview available'}</p>
+                  </div>
+                `;
+              });
+              
               resultsHtml += `
-                <div class="content-search-result" data-id="${result.id}">
-                  <h3><a href="#${result.id}" class="search-result-link">${result.title}</a></h3>
-                  <p class="search-result-excerpt">${result.excerpt}</p>
+                  </div>
                 </div>
               `;
-            });
-            
-            resultsHtml += `
-                </div>
-              </div>
-            `;
-            
-            contentEl.innerHTML = resultsHtml;
-            
-            // Add click handlers to search result links
-            document.querySelectorAll('.search-result-link').forEach(link => {
-              link.addEventListener('click', function(e) {
-                e.preventDefault();
-                const id = this.closest('.content-search-result').getAttribute('data-id');
-                if (typeof window.navigateToPage === 'function') {
-                  window.navigateToPage(id);
-                } else {
-                  // Fallback if function isn't available
-                  window.location.hash = id;
-                }
+              
+              contentEl.innerHTML = resultsHtml;
+              
+              // Add click handlers to search result links
+              document.querySelectorAll('.search-result-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                  e.preventDefault();
+                  const id = this.closest('.content-search-result').getAttribute('data-id');
+                  console.log(`[DITA-SPA] Search result clicked: ${id}`);
+                  
+                  if (typeof window.navigateToPage === 'function') {
+                    window.navigateToPage(id);
+                  } else {
+                    // Fallback if function isn't available
+                    console.warn('[DITA-SPA] navigateToPage function not available, using location.hash fallback');
+                    window.location.hash = id;
+                  }
+                });
               });
-            });
+            } catch (error) {
+              console.error('[DITA-SPA] Error rendering search results:', error);
+              contentEl.innerHTML = `
+                <div class="error">
+                  <h2>Error Displaying Results</h2>
+                  <p>An error occurred while displaying search results.</p>
+                  <p>Error details: ${error.message}</p>
+                </div>
+              `;
+            }
           }
 
           // Initialize search when DOM is ready
           document.addEventListener('DOMContentLoaded', function() {
+            console.log('[DITA-SPA] DOM loaded, initializing search');
             initSearch();
           });
           EOF
