@@ -157,7 +157,7 @@ jobs:
           echo "DITAMAP parsing complete"
           cat ./navigation-structure.json
 
-      # Step 5: Transform DITA to HTML and prepare images with better debugging
+      # Step 5: Transform DITA to HTML and prepare images with extensive debugging
       - name: Transform DITA to HTML and Prepare Images
         run: |
           # Using HTML5 format with parameters for better output
@@ -168,63 +168,183 @@ jobs:
           mkdir -p ./site/content
           mkdir -p ./site/images
           
-          # Show directory structure and find images
-          echo "Directory structure before image copying:"
-          find ./dita-source -type d | sort
-          find ./site -type d | sort
+          # List all DITA source content for debugging
+          echo "Full content of dita-source directory:"
+          find ./dita-source -type f | sort
           
-          # Look for images in DITA source
-          echo "Images in DITA source:"
-          find ./dita-source -type f -name "*.jpg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" | sort
+          # Look for explicit image references in DITA files
+          echo "Image references in DITA files:"
+          grep -r "image href" ./dita-source --include="*.dita" || echo "No image hrefs found in DITA files"
+          grep -r "<image" ./dita-source --include="*.dita" || echo "No image tags found in DITA files"
           
-          # Copy images from DITA source to site images directory
-          find ./dita-source -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \;
+          # Extract image file information from DITA source
+          echo "Extracting image references from DITA files:"
+          grep -r "image href" ./dita-source --include="*.dita" | sed -E 's/.*href="([^"]*).*/\1/' > image-references.txt
+          cat image-references.txt || echo "No image references extracted"
           
-          # Copy from any image directories found in DITA source
-          find ./dita-source -type d -name "images" -o -name "img" -o -name "graphics" | while read dir; do
-            if [ -d "$dir" ]; then
-              echo "Copying from image directory: $dir"
-              cp -rv "$dir"/* ./site/images/ || echo "No files in $dir"
+          # Copy all image files from dita-source to the images directory
+          echo "Copying all potential image files from dita-source:"
+          find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \;
+          
+          # Also look for images in subdirectories
+          find ./dita-source -type d -name "*images*" -o -name "*img*" | while read dir; do
+            echo "Copying from image directory: $dir"
+            cp -rv $dir/* ./site/images/ || echo "No files in $dir"
+          done
+          
+          # Also handle images that might be in the output HTML
+          echo "Finding image references in HTML output:"
+          grep -r "img src" ./site --include="*.html" || echo "No direct img tags found"
+          grep -r "image href" ./site --include="*.html" || echo "No image hrefs found"
+          
+          # Extract image paths from HTML output
+          echo "Extracting image references from HTML files:"
+          grep -r "img src" ./site --include="*.html" | sed -E 's/.*src="([^"]*).*/\1/' > html-image-refs.txt
+          grep -r "image href" ./site --include="*.html" | sed -E 's/.*href="([^"]*).*/\1/' >> html-image-refs.txt
+          cat html-image-refs.txt || echo "No HTML image references extracted"
+          
+          # Copy images from HTML output to images directory
+          cat html-image-refs.txt | while read imgpath; do
+            # Extract just the filename if it's a path
+            filename=$(basename "$imgpath")
+            # Find the source file
+            find ./site -name "$filename" -exec cp -v {} ./site/images/ \;
+          done
+          
+          # Find any image references in the HTML output and copy them
+          find ./site -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -not -path "./site/images/*" -exec cp -v {} ./site/images/ \;
+          
+          # Also copy any files from potential 'img' directories
+          if [ -d "./site/img" ]; then
+            cp -rv ./site/img/* ./site/images/ || echo "No files in img directory"
+          fi
+          
+          # Check any other potential image directories
+          for imgdir in ./site/images ./site/img ./site/graphics ./site/assets; do
+            if [ -d "$imgdir" ]; then
+              echo "Contents of $imgdir:"
+              ls -la $imgdir/
             fi
           done
           
-          # Create placeholders for common image names
-          echo "Creating placeholder images for known names"
-          for imgname in 2.jpg 3.jpg image_sys_1vq_jpc.jpg image_x5h_y5q_jpc.jpg; do
-            if [ ! -f "./site/images/$imgname" ]; then
-              echo "Creating placeholder for $imgname"
-              convert -size 100x100 xc:lightblue -gravity Center -pointsize 12 -annotate 0 "$imgname" "./site/images/$imgname" || \
-              echo "P6\n100 100\n255\n$(printf '%0.s\377' {1..30000})" > "./site/images/$imgname"
-            fi
-          done
+          # Try to locate the specific images from the document
+          echo "Looking for image files named 2.jpg and 3.jpg:"
+          find . -name "2.jpg" -o -name "3.jpg" | sort
           
-          # Check what images we have now
-          echo "Images in site directory after copying:"
-          find ./site/images -type f | sort
+          # Create placeholder images for testing if no images are found
+          if [ ! "$(ls -A ./site/images 2>/dev/null)" ]; then
+            echo "Creating placeholder test images"
+            # Use base64 encoded 1x1 pixel transparent PNG
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/test.png
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/2.jpg
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/3.jpg
+          fi
+          
+          # Correct image file permissions
+          chmod -R 644 ./site/images/* || echo "No files to change permissions"
+          
+          # List files in the images directory
+          echo "Files in images directory:"
+          ls -la ./site/images/ || echo "No files in images directory"
           
           # List all generated files
-          echo "Generated files:"
+          echo "All generated files:"
           find ./site -type f | sort
 
-      # Step 6: Create direct viewer for DITA HTML files
-      - name: Create Direct DITA HTML Viewer
+      # Step 6: Process HTML files with improved image handling
+      - name: Process HTML Content
         run: |
-          # Create necessary directories
+          # Create content directory for SPA fragments
+          mkdir -p ./site/content
           mkdir -p ./site/js
           
-          # Skip complex content processing - We'll display original DITA HTML files directly
-          echo "Skipping content transformation - will display original DITA HTML"
+          # Create a folder to store folder-based content
+          mkdir -p ./site/content/folders
           
-          # Create a mapping file for navigation
+          # Dump HTML files to see what we're working with
+          echo "HTML file samples for debugging:"
+          find ./site -name "*.html" | head -n 1 | xargs cat | grep -A 5 -B 5 "img" || echo "No img tags found in sample"
+          find ./site -name "*.html" | head -n 1 | xargs cat | grep -A 5 -B 5 "image" || echo "No image tags found in sample"
+
+          # Process each HTML file to extract content
+          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
+            # Skip processing if this is the index.html we'll create later
+            if [[ "$file" == "./site/index.html" ]]; then
+              continue
+            fi
+            
+            filename=$(basename "$file")
+            id="${filename%.html}"
+            hyphenated_id="${id//_/-}"
+            echo "Processing $filename (ID: $id, Hyphenated ID: $hyphenated_id)"
+            
+            # Extract content from file 
+            content=$(sed -n '/<body/,/<\/body>/p' "$file" | 
+                     sed '/<body/d;/<\/body>/d' | 
+                     sed '/<header/,/<\/header>/d' | 
+                     sed '/<nav/,/<\/nav>/d' | 
+                     sed '/<footer/,/<\/footer>/d')
+            
+            # Log original image references for debugging
+            echo "Original image references in $filename:"
+            echo "$content" | grep -o '<img [^>]*src="[^"]*"[^>]*>' || echo "No img tags found"
+            echo "$content" | grep -o '<image [^>]*href="[^"]*"[^>]*>' || echo "No image tags found"
+            
+            # First convert DITA <image> tags to standard HTML <img> tags
+            content=$(echo "$content" | sed -E 's/<image([^>]*)href="([^"]*)"([^>]*)>/<img\1src="\2"\3>/gi')
+            
+            # Fix various image paths to use base SPA image directory
+            # 1. First handle img tags with more permissive regex
+            content=$(echo "$content" | sed -E 's/<img([^>]*)src="[^"]*\/([^\/"]*)\.([a-zA-Z0-9]+)"/<img\1src="images\/\2.\3"/gi')
+            
+            # 2. Fix remaining img paths that might just be filenames
+            content=$(echo "$content" | sed -E 's/<img([^>]*)src="([^\/:"]*)\.(jpg|jpeg|png|gif|svg)"/<img\1src="images\/\2.\3"/gi')
+            
+            # 3. Also handle images that might already have been correctly fixed
+            content=$(echo "$content" | sed -E 's/<img([^>]*)src="\/images\//<img\1src="images\//gi')
+            
+            # Log transformed image references
+            echo "Transformed image references in $filename:"
+            echo "$content" | grep -o '<img [^>]*src="[^"]*"[^>]*>' || echo "No img tags found after transformation"
+            
+            # Get title from the original file
+            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
+            if [ -z "$title" ]; then
+              title=$(echo "$id" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+            fi
+            
+            # Determine parent folder (if any)
+            parent_dir=$(dirname "$file" | xargs basename)
+            if [[ "$parent_dir" != "site" ]]; then
+              echo "File is in subdirectory: $parent_dir"
+              # Create folder content path to handle nested structure
+              mkdir -p "./site/content/$parent_dir"
+              echo "$content" > "./site/content/$parent_dir/$id.html"
+              echo "Created folder-based content: ./site/content/$parent_dir/$id.html"
+              
+              # Also create a path mapping entry
+              echo "  \"$hyphenated_id\": { \"path\": \"$parent_dir/$id.html\" }," >> ./site/js/path-mapping.tmp
+            fi
+            
+            # Create content file with original filename
+            echo "$content" > "./site/content/$id.html"
+            
+            # Also create a hyphenated version
+            if [[ "$id" != "$hyphenated_id" ]]; then
+              echo "$content" > "./site/content/$hyphenated_id.html"
+              echo "Created mapping: $id.html → $hyphenated_id.html"
+            fi
+          done
+          
+          # Create a mapping file directly
           echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
           echo "const contentIdMap = {" >> ./site/js/content-id-map.js
           
-          # Process each HTML file in the DITA output
+          # Process each HTML file for the mapping
           find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
             filename=$(basename "$file" .html)
             id="${filename//_/-}"
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-            relpath=$(realpath --relative-to=./site "$file")
             
             # Skip if already processed
             if grep -q "\"$id\":" ./site/js/content-id-map.js; then
@@ -239,17 +359,25 @@ jobs:
             # Escape quotes in title
             title=$(echo "$title" | sed 's/"/\\"/g')
             
-            # Add entry with relative path to original file
-            echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$filename\", \"path\": \"$relpath\" }," >> ./site/js/content-id-map.js
+            echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$filename\" }," >> ./site/js/content-id-map.js
           done
           
           # Close the mapping object
           echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-id-map.js
           echo "};" >> ./site/js/content-id-map.js
           
-          # List all HTML files for debugging
-          echo "HTML files available:"
-          find ./site -type f -name "*.html" | sort
+          # Create path mapping if needed
+          if [ -f "./site/js/path-mapping.tmp" ]; then
+            echo "// Auto-generated path mapping" > ./site/js/path-mapping.js
+            echo "const pathMapping = {" >> ./site/js/path-mapping.js
+            cat ./site/js/path-mapping.tmp >> ./site/js/path-mapping.js
+            echo "  \"default\": { \"path\": \"\" }" >> ./site/js/path-mapping.js
+            echo "};" >> ./site/js/path-mapping.js
+            rm ./site/js/path-mapping.tmp
+          else
+            echo "// Auto-generated path mapping" > ./site/js/path-mapping.js
+            echo "const pathMapping = { \"default\": { \"path\": \"\" } };" >> ./site/js/path-mapping.js
+          fi
 
       # Step 7: Generate Navigation Configuration
       - name: Generate Navigation Configuration
@@ -844,8 +972,8 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Update index.html for iframe-based viewing
-      - name: Update Index HTML
+      # Step 10: Update index.html to include path mapping
+      - name: Update Index HTML with Search
         run: |
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
@@ -875,29 +1003,20 @@ jobs:
             
             <title>Automotive Documentation</title>
             <link rel="stylesheet" href="css/style.css">
-            
-            <style>
-              /* Additional styles for iframe container */
-              #content {
-                display: flex;
-                flex-direction: column;
-                height: 100%;
-                width: 100%;
-                overflow: hidden;
-              }
-              
-              iframe {
-                flex: 1;
-                width: 100%;
-                height: 100%;
-                border: none;
-                margin: 0;
-                padding: 0;
-              }
-            </style>
           </head>
           <body>
             <div class="sidebar">
+              <div class="search-container">
+                <div class="search-input-wrap">
+                  <input type="text" id="search-input" placeholder="Search documentation...">
+                </div>
+                <div class="search-scope">
+                  <input type="checkbox" id="search-toggle">
+                  <label for="search-toggle">Search only current article</label>
+                </div>
+                <div id="search-results"></div>
+              </div>
+              
               <div class="sidebar-nav">
                 <h2>Navigation</h2>
                 <div id="navigation"></div>
@@ -908,7 +1027,7 @@ jobs:
               <h1 id="content-title">Loading...</h1>
               <div id="loading">Loading content...</div>
               <div id="content">
-                <!-- Content will load here as an iframe -->
+                <!-- Content will load here -->
                 <div class="initial-loading">
                   <p>Initializing documentation viewer...</p>
                 </div>
@@ -918,6 +1037,9 @@ jobs:
             <!-- Load JavaScript files -->
             <script src="js/navigation-config.js"></script>
             <script src="js/content-id-map.js"></script>
+            <script src="js/path-mapping.js"></script>
+            <script src="js/search-index.js"></script>
+            <script src="js/search.js"></script>
             <script src="js/app.js"></script>
           </body>
           </html>
