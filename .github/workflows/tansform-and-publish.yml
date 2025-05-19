@@ -157,7 +157,7 @@ jobs:
           echo "DITAMAP parsing complete"
           cat ./navigation-structure.json
 
-      # Step 5: Transform DITA to HTML and prepare images with extensive debugging
+      # Step 5: Transform DITA to HTML and prepare images
       - name: Transform DITA to HTML and Prepare Images
         run: |
           # Using HTML5 format with parameters for better output
@@ -172,16 +172,6 @@ jobs:
           echo "Full content of dita-source directory:"
           find ./dita-source -type f | sort
           
-          # Look for explicit image references in DITA files
-          echo "Image references in DITA files:"
-          grep -r "image href" ./dita-source --include="*.dita" || echo "No image hrefs found in DITA files"
-          grep -r "<image" ./dita-source --include="*.dita" || echo "No image tags found in DITA files"
-          
-          # Extract image file information from DITA source
-          echo "Extracting image references from DITA files:"
-          grep -r "image href" ./dita-source --include="*.dita" | sed -E 's/.*href="([^"]*).*/\1/' > image-references.txt
-          cat image-references.txt || echo "No image references extracted"
-          
           # Copy all image files from dita-source to the images directory
           echo "Copying all potential image files from dita-source:"
           find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \;
@@ -192,18 +182,12 @@ jobs:
             cp -rv $dir/* ./site/images/ || echo "No files in $dir"
           done
           
-          # Also handle images that might be in the output HTML
-          echo "Finding image references in HTML output:"
-          grep -r "img src" ./site --include="*.html" || echo "No direct img tags found"
-          grep -r "image href" ./site --include="*.html" || echo "No image hrefs found"
-          
           # Extract image paths from HTML output
           echo "Extracting image references from HTML files:"
           grep -r "img src" ./site --include="*.html" | sed -E 's/.*src="([^"]*).*/\1/' > html-image-refs.txt
           grep -r "image href" ./site --include="*.html" | sed -E 's/.*href="([^"]*).*/\1/' >> html-image-refs.txt
-          cat html-image-refs.txt || echo "No HTML image references extracted"
           
-          # Copy images from HTML output to images directory
+          # Copy any image references found to the images directory
           cat html-image-refs.txt | while read imgpath; do
             # Extract just the filename if it's a path
             filename=$(basename "$imgpath")
@@ -214,24 +198,7 @@ jobs:
           # Find any image references in the HTML output and copy them
           find ./site -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -not -path "./site/images/*" -exec cp -v {} ./site/images/ \;
           
-          # Also copy any files from potential 'img' directories
-          if [ -d "./site/img" ]; then
-            cp -rv ./site/img/* ./site/images/ || echo "No files in img directory"
-          fi
-          
-          # Check any other potential image directories
-          for imgdir in ./site/images ./site/img ./site/graphics ./site/assets; do
-            if [ -d "$imgdir" ]; then
-              echo "Contents of $imgdir:"
-              ls -la $imgdir/
-            fi
-          done
-          
-          # Try to locate the specific images from the document
-          echo "Looking for image files named 2.jpg and 3.jpg:"
-          find . -name "2.jpg" -o -name "3.jpg" | sort
-          
-          # Create placeholder images for testing if no images are found
+          # Create placeholder images if no images are found
           if [ ! "$(ls -A ./site/images 2>/dev/null)" ]; then
             echo "Creating placeholder test images"
             # Use base64 encoded 1x1 pixel transparent PNG
@@ -246,26 +213,14 @@ jobs:
           # List files in the images directory
           echo "Files in images directory:"
           ls -la ./site/images/ || echo "No files in images directory"
-          
-          # List all generated files
-          echo "All generated files:"
-          find ./site -type f | sort
 
-      # Step 6: Process HTML files with improved image handling
+      # Step 6: Process HTML files
       - name: Process HTML Content
         run: |
           # Create content directory for SPA fragments
           mkdir -p ./site/content
           mkdir -p ./site/js
           
-          # Create a folder to store folder-based content
-          mkdir -p ./site/content/folders
-          
-          # Dump HTML files to see what we're working with
-          echo "HTML file samples for debugging:"
-          find ./site -name "*.html" | head -n 1 | xargs cat | grep -A 5 -B 5 "img" || echo "No img tags found in sample"
-          find ./site -name "*.html" | head -n 1 | xargs cat | grep -A 5 -B 5 "image" || echo "No image tags found in sample"
-
           # Process each HTML file to extract content
           find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
             # Skip processing if this is the index.html we'll create later
@@ -285,45 +240,23 @@ jobs:
                      sed '/<nav/,/<\/nav>/d' | 
                      sed '/<footer/,/<\/footer>/d')
             
-            # Log original image references for debugging
-            echo "Original image references in $filename:"
-            echo "$content" | grep -o '<img [^>]*src="[^"]*"[^>]*>' || echo "No img tags found"
-            echo "$content" | grep -o '<image [^>]*href="[^"]*"[^>]*>' || echo "No image tags found"
-            
-            # First convert DITA <image> tags to standard HTML <img> tags
+            # Fix image paths to use base SPA image directory
+            # 1. First convert DITA <image> tags to standard HTML <img> tags
             content=$(echo "$content" | sed -E 's/<image([^>]*)href="([^"]*)"([^>]*)>/<img\1src="\2"\3>/gi')
             
-            # Fix various image paths to use base SPA image directory
-            # 1. First handle img tags with more permissive regex
+            # 2. Fix various image paths to use base SPA image directory
             content=$(echo "$content" | sed -E 's/<img([^>]*)src="[^"]*\/([^\/"]*)\.([a-zA-Z0-9]+)"/<img\1src="images\/\2.\3"/gi')
             
-            # 2. Fix remaining img paths that might just be filenames
+            # 3. Fix remaining img paths that might just be filenames
             content=$(echo "$content" | sed -E 's/<img([^>]*)src="([^\/:"]*)\.(jpg|jpeg|png|gif|svg)"/<img\1src="images\/\2.\3"/gi')
             
-            # 3. Also handle images that might already have been correctly fixed
+            # 4. Also handle images that might already have been correctly fixed
             content=$(echo "$content" | sed -E 's/<img([^>]*)src="\/images\//<img\1src="images\//gi')
-            
-            # Log transformed image references
-            echo "Transformed image references in $filename:"
-            echo "$content" | grep -o '<img [^>]*src="[^"]*"[^>]*>' || echo "No img tags found after transformation"
             
             # Get title from the original file
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
             if [ -z "$title" ]; then
               title=$(echo "$id" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-            fi
-            
-            # Determine parent folder (if any)
-            parent_dir=$(dirname "$file" | xargs basename)
-            if [[ "$parent_dir" != "site" ]]; then
-              echo "File is in subdirectory: $parent_dir"
-              # Create folder content path to handle nested structure
-              mkdir -p "./site/content/$parent_dir"
-              echo "$content" > "./site/content/$parent_dir/$id.html"
-              echo "Created folder-based content: ./site/content/$parent_dir/$id.html"
-              
-              # Also create a path mapping entry
-              echo "  \"$hyphenated_id\": { \"path\": \"$parent_dir/$id.html\" }," >> ./site/js/path-mapping.tmp
             fi
             
             # Create content file with original filename
@@ -336,7 +269,7 @@ jobs:
             fi
           done
           
-          # Create a mapping file directly
+          # Create a content ID mapping file
           echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
           echo "const contentIdMap = {" >> ./site/js/content-id-map.js
           
@@ -365,19 +298,6 @@ jobs:
           # Close the mapping object
           echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-id-map.js
           echo "};" >> ./site/js/content-id-map.js
-          
-          # Create path mapping if needed
-          if [ -f "./site/js/path-mapping.tmp" ]; then
-            echo "// Auto-generated path mapping" > ./site/js/path-mapping.js
-            echo "const pathMapping = {" >> ./site/js/path-mapping.js
-            cat ./site/js/path-mapping.tmp >> ./site/js/path-mapping.js
-            echo "  \"default\": { \"path\": \"\" }" >> ./site/js/path-mapping.js
-            echo "};" >> ./site/js/path-mapping.js
-            rm ./site/js/path-mapping.tmp
-          else
-            echo "// Auto-generated path mapping" > ./site/js/path-mapping.js
-            echo "const pathMapping = { \"default\": { \"path\": \"\" } };" >> ./site/js/path-mapping.js
-          fi
 
       # Step 7: Generate Navigation Configuration
       - name: Generate Navigation Configuration
@@ -396,7 +316,7 @@ jobs:
           
           echo "Navigation configuration generated from DITAMAP structure"
 
-      # Step 8: Create SPA CSS with improved navigation styling and search UI
+      # Step 8: Create SPA CSS with improved styling
       - name: Create SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
@@ -454,7 +374,7 @@ jobs:
           }
           
           #search-input {
-            width: calc(100% - 90px);
+            width: calc(100% - 80px);
             padding: 8px 12px;
             border: 1px solid #ddd;
             border-radius: 4px 0 0 4px;
@@ -462,15 +382,13 @@ jobs:
           }
           
           #search-button {
+            width: 80px;
             padding: 8px 12px;
             background-color: #4a90e2;
             color: white;
             border: none;
             border-radius: 0 4px 4px 0;
             cursor: pointer;
-            margin-left: -1px;
-            min-width: 70px;
-            transition: all 0.2s ease;
           }
           
           #search-button:hover {
@@ -479,8 +397,8 @@ jobs:
           
           #search-input:focus {
             outline: none;
-            border-color: #ffd600;
-            box-shadow: 0 0 0 2px rgba(255, 214, 0, 0.2);
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
           }
           
           .search-scope {
@@ -488,63 +406,20 @@ jobs:
             align-items: center;
             font-size: 12px;
             color: #666;
-            margin-bottom: 10px;
           }
           
           .search-scope input {
             margin-right: 5px;
           }
           
-          #search-results {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            max-height: 300px;
-            overflow-y: auto;
-            z-index: 100;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            display: none;
+          /* Search highlighting */
+          .search-highlight {
+            background-color: #ffeb3b !important;
+            border-left: 3px solid #ffc107 !important;
+            font-weight: bold;
           }
           
-          .search-result-item {
-            padding: 10px 15px;
-            border-bottom: 1px solid #eee;
-            cursor: pointer;
-          }
-          
-          .search-result-item:hover {
-            background-color: #f5f5f5;
-          }
-          
-          .search-result-item h4 {
-            font-size: 14px;
-            margin-bottom: 5px;
-            color: #2c3e50;
-          }
-          
-          .search-result-item p {
-            font-size: 12px;
-            color: #666;
-            margin: 0;
-          }
-          
-          .search-result-item strong {
-            background-color: rgba(255, 230, 0, 0.4);
-            font-weight: normal;
-          }
-          
-          .search-no-results {
-            padding: 15px;
-            text-align: center;
-            color: #666;
-            font-style: italic;
-          }
-          
-          /* Improved navigation styling for hierarchy */
+          /* Navigation styling */
           .sidebar-nav {
             flex: 1;
             overflow-y: auto;
@@ -606,8 +481,6 @@ jobs:
             border-radius: 4px;
             transition: background-color 0.2s;
             cursor: pointer;
-            position: relative;
-            transition: all 0.2s ease-out;
           }
           
           .sidebar a:hover {
@@ -634,9 +507,51 @@ jobs:
             height: auto;
           }
           
-          /* Fix for duplicate headings */
-          .main-content h1:first-child + h1 {
-            display: none;
+          /* Welcome screen styling */
+          .welcome-screen {
+            text-align: center;
+            padding: 40px 20px;
+          }
+          
+          .welcome-screen h2 {
+            margin-bottom: 20px;
+          }
+          
+          /* Search results styling */
+          .search-results-container {
+            padding: 20px 0;
+          }
+          
+          .search-results-title {
+            margin-bottom: 20px;
+            font-size: 1.5em;
+          }
+          
+          .search-result-item {
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+          }
+          
+          .search-result-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+          }
+          
+          .search-result-item h3 {
+            margin-top: 0;
+            margin-bottom: 5px;
+          }
+          
+          .search-result-item a {
+            color: #4a90e2;
+            text-decoration: none;
+          }
+          
+          .search-result-item a:hover {
+            text-decoration: underline;
           }
           
           /* Loading state */
@@ -666,197 +581,28 @@ jobs:
             margin-top: 0;
           }
           
-          /* Welcome screen styling */
-          .welcome-screen {
-            text-align: center;
-            padding: 40px 20px;
-          }
-          
-          .welcome-screen h2 {
-            margin-bottom: 20px;
-          }
-          
-          /* Search results in main content area */
-          .search-results-container {
-            padding: 10px 0;
-            max-width: 800px;
-            margin: 0 auto;
-          }
-          
-          .search-results-count {
-            margin-bottom: 20px;
-            color: #666;
-            font-style: italic;
-          }
-          
-          .search-results-list {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-          }
-          
-          .content-search-result {
-            padding: 15px;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-          }
-          
-          .content-search-result:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-            border-color: #ccc;
-          }
-          
-          .content-search-result h3 {
-            margin-top: 0;
-            margin-bottom: 10px;
-          }
-          
-          .content-search-result a {
-            color: #4a90e2;
-            text-decoration: none;
-          }
-          
-          .content-search-result a:hover {
-            text-decoration: underline;
-          }
-          
-          .search-result-excerpt {
-            color: #555;
-            font-size: 14px;
-            line-height: 1.5;
-            margin-top: 8px;
-          }
-          
-          .search-result-excerpt strong {
-            background-color: #fff59d;
-            padding: 2px 0;
-            font-weight: bold;
-            border-radius: 2px;
-          }
-          
-          /* Loading indicator for search index */
-          .loading-indicator {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 20px 0;
-          }
-          
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          
-          .loading-indicator div {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #eee;
-            border-radius: 50%;
-            border-top-color: #4a90e2;
-            animation: spin 1s linear infinite;
-          }
-          
-          /* Search feedback notification */
-          .search-feedback {
+          /* Debug panel */
+          #search-debug-panel {
             position: fixed;
-            bottom: 20px;
-            left: 20px;
-            background-color: rgba(0, 0, 0, 0.8);
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
             color: white;
-            padding: 10px 15px;
+            padding: 8px 12px;
             border-radius: 4px;
-            font-size: 14px;
-            z-index: 1000;
-            max-width: 250px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-            display: none;
-            animation: fadeInOut 3s ease-in-out;
+            font-size: 12px;
+            z-index: 9999;
+            max-width: 300px;
+            animation: fadeOut 3s forwards;
           }
           
-          @keyframes fadeInOut {
-            0% { opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
+          @keyframes fadeOut {
+            0% { opacity: 1; }
+            70% { opacity: 1; }
             100% { opacity: 0; }
           }
           
-          /* Loading indicator for background processing */
-          .search-status-indicator {
-            display: inline-block;
-            margin-left: 8px;
-            font-size: 11px;
-            color: #777;
-            margin-top: 10px;
-          }
-          
-          .search-status-indicator .dot {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #4a90e2;
-            margin-right: 4px;
-            animation: pulse 1.5s infinite;
-          }
-          
-          /* Throbber animation for loading */
-          @keyframes pulse {
-            0% { opacity: 0.2; transform: scale(0.8); }
-            50% { opacity: 1; transform: scale(1); }
-            100% { opacity: 0.2; transform: scale(0.8); }
-          }
-          
-          /* Make sidebar items stand out more during search */
-          .sidebar a.quick-match {
-            background-color: #fffde7;
-            border-left: 3px solid #ffd600;
-            padding-left: 17px;
-            margin-left: -3px;
-            animation: highlight-pulse 2s infinite;
-          }
-          
-          .sidebar a.quick-match:hover {
-            background-color: #fff8c4;
-          }
-          
-          /* Item highlight animation */
-          @keyframes highlight-pulse {
-            0% { background-color: #fffde7; }
-            50% { background-color: #fff8c4; }
-            100% { background-color: #fffde7; }
-          }
-          
-          /* Highlighted match text */
-          .highlight-match {
-            background-color: #fff59d;
-            padding: 2px 0;
-            font-weight: bold;
-            border-radius: 2px;
-            box-shadow: 0 0 0 2px #fff59d;
-          }
-          
-          /* Active search styling */
-          .sidebar a.active.quick-match {
-            background-color: #fff8e1 !important;
-            border-left: 3px solid #ffd600 !important;
-          }
-          
-          /* Show more prominent loading indicator in search status */
-          #search-status {
-            position: relative;
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 15px;
-            background-color: #f0f4f8;
-            border-left: 3px solid #4a90e2;
-          }
-          
-          /* Responsive design for mobile */
+          /* Responsive design */
           @media (max-width: 768px) {
             body {
               flex-direction: column;
@@ -873,18 +619,10 @@ jobs:
               height: auto;
               min-height: 60vh;
             }
-            
-            #search-results {
-              position: fixed;
-              top: auto;
-              left: 10px;
-              right: 10px;
-              max-height: 50vh;
-            }
           }
           EOF
 
-      # Step 9: Create SPA JavaScript Application with auto-generated navigation
+      # Step 9: Create SPA JavaScript Application
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
@@ -946,6 +684,7 @@ jobs:
               <div class="welcome-screen">
                 <h2>Welcome to Automotive Documentation</h2>
                 <p>Please select a topic from the navigation menu or use the search bar to find specific information.</p>
+                <div id="search-status"></div>
               </div>
             `;
             
@@ -1074,11 +813,6 @@ jobs:
                 contentTitleEl.textContent = title;
                 document.title = title;
                 
-                // Fix for duplicate headings
-                if (content.includes(`<h1>${title}</h1>`)) {
-                  content = content.replace(`<h1>${title}</h1>`, '');
-                }
-                
                 // Update content
                 contentEl.innerHTML = content;
                 
@@ -1204,976 +938,195 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create Search JavaScript
+      # Step 10: Create Search Functionality
       - name: Create Search JavaScript
         run: |
-          cat > ./site/js/search-index.js << 'EOF'
-          // This file will be populated at runtime by the search.js script
-          const searchIndexData = {};
-          EOF
-          
           cat > ./site/js/search.js << 'EOF'
-          // Lightweight Search Implementation for DITA SPA
-          let searchIndex = {};
-          let searchIndexReady = true; // Always ready because we use titles first
-
-          // Initialize search functionality
-          function initSearch() {
-            const searchInput = document.getElementById('search-input');
-            const searchButton = document.getElementById('search-button');
-            
-            console.log('[DITA-SPA] Initializing lightweight search');
-            
-            // Add event listeners
-            searchInput.addEventListener('keydown', function(e) {
-              if (e.key === 'Enter') {
-                performSearch();
-              }
-            });
-            
-            searchInput.addEventListener('input', function() {
-              highlightNavigationMatches(this.value.trim());
-            });
-            
-            searchButton.addEventListener('click', performSearch);
-            
-            // Update welcome screen to show search is active
-            updateWelcomeScreen();
-            
-            // Create lightweight search index just from navigation
-            createLightweightIndex();
-            
-            // Start content indexing in the background with low priority
-            setTimeout(() => {
-              // This will run after the UI is responsive
-              enhanceSearchIndexInBackground();
-            }, 2000);
-          }
-
-          // Update welcome screen with search info
-          function updateWelcomeScreen() {
-            const contentEl = document.getElementById('content');
-            if (!contentEl) return;
-            
-            const welcomeScreen = contentEl.querySelector('.welcome-screen');
-            if (welcomeScreen) {
-              const statusDiv = document.createElement('div');
-              statusDiv.id = 'search-status';
-              statusDiv.innerHTML = `
-                <p>Search is ready! Type to highlight matches in navigation, press Enter or click Search to view full results.</p>
-                <div class="search-status-indicator">
-                  <span>Full content indexing in progress</span>
-                  <span class="dot"></span>
-                  <span class="dot"></span>
-                  <span class="dot"></span>
-                </div>
-              `;
-              welcomeScreen.appendChild(statusDiv);
-            }
-          }
-
-          // Create a lightweight search index just from navigation items
-          function createLightweightIndex() {
-            if (!window.navigationConfig || !Array.isArray(window.navigationConfig)) {
-              console.error('[DITA-SPA] Navigation configuration missing');
-              return;
-            }
-            
-            function processItems(items) {
-              items.forEach(item => {
-                if (!item || !item.id) return;
-                
-                // Create a simple index entry with just the title
-                searchIndex[item.id] = {
-                  id: item.id,
-                  title: item.title || 'Untitled',
-                  content: item.title || 'Untitled', // Initially just title
-                  filename: item.filename || item.id
-                };
-                
-                // Process children recursively
-                if (item.children && item.children.length > 0) {
-                  processItems(item.children);
-                }
-              });
-            }
-            
-            // Process all navigation items
-            processItems(window.navigationConfig);
-            console.log(`[DITA-SPA] Lightweight index created with ${Object.keys(searchIndex).length} items`);
-          }
-
-          // Highlight matching items in the navigation panel
-          function highlightNavigationMatches(term) {
-            if (!term) {
-              // Clear all highlights if term is empty
-              clearNavigationHighlights();
-              return;
-            }
-            
-            const navItems = document.querySelectorAll('.sidebar a');
-            let matches = 0;
-            
-            // First clear existing highlights
-            clearNavigationHighlights();
-            
-            // Then add new highlights
-            navItems.forEach(item => {
-              const title = item.textContent.toLowerCase();
-              
-              if (title.includes(term.toLowerCase())) {
-                matches++;
-                // Add highlight class
-                item.classList.add('quick-match');
-                
-                // Highlight the matching text portion
-                try {
-                  const regex = new RegExp(`(${escapeRegExp(term)})`, 'gi');
-                  item.innerHTML = item.textContent.replace(
-                    regex, 
-                    '<span class="highlight-match">$1</span>'
-                  );
-                } catch (e) {
-                  // Fall back to simple class-based highlighting if regex fails
-                  console.warn('Regex highlight failed:', e);
-                }
-                
-                // Expand parent folders
-                expandParents(item);
-              }
-            });
-            
-            // Show feedback
-            if (matches > 0) {
-              showFeedback(`Found ${matches} matching topics`);
-            } else {
-              showFeedback('No matching topics found');
-            }
-          }
-
-          // Helper function to escape regex special characters
-          function escapeRegExp(string) {
-            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\# Step 10: Create Search JavaScript
-      - name: Create Search JavaScript
-        run: |
-          cat > ./site/js/search-index.js << 'EOF'
-          // This file will be populated at runtime by the search.js script
-          const searchIndexData = {};
-          EOF
+          // Simple, reliable search implementation
           
-          cat > ./site/js/search.js << 'EOF'
-          // Search functionality for DITA SPA
-          let searchIndex = {};
-          let contentCache = {};
-          let searchIndexReady = false;
-          let searchIndexError = false;
-
-          // Initialize search functionality
-          function initSearch() {
-            const searchInput = document.getElementById('search-input');
-            const searchButton = document.getElementById('search-button');
-            
-            // Log initialization
-            console.log('[DITA-SPA] Initializing search functionality');
-            
-            // Add event listeners
-            searchInput.addEventListener('keydown', function(e) {
-              if (e.key === 'Enter') {
-                performSearch();
-              }
-            });
-            
-            searchButton.addEventListener('click', performSearch);
-            
-            // Status indicator for debugging
-            const contentEl = document.getElementById('content');
-            const statusHtml = `
-              <div class="welcome-screen">
-                <h2>Welcome to Automotive Documentation</h2>
-                <p>Please select a topic from the navigation menu or use the search bar to find specific information.</p>
-                <div id="search-status" style="margin-top: 20px; font-size: 12px; color: #666;">
-                  <p>Search index is building... This may take a moment.</p>
-                </div>
-              </div>
-            `;
-            
-            // Only update if we're on the welcome screen
-            if (contentEl.querySelector('.welcome-screen')) {
-              contentEl.innerHTML = statusHtml;
-            }
-            
-            // Create search index from navigation structure
-            createSearchIndexFromNavigation();
-          }
-
-          // Create a basic search index from navigation structure with better error handling
-          function createSearchIndexFromNavigation() {
-            console.log('[DITA-SPA] Starting to build search index from navigation');
-            
-            if (!window.navigationConfig || !Array.isArray(window.navigationConfig)) {
-              console.error('[DITA-SPA] Navigation configuration is missing or invalid');
-              searchIndexError = true;
-              updateSearchStatus('Search index failed: Navigation data is missing');
-              return;
-            }
-            
-            try {
-              // Process items recursively
-              function processItems(items) {
-                items.forEach(item => {
-                  if (!item || !item.id) {
-                    console.warn('[DITA-SPA] Invalid navigation item:', item);
-                    return;
-                  }
-                  
-                  // Add item to search index
-                  searchIndex[item.id] = {
-                    id: item.id,
-                    title: item.title || 'Untitled',
-                    content: item.title || 'Untitled', // Initially just use title as content
-                    filename: item.filename || item.id
-                  };
-                  
-                  // Log item added
-                  console.log(`[DITA-SPA] Added to search index: ${item.id} - ${item.title}`);
-                  
-                  // Process children if any
-                  if (item.children && item.children.length > 0) {
-                    processItems(item.children);
-                  }
-                });
-              }
-              
-              // Process all navigation items
-              processItems(window.navigationConfig);
-              
-              // Update status
-              console.log(`[DITA-SPA] Navigation processed, found ${Object.keys(searchIndex).length} items`);
-              updateSearchStatus(`Processing ${Object.keys(searchIndex).length} content items...`);
-              
-              // Pre-fetch content for search indexing
-              prefetchContent();
-            } catch (error) {
-              console.error('[DITA-SPA] Error building search index:', error);
-              searchIndexError = true;
-              updateSearchStatus('Search index failed: ' + error.message);
-            }
-          }
-
-          // Update search status display
-          function updateSearchStatus(message) {
-            const statusEl = document.getElementById('search-status');
-            if (statusEl) {
-              statusEl.innerHTML = `<p>${message}</p>`;
-            }
-          }
-
-          // Load content for a page with improved error handling
-          async function fetchContentForSearch(pageId) {
-            try {
-              const basePath = getBasePathForSearch();
-              const contentPath = `${basePath}/content/${pageId}.html`;
-              
-              console.log(`[DITA-SPA] Fetching content for search index: ${contentPath}`);
-              
-              const response = await fetch(contentPath);
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status} for ${contentPath}`);
-              }
-              
-              return await response.text();
-            } catch (error) {
-              console.warn(`[DITA-SPA] Failed to fetch content for ${pageId}:`, error);
-              // Return empty string instead of null to prevent further errors
-              return "";
-            }
-          }
-
-          // Get base path helper function
-          function getBasePathForSearch() {
-            if (location.hostname.includes('github.io')) {
-              const pathSegments = location.pathname.split('/');
-              if (pathSegments.length > 1) {
-                return '/' + pathSegments[1];
-              }
-            }
-            return '';
-          }
-
-          // Pre-fetch content for search indexing with improved error handling and progress tracking
-          async function prefetchContent() {
-            const ids = Object.keys(searchIndex);
-            console.log(`[DITA-SPA] Starting content prefetch for ${ids.length} items`);
-            
-            let completed = 0;
-            const updateProgress = () => {
-              completed++;
-              if (completed % 5 === 0 || completed === ids.length) {
-                const percentage = Math.round((completed / ids.length) * 100);
-                updateSearchStatus(`Building search index: ${percentage}% complete (${completed}/${ids.length})`);
-                console.log(`[DITA-SPA] Search index build progress: ${percentage}%`);
-              }
-            };
-            
-            // Process in batches to avoid overwhelming the browser
-            const batchSize = 5;
-            let indexSize = 0;
-            
-            for (let i = 0; i < ids.length; i += batchSize) {
-              const batch = ids.slice(i, i + batchSize);
-              await Promise.all(batch.map(async (id) => {
-                try {
-                  const content = await fetchContentForSearch(id);
-                  
-                  // Store in cache
-                  contentCache[id] = content;
-                  
-                  // Skip if content is empty
-                  if (!content) {
-                    console.warn(`[DITA-SPA] Empty content for ${id}, using title only`);
-                    updateProgress();
-                    return;
-                  }
-                  
-                  // Extract text content for search
-                  const tempDiv = document.createElement('div');
-                  tempDiv.innerHTML = content;
-                  const textContent = tempDiv.textContent || tempDiv.innerText || '';
-                  
-                  // Calculate content size for logging
-                  indexSize += textContent.length;
-                  
-                  // Update search index with actual content
-                  searchIndex[id].content = textContent;
-                  console.log(`[DITA-SPA] Added content for ${id}: ${textContent.length} characters`);
-                } catch (error) {
-                  console.error(`[DITA-SPA] Error processing content for ${id}:`, error);
-                } finally {
-                  updateProgress();
-                }
-              }));
-            }
-            
-            searchIndexReady = true;
-            console.log(`[DITA-SPA] Search index created with ${Object.keys(searchIndex).length} entries, total size: ${Math.round(indexSize / 1024)}KB`);
-            updateSearchStatus(`Search index complete with ${Object.keys(searchIndex).length} articles`);
-            
-            // Trigger an initial search if there's a value in the search box
-            const searchInput = document.getElementById('search-input');
-            if (searchInput && searchInput.value.trim()) {
-              performSearch();
-            }
-          }
-
-          // Perform the search with better error handling
-          function performSearch() {
-            const searchInput = document.getElementById('search-input');
-            const searchTerm = searchInput.value.trim().toLowerCase();
-            
-            console.log(`[DITA-SPA] Search requested for: "${searchTerm}"`);
-            
-            if (!searchTerm) {
-              console.log('[DITA-SPA] Empty search term, ignoring');
-              return;
-            }
-            
-            // Check if search index is ready
-            if (!searchIndexReady) {
-              console.log('[DITA-SPA] Search index not ready yet, showing message');
-              displaySearchResults([], searchTerm, true);
-              return;
-            }
-            
-            // Capture search scope setting
-            const searchScope = document.getElementById('search-toggle').checked;
-            console.log(`[DITA-SPA] Search scope: ${searchScope ? 'current article only' : 'all content'}`);
-            
-            try {
-              // If search scope is checked, only search current article
-              if (searchScope && window.currentPage) {
-                console.log(`[DITA-SPA] Searching only current page: ${window.currentPage}`);
-                const results = searchInPage(window.currentPage, searchTerm);
-                if (results) {
-                  displaySearchResults([results], searchTerm);
-                } else {
-                  displaySearchResults([], searchTerm);
-                }
-              } else {
-                // Search all content
-                console.log('[DITA-SPA] Searching all content');
-                const results = searchAllContent(searchTerm);
-                console.log(`[DITA-SPA] Found ${results.length} results`);
-                displaySearchResults(results, searchTerm);
-              }
-            } catch (error) {
-              console.error('[DITA-SPA] Error during search:', error);
-              displaySearchError(searchTerm, error);
-            }
-          }
-
-          // Search within a specific page
-          function searchInPage(pageId, term) {
-            if (!searchIndex[pageId]) {
-              console.warn(`[DITA-SPA] Page not found in search index: ${pageId}`);
-              return null;
-            }
-            
-            const item = searchIndex[pageId];
-            const titleLower = (item.title || '').toLowerCase();
-            const contentLower = (item.content || '').toLowerCase();
-            
-            if (contentLower.includes(term) || titleLower.includes(term)) {
-              return {
-                id: item.id,
-                title: item.title,
-                score: calculateScore(item, term),
-                excerpt: generateExcerpt(contentLower, term)
-              };
-            }
-            
-            return null;
-          }
-
-          // Search all content with improved error handling
-          function searchAllContent(term) {
-            const results = [];
-            const searchKeys = Object.keys(searchIndex);
-            
-            console.log(`[DITA-SPA] Searching across ${searchKeys.length} items for "${term}"`);
-            
-            let matchCount = 0;
-            for (const id of searchKeys) {
-              const item = searchIndex[id];
-              const titleLower = (item.title || '').toLowerCase();
-              const contentLower = (item.content || '').toLowerCase();
-              
-              if (contentLower.includes(term) || titleLower.includes(term)) {
-                matchCount++;
-                results.push({
-                  id: item.id,
-                  title: item.title,
-                  score: calculateScore(item, term),
-                  excerpt: generateExcerpt(contentLower, term)
-                });
-              }
-            }
-            
-            // Sort results by score
-            results.sort((a, b) => b.score - a.score);
-            
-            console.log(`[DITA-SPA] Found ${matchCount} matches for "${term}"`);
-            return results;
-          }
-
-          // Calculate search relevance score
-          function calculateScore(item, term) {
-            let score = 0;
-            const titleLower = (item.title || '').toLowerCase();
-            const contentLower = (item.content || '').toLowerCase();
-            
-            // Higher score for title matches
-            if (titleLower === term) {
-              score += 100;
-            } else if (titleLower.includes(term)) {
-              score += 50;
-            }
-            
-            // Score based on content matches
-            const contentMatches = (contentLower.split(term).length - 1) || 0;
-            score += contentMatches;
-            
-            return score;
-          }
-
-          // Generate a search result excerpt with improved error handling
-          function generateExcerpt(content, term) {
-            if (!content || typeof content !== 'string') {
-              return 'No content preview available';
-            }
-            
-            const index = content.indexOf(term);
-            if (index === -1) return 'Content match found but context not available';
-            
-            const start = Math.max(0, index - 50);
-            const end = Math.min(content.length, index + term.length + 50);
-            let excerpt = content.substring(start, end);
-            
-            if (start > 0) excerpt = '...' + excerpt;
-            if (end < content.length) excerpt += '...';
-            
-            // Highlight the search term
-            try {
-              return excerpt.replace(new RegExp(term, 'gi'), match => `<strong>${match}</strong>`);
-            } catch (error) {
-              console.warn('[DITA-SPA] Error highlighting search term:', error);
-              return excerpt;
-            }
-          }
-
-          // Display search error
-          function displaySearchError(searchTerm, error) {
-            const contentEl = document.getElementById('content');
-            const contentTitleEl = document.getElementById('content-title');
-            
-            contentTitleEl.textContent = `Search Error`;
-            document.title = `Search Error`;
-            
-            contentEl.innerHTML = `
-              <div class="error">
-                <h2>Search Error</h2>
-                <p>An error occurred while searching for "${searchTerm}".</p>
-                <p>Error details: ${error.message}</p>
-                <p>Please try a different search term or browse topics from the navigation menu.</p>
-              </div>
-            `;
-          }
-
-          // Display search results in the main content area with improved error handling
-          function displaySearchResults(results, searchTerm, stillIndexing = false) {
-            const contentEl = document.getElementById('content');
-            const contentTitleEl = document.getElementById('content-title');
-            
-            // Update page title
-            contentTitleEl.textContent = `Search Results for "${searchTerm}"`;
-            document.title = `Search Results - ${searchTerm}`;
-            
-            // If still indexing
-            if (stillIndexing) {
-              contentEl.innerHTML = `
-                <div class="search-results-container">
-                  <p class="search-results-count">Building search index, please wait...</p>
-                  <p>The search index is still being built. Your search will be processed as soon as it's ready.</p>
-                  <div class="loading-indicator" style="text-align: center; margin: 20px 0;">
-                    <div style="display: inline-block; width: 20px; height: 20px; border: 3px solid #ddd; border-radius: 50%; border-top-color: #4a90e2; animation: spin 1s linear infinite;"></div>
-                  </div>
-                  <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
-                </div>
-              `;
-              return;
-            }
-            
-            // If search index had errors
-            if (searchIndexError) {
-              contentEl.innerHTML = `
-                <div class="search-results-container">
-                  <p class="search-no-results">Unable to search: The search index could not be built correctly.</p>
-                  <p>Please browse topics from the navigation menu instead, or reload the page to try again.</p>
-                </div>
-              `;
-              return;
-            }
-            
-            // Log result count
-            console.log(`[DITA-SPA] Displaying ${results.length} search results for "${searchTerm}"`);
-            
-            // Filter out null results
-            const validResults = results.filter(result => result !== null);
-            
-            // No results found
-            if (validResults.length === 0) {
-              contentEl.innerHTML = `
-                <div class="search-results-container">
-                  <p class="search-no-results">No results found for "${searchTerm}".</p>
-                  <p>Try a different search term or browse topics from the navigation menu.</p>
-                  <ul style="margin-top: 20px; margin-left: 20px;">
-                    <li>Check your spelling</li>
-                    <li>Try more general keywords</li>
-                    <li>Try different keywords</li>
-                  </ul>
-                </div>
-              `;
-              return;
-            }
-            
-            // Build HTML for search results
-            try {
-              let resultsHtml = `
-                <div class="search-results-container">
-                  <p class="search-results-count">Found ${validResults.length} result${validResults.length !== 1 ? 's' : ''} for "${searchTerm}"</p>
-                  <div class="search-results-list">
-              `;
-              
-              validResults.forEach(result => {
-                resultsHtml += `
-                  <div class="content-search-result" data-id="${result.id}">
-                    <h3><a href="#${result.id}" class="search-result-link">${result.title || 'Untitled'}</a></h3>
-                    <p class="search-result-excerpt">${result.excerpt || 'No preview available'}</p>
-                  </div>
-                `;
-              });
-              
-              resultsHtml += `
-                  </div>
-                </div>
-              `;
-              
-              contentEl.innerHTML = resultsHtml;
-              
-              // Add click handlers to search result links
-              document.querySelectorAll('.search-result-link').forEach(link => {
-                link.addEventListener('click', function(e) {
-                  e.preventDefault();
-                  const id = this.closest('.content-search-result').getAttribute('data-id');
-                  console.log(`[DITA-SPA] Search result clicked: ${id}`);
-                  
-                  if (typeof window.navigateToPage === 'function') {
-                    window.navigateToPage(id);
-                  } else {
-                    // Fallback if function isn't available
-                    console.warn('[DITA-SPA] navigateToPage function not available, using location.hash fallback');
-                    window.location.hash = id;
-                  }
-                });
-              });
-            } catch (error) {
-              console.error('[DITA-SPA] Error rendering search results:', error);
-              contentEl.innerHTML = `
-                <div class="error">
-                  <h2>Error Displaying Results</h2>
-                  <p>An error occurred while displaying search results.</p>
-                  <p>Error details: ${error.message}</p>
-                </div>
-              `;
-            }
-          }
-
-          // Initialize search when DOM is ready
+          // Wait for DOM to be fully loaded before initializing
           document.addEventListener('DOMContentLoaded', function() {
-            console.log('[DITA-SPA] DOM loaded, initializing search');
-            initSearch();
-          });
-          EOF');
-          }
-
-          // Clear all navigation highlights
-          function clearNavigationHighlights() {
-            const navItems = document.querySelectorAll('.sidebar a');
-            navItems.forEach(item => {
-              item.classList.remove('quick-match');
-              // Restore original text content
-              const text = item.textContent;
-              item.innerHTML = text;
-            });
-          }
-
-          // Expand all parent folders of a navigation item
-          function expandParents(item) {
-            let parent = item.parentElement;
-            while (parent && !parent.classList.contains('sidebar')) {
-              if (parent.classList.contains('has-children')) {
-                parent.classList.add('expanded');
-              }
-              parent = parent.parentElement;
-            }
-          }
-
-          // Show user feedback
-          function showFeedback(message) {
-            let feedback = document.getElementById('search-feedback');
-            if (!feedback) {
-              feedback = document.createElement('div');
-              feedback.id = 'search-feedback';
-              feedback.className = 'search-feedback';
-              document.body.appendChild(feedback);
-            }
+            console.log('[SEARCH] Initializing search functionality');
             
-            feedback.textContent = message;
-            feedback.style.display = 'block';
-            
-            // Hide after 3 seconds
-            setTimeout(() => {
-              feedback.style.display = 'none';
-            }, 3000);
-          }
-
-          // Perform search based on the current search term
-          function performSearch() {
+            // Find key elements
             const searchInput = document.getElementById('search-input');
-            const searchTerm = searchInput.value.trim();
-            
-            if (!searchTerm) return;
-            
-            console.log(`[DITA-SPA] Searching for: ${searchTerm}`);
-            
-            // Check if we're only searching current page
-            const searchScope = document.getElementById('search-toggle').checked;
-            
-            // Get all matches from the search index
-            const results = [];
-            
-            if (searchScope && window.currentPage) {
-              // Search only in current page
-              const id = window.currentPage;
-              const item = searchIndex[id];
-              
-              if (item && (item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  item.content.toLowerCase().includes(searchTerm.toLowerCase()))) {
-                  
-                // Add the single result
-                results.push(buildSearchResult(id, item, searchTerm));
-              }
-            } else {
-              // Search all content
-              for (const id in searchIndex) {
-                const item = searchIndex[id];
-                if (item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    item.content.toLowerCase().includes(searchTerm.toLowerCase())) {
-                  
-                  // Add this result  
-                  results.push(buildSearchResult(id, item, searchTerm));
-                }
-              }
-            }
-            
-            // Sort results by score
-            results.sort((a, b) => b.score - a.score);
-            
-            // Display results
-            displaySearchResults(results, searchTerm);
-          }
-
-          // Build a search result object
-          function buildSearchResult(id, item, searchTerm) {
-            // Calculate a basic relevance score
-            let score = 0;
-            if (item.title.toLowerCase().includes(searchTerm.toLowerCase())) {
-              score += 10; // Title matches are higher priority
-            }
-            if (item.content.toLowerCase().includes(searchTerm.toLowerCase())) {
-              score += 1;
-            }
-            
-            // Create excerpt
-            let excerpt = '';
-            const content = item.content.toLowerCase();
-            const index = content.indexOf(searchTerm.toLowerCase());
-            if (index !== -1) {
-              const start = Math.max(0, index - 40);
-              const end = Math.min(content.length, index + searchTerm.length + 40);
-              excerpt = '...' + content.substring(start, end) + '...';
-              // Highlight the search term
-              excerpt = excerpt.replace(
-                new RegExp(escapeRegExp(searchTerm), 'gi'), 
-                match => `<strong>${match}</strong>`
-              );
-            } else {
-              excerpt = item.title;
-            }
-            
-            return {
-              id: id,
-              title: item.title,
-              excerpt: excerpt,
-              score: score
-            };
-          }
-
-          // Display search results in the main content area
-          function displaySearchResults(results, searchTerm) {
+            const searchButton = document.getElementById('search-button');
             const contentEl = document.getElementById('content');
-            const titleEl = document.getElementById('content-title');
+            const contentTitleEl = document.getElementById('content-title');
             
-            titleEl.textContent = `Search Results for "${searchTerm}"`;
-            document.title = `Search Results - ${searchTerm}`;
-            
-            if (results.length === 0) {
-              contentEl.innerHTML = `
-                <div class="search-results-container">
-                  <p class="search-no-results">No results found for "${searchTerm}".</p>
-                  <p>Try a different search term or browse topics from the navigation menu.</p>
-                  <ul style="margin-top: 20px; margin-left: 20px;">
-                    <li>Check your spelling</li>
-                    <li>Try more general keywords</li>
-                    <li>Try different keywords</li>
-                  </ul>
-                  <p style="margin-top: 20px; font-size: 12px; color: #666;">
-                    Note: Full content search is still indexing. More results may appear for future searches.
-                  </p>
-                </div>
-              `;
+            // Ensure elements exist
+            if (!searchInput || !contentEl) {
+              console.error('[SEARCH] Required elements not found');
               return;
             }
             
-            // Build results HTML
-            let html = `
-              <div class="search-results-container">
-                <p class="search-results-count">Found ${results.length} result${results.length !== 1 ? 's' : ''} for "${searchTerm}"</p>
-                <div class="search-results-list">
-            `;
-            
-            // Add each result
-            results.forEach(result => {
-              html += `
-                <div class="content-search-result" data-id="${result.id}">
-                  <h3><a href="#${result.id}" class="search-result-link">${result.title}</a></h3>
-                  <p class="search-result-excerpt">${result.excerpt}</p>
-                </div>
-              `;
+            // Add event listeners
+            searchInput.addEventListener('input', function() {
+              highlightMatches(this.value);
             });
             
-            html += `
-                </div>
-                <p style="margin-top: 20px; font-size: 12px; color: #666;">
-                  Tip: Full content search is still building. Future searches may find more matches.
-                </p>
-              </div>
-            `;
-            
-            contentEl.innerHTML = html;
-            
-            // Add click handlers to results
-            document.querySelectorAll('.search-result-link').forEach(link => {
-              link.addEventListener('click', function(e) {
-                e.preventDefault();
-                const id = this.closest('.content-search-result').getAttribute('data-id');
-                if (typeof window.navigateToPage === 'function') {
-                  window.navigateToPage(id);
-                } else {
-                  window.location.hash = id;
-                }
-              });
+            searchInput.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter') {
+                performSearch(this.value);
+              }
             });
-          }
-
-          // Enhance the search index in the background with low priority
-          function enhanceSearchIndexInBackground() {
-            console.log('[DITA-SPA] Starting background index enhancement');
             
-            const ids = Object.keys(searchIndex);
-            let processedCount = 0;
+            searchButton.addEventListener('click', function() {
+              performSearch(searchInput.value);
+            });
             
-            // Process one item at a time with significant pauses to avoid UI freezing
-            function processNextItem(index) {
-              if (index >= ids.length) {
-                console.log('[DITA-SPA] Background indexing complete');
-                // Update status indicator when complete
-                updateIndexingStatus(true);
+            // Function to highlight matching navigation items
+            function highlightMatches(term) {
+              // Skip if term is empty
+              if (!term.trim()) {
+                clearHighlights();
                 return;
               }
               
-              const id = ids[index];
+              console.log('[SEARCH] Highlighting matches for:', term);
               
-              // Fetch and process content for this ID
-              fetchContentForId(id).then(() => {
-                processedCount++;
-                
-                // Log progress occasionally
-                if (processedCount % 10 === 0 || processedCount === ids.length) {
-                  const percentage = Math.round(processedCount/ids.length*100);
-                  console.log(`[DITA-SPA] Background indexing: ${processedCount}/${ids.length} (${percentage}%)`);
-                  updateIndexingStatus(false, percentage);
+              // Clear existing highlights
+              clearHighlights();
+              
+              // Find all navigation links
+              const navLinks = document.querySelectorAll('.sidebar a');
+              let matchCount = 0;
+              
+              // Add highlight to any links containing the search term
+              navLinks.forEach(link => {
+                if (link.textContent.toLowerCase().includes(term.toLowerCase())) {
+                  link.classList.add('search-highlight');
+                  matchCount++;
+                  
+                  // Expand parent folders
+                  let parent = link.parentElement;
+                  while (parent && !parent.classList.contains('sidebar')) {
+                    if (parent.classList.contains('has-children')) {
+                      parent.classList.add('expanded');
+                    }
+                    parent = parent.parentElement;
+                  }
                 }
+              });
+              
+              // Show debug message
+              showDebug(`Found ${matchCount} navigation matches`);
+            }
+            
+            // Clear all highlights
+            function clearHighlights() {
+              document.querySelectorAll('.search-highlight').forEach(item => {
+                item.classList.remove('search-highlight');
+              });
+            }
+            
+            // Perform search and display results
+            function performSearch(term) {
+              term = term.trim();
+              if (!term) return;
+              
+              console.log('[SEARCH] Performing search for:', term);
+              
+              // Update page title
+              contentTitleEl.textContent = `Search Results: ${term}`;
+              document.title = `Search: ${term}`;
+              
+              // Find all navigation items
+              const navLinks = document.querySelectorAll('.sidebar a');
+              const results = [];
+              
+              // Collect items that match the search term
+              navLinks.forEach(link => {
+                const id = link.getAttribute('data-id');
+                if (!id) return;
                 
-                // Continue with next item after a delay
-                setTimeout(() => {
-                  processNextItem(index + 1);
-                }, 300); // Significant delay to keep UI responsive
+                if (link.textContent.toLowerCase().includes(term.toLowerCase())) {
+                  results.push({
+                    id: id,
+                    title: link.textContent,
+                  });
+                }
               });
-            }
-            
-            // Start processing
-            processNextItem(0);
-          }
-
-          // Update the indexing status display
-          function updateIndexingStatus(isComplete, percentage) {
-            const statusEl = document.getElementById('search-status');
-            if (!statusEl) return;
-            
-            if (isComplete) {
-              statusEl.innerHTML = `
-                <p>Search index is complete! All content is now searchable.</p>
-              `;
-              return;
-            }
-            
-            if (percentage) {
-              const indicator = statusEl.querySelector('.search-status-indicator');
-              if (indicator) {
-                indicator.innerHTML = `
-                  <span>Full content indexing: ${percentage}% complete</span>
-                  <span class="dot"></span>
-                  <span class="dot"></span>
+              
+              // Display results
+              if (results.length === 0) {
+                contentEl.innerHTML = `
+                  <div class="search-results-container">
+                    <h2 class="search-results-title">Search Results: ${term}</h2>
+                    <p>No results found for "${term}".</p>
+                    <p>Try a different search term or browse topics from the navigation menu.</p>
+                  </div>
                 `;
+              } else {
+                let html = `
+                  <div class="search-results-container">
+                    <h2 class="search-results-title">Search Results: ${term}</h2>
+                    <p>Found ${results.length} result${results.length !== 1 ? 's' : ''}</p>
+                    <div class="search-results-list">
+                `;
+                
+                results.forEach(result => {
+                  html += `
+                    <div class="search-result-item">
+                      <h3><a href="#${result.id}" data-id="${result.id}" class="search-result-link">${result.title}</a></h3>
+                    </div>
+                  `;
+                });
+                
+                html += `
+                    </div>
+                  </div>
+                `;
+                
+                contentEl.innerHTML = html;
+                
+                // Add click handlers to results
+                document.querySelectorAll('.search-result-link').forEach(link => {
+                  link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const id = this.getAttribute('data-id');
+                    window.navigateToPage(id);
+                  });
+                });
               }
+              
+              console.log(`[SEARCH] Displayed ${results.length} results`);
             }
-          }
-
-          // Fetch content for a single ID
-          async function fetchContentForId(id) {
-            try {
-              const basePath = getBasePathForSearch();
-              const contentPath = `${basePath}/content/${id}.html`;
+            
+            // Show debug message
+            function showDebug(message) {
+              let debugPanel = document.getElementById('search-debug-panel');
               
-              // Use AbortController to set a timeout
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 3000);
-              
-              const response = await fetch(contentPath, { 
-                signal: controller.signal,
-                cache: 'force-cache'
-              });
-              clearTimeout(timeoutId);
-              
-              if (!response.ok) return;
-              
-              const html = await response.text();
-              
-              // Extract plain text and add to index
-              const text = extractTextFromHtml(html);
-              if (text) {
-                searchIndex[id].content = text;
+              if (!debugPanel) {
+                debugPanel = document.createElement('div');
+                debugPanel.id = 'search-debug-panel';
+                document.body.appendChild(debugPanel);
               }
-            } catch (error) {
-              // Silently fail for background processing
-              console.debug(`[DITA-SPA] Background fetch failed for ${id}`);
+              
+              debugPanel.textContent = message;
+              
+              // Auto-hide after 3 seconds
+              setTimeout(() => {
+                if (debugPanel && debugPanel.parentNode) {
+                  debugPanel.parentNode.removeChild(debugPanel);
+                }
+              }, 3000);
             }
-          }
-
-          // Fast HTML text extraction using regex instead of DOM
-          function extractTextFromHtml(html) {
-            if (!html) return '';
             
-            // Remove all scripts and styles
-            let text = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ');
-            text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ');
-            
-            // Remove all HTML tags
-            text = text.replace(/<\/?[^>]+(>|$)/g, ' ');
-            
-            // Decode HTML entities
-            text = text.replace(/&nbsp;/g, ' ')
-                       .replace(/&amp;/g, '&')
-                       .replace(/&lt;/g, '<')
-                       .replace(/&gt;/g, '>')
-                       .replace(/&quot;/g, '"')
-                       .replace(/&#39;/g, "'");
-            
-            // Remove extra whitespace
-            text = text.replace(/\s+/g, ' ').trim();
-            
-            return text;
-          }
-
-          // Get base path helper function
-          function getBasePathForSearch() {
-            if (location.hostname.includes('github.io')) {
-              const pathSegments = location.pathname.split('/');
-              if (pathSegments.length > 1) {
-                return '/' + pathSegments[1];
-              }
+            // Status update on welcome screen
+            const searchStatus = document.getElementById('search-status');
+            if (searchStatus) {
+              searchStatus.innerHTML = `
+                <p>Search is ready! Type in the search box to highlight matching topics.</p>
+              `;
             }
-            return '';
-          }
-
-          // Initialize search when DOM is ready
-          document.addEventListener('DOMContentLoaded', function() {
-            initSearch();
+            
+            console.log('[SEARCH] Search initialization complete');
           });
           EOF
 
-      # Step 11: Update Index HTML with Search
-      - name: Update Index HTML with Search
+      # Step 11: Create index.html with Search UI
+      - name: Create Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
@@ -2187,18 +1140,15 @@ jobs:
             
             <!-- Base path handling for GitHub Pages -->
             <script>
-              // Dynamically set the base href based on deployment environment
-              (function() {
-                // For GitHub Pages repository sites
-                if (location.hostname.includes('github.io')) {
-                  const pathSegments = location.pathname.split('/');
-                  if (pathSegments.length > 1) {
-                    const basePath = '/' + pathSegments[1];
-                    document.write('<base href="' + basePath + '/">');
-                    console.log('Base path set to:', basePath);
-                  }
+              // Set base path for GitHub Pages
+              if (location.hostname.includes('github.io')) {
+                const pathSegments = location.pathname.split('/');
+                if (pathSegments.length > 1) {
+                  const basePath = '/' + pathSegments[1];
+                  document.write('<base href="' + basePath + '/">');
+                  console.log('Base path set to:', basePath);
                 }
-              })();
+              }
             </script>
             
             <title>Automotive Documentation</title>
@@ -2209,13 +1159,12 @@ jobs:
               <div class="search-container">
                 <div class="search-input-wrap">
                   <input type="text" id="search-input" placeholder="Search documentation...">
-                  <button id="search-button" aria-label="Search">Search</button>
+                  <button id="search-button">Search</button>
                 </div>
                 <div class="search-scope">
                   <input type="checkbox" id="search-toggle">
                   <label for="search-toggle">Search only current article</label>
                 </div>
-                <div id="search-results"></div>
               </div>
               
               <div class="sidebar-nav">
@@ -2238,16 +1187,14 @@ jobs:
             <!-- Load JavaScript files -->
             <script src="js/navigation-config.js"></script>
             <script src="js/content-id-map.js"></script>
-            <script src="js/path-mapping.js"></script>
-            <script src="js/search-index.js"></script>
             <script src="js/search.js"></script>
             <script src="js/app.js"></script>
           </body>
           </html>
           EOF
 
-      # Step 12: Create 404.html page for SPA routing
-      - name: Create 404 Page for SPA Routing
+      # Step 12: Create 404.html for SPA routing
+      - name: Create 404 Page
         run: |
           cat > ./site/404.html << 'EOF'
           <!DOCTYPE html>
@@ -2260,7 +1207,7 @@ jobs:
               // Store the requested URL for processing after redirect
               sessionStorage.redirect = location.href;
               
-              // Dynamically determine the correct base path
+              // Determine the correct base path
               function getBasePath() {
                 if (location.hostname.includes('github.io')) {
                   const pathSegments = location.pathname.split('/');
@@ -2271,7 +1218,7 @@ jobs:
                 return '';
               }
               
-              // Redirect to the main site with the correct base path
+              // Redirect to the main site
               const basePath = getBasePath();
               window.location.href = basePath + '/';
             </script>
@@ -2285,21 +1232,15 @@ jobs:
           </html>
           EOF
 
-      # Step 13: Create default content for navigation containers
+      # Step 13: Create default content for container nodes
       - name: Create Default Content
         run: |
           # Create content directory if it doesn't exist
           mkdir -p ./site/content
-
-          # Extract container nodes from navigation structure
-          if command -v jq >/dev/null 2>&1; then
-            # Use jq if available
-            jq -r '.[] | select(.children != null) | .id' ./navigation-structure.json > container-nodes.txt
-          else
-            # Fallback to grep and sed
-            grep -o '"id": "[^"]*".*"children"' ./navigation-structure.json | 
-            sed 's/"id": "\([^"]*\)".*/\1/' > container-nodes.txt
-          fi
+          
+          # Extract container nodes from navigation
+          grep -o '"id": "[^"]*".*"children"' ./navigation-structure.json | 
+          sed 's/"id": "\([^"]*\)".*/\1/' > container-nodes.txt
           
           # Create default content for container nodes
           while IFS= read -r id || [ -n "$id" ]; do
@@ -2315,7 +1256,7 @@ jobs:
             fi
           done < container-nodes.txt
           
-          # Handle error if no container nodes were found
+          # Create default containers if none found
           if [ ! -s container-nodes.txt ]; then
             echo "No container nodes found in navigation. Creating default containers."
             
