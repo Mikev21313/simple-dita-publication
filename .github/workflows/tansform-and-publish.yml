@@ -7,99 +7,223 @@
     # Install xmlstarlet for XML processing
     apt-get update && apt-get install -y xmlstarlet
     
-    # Extract navigation structure from DITA map
-    echo "Extracting navigation from DITA map..."
-    xmlstarlet sel -T -t -m "//topicref" -v "concat(@id,'|',@navtitle,'|',@href,'|',count(ancestor::*))" -n dita-source/automotive.ditamap > nav-structure.txt
-    
-    # Create JavaScript file to process the extracted data
-    cat > process-navigation.js << 'EOF'
+    # Generate navigation configuration from DITA map
+    cat > ./extract-navigation.js << 'EOF'
     const fs = require('fs');
+    const { exec } = require('child_process');
+    const path = require('path');
     
-    // Read the extracted structure
-    const navData = fs.readFileSync('nav-structure.txt', 'utf8');
-    const lines = navData.trim().split('\n');
-    
-    // Process into navigation structure
-    const navItems = [];
-    const parentMap = new Map();
-    
-    lines.forEach(line => {
-      if (!line.trim()) return;
+    // Function to process DITA map and generate navigation
+    function processDitaMap() {
+      const ditaMapPath = 'dita-source/automotive.ditamap';
       
-      const [id, navtitle, href, depthStr] = line.split('|');
-      const depth = parseInt(depthStr, 10);
+      // Use xmlstarlet to extract the structure
+      const cmd = `xmlstarlet sel -T -t -m "//topicref" -v "concat(@id,'|',@navtitle,'|',@href,'|',count(ancestor::*))" -n ${ditaMapPath}`;
       
-      // Create nav item
-      const filename = href ? href.replace('.dita', '') : id;
-      const itemId = filename.replace(/_/g, '-');
-      const title = navtitle || filename.split('_').map(word => 
-        word.charAt(0).toUpperCase() + word.slice(1)
-      ).join(' ');
-      
-      const item = { id: itemId, title, children: [] };
-      
-      if (depth === 0) {
-        // Root level item
-        navItems.push(item);
-        parentMap.set(depth, item);
-      } else {
-        // Child item, add to parent
-        const parent = parentMap.get(depth - 1);
-        if (parent) {
-          parent.children.push(item);
-          parentMap.set(depth, item);
-        } else {
-          navItems.push(item);
-          parentMap.set(depth, item);
+      exec(cmd, (error, stdout, stderr) => {
+        if (error) {
+          console.error(`Error extracting DITA map structure: ${error}`);
+          // Fall back to existing structure if error occurs
+          createDefaultNavigation();
+          return;
         }
-      }
-    });
+        
+        // Process the output lines
+        const lines = stdout.trim().split('\n');
+        const navItems = [];
+        const navMap = new Map(); // To track parent-child relationships
+        
+        // First pass: create item objects
+        lines.forEach(line => {
+          if (!line.trim()) return;
+          
+          const [id, navtitle, href, depthStr] = line.split('|');
+          const depth = parseInt(depthStr, 10);
+          const filename = href ? path.basename(href, '.dita') : '';
+          
+          // Convert filename to URL-friendly ID
+          const itemId = filename ? filename.replace(/_/g, '-') : id.replace(/_/g, '-');
+          const title = navtitle || (filename ? filename.split('_').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ') : id.split('_').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' '));
+          
+          const item = {
+            id: itemId,
+            title: title,
+            depth: depth,
+            children: []
+          };
+          
+          navItems.push(item);
+        });
+        
+        // Second pass: build hierarchy
+        const rootItems = [];
+        let lastItemAtDepth = new Map();
+        
+        navItems.forEach(item => {
+          if (item.depth === 0) {
+            rootItems.push(item);
+            lastItemAtDepth.set(0, item);
+          } else {
+            const parent = lastItemAtDepth.get(item.depth - 1);
+            if (parent) {
+              parent.children.push(item);
+              lastItemAtDepth.set(item.depth, item);
+            } else {
+              // If no parent found, add to root
+              rootItems.push(item);
+              lastItemAtDepth.set(0, item);
+            }
+          }
+        });
+        
+        // Generate JavaScript code
+        const jsCode = `// Hierarchical navigation structure generated from DITA map
+const navigationConfig = ${JSON.stringify(rootItems, null, 2)};`;
+        
+        // Write to file
+        fs.writeFileSync('./site/js/navigation-config.js', jsCode);
+        console.log('Navigation configuration generated from DITA map');
+        
+        // Map the DITA filenames to content IDs for the content manifest
+        generateContentManifest(navItems);
+      });
+    }
     
-    // Write navigation config
-    const jsCode = "// Navigation structure generated from DITA map\nconst navigationConfig = " + 
-                 JSON.stringify(navItems, null, 2) + ";";
-    fs.writeFileSync('./site/js/navigation-config.js', jsCode);
+    // Generate content manifest mapping
+    function generateContentManifest(navItems) {
+      // Start building the content manifest
+      let manifestCode = '// Content manifest - maps IDs to content files\nconst contentManifest = {\n';
+      
+      // Add all navigation items to manifest
+      navItems.forEach(item => {
+        manifestCode += `  "${item.id}": { "title": "${item.title}" },\n`;
+      });
+      
+      // Add explicit mappings for common conversions
+      const commonMappings = {
+        "automotive-information": "Automotive Information",
+        "basic-maintenance": "Basic Maintenance",
+        "major-vehicle-components": "Major Vehicle Components",
+        "history-of-automobiles": "History of Automobiles",
+        "automobile-fundamentals": "Automobile Fundamentals",
+        "types-of-vehicles": "Types of Vehicles",
+        "vehicle-maintenance": "Vehicle Maintenance",
+        "electrical-systems": "Electrical Systems",
+        "braking-systems": "Braking Systems",
+        "engine-systems": "Engine Systems",
+        "electric-vehicles": "Electric Vehicles",
+        "emergency-repairs": "Emergency Repairs"
+      };
+      
+      // Add any mappings from common list that aren't already in navItems
+      Object.entries(commonMappings).forEach(([id, title]) => {
+        if (!navItems.find(item => item.id === id)) {
+          manifestCode += `  "${id}": { "title": "${title}" },\n`;
+        }
+      });
+      
+      // Add default entry
+      manifestCode += `  "default": { "title": "Automotive Documentation" }\n};`;
+      
+      // Write to file
+      fs.writeFileSync('./site/js/content-manifest.js', manifestCode);
+      console.log('Content manifest generated');
+    }
     
-    // Generate content manifest
-    let manifestCode = '// Content manifest - maps IDs to content files\nconst contentManifest = {\n';
+    // Fallback to create default navigation if DITA map processing fails
+    function createDefaultNavigation() {
+      console.log('Using default navigation structure');
+      
+      const defaultNavigation = [
+        {
+          id: "automotive-information",
+          title: "Automotive Information",
+          children: [
+            { id: "history-of-automobiles", title: "History of Automobiles" },
+            { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
+            { 
+              id: "types-of-vehicles", 
+              title: "Types of Vehicles",
+              children: [
+                { id: "electric-vehicles", title: "Electric Vehicles" }
+              ]
+            }
+          ]
+        },
+        {
+          id: "basic-maintenance",
+          title: "Basic Maintenance",
+          children: [
+            { id: "emergency-repairs", title: "Emergency Repairs" },
+            { id: "vehicle-maintenance", title: "Vehicle Maintenance" }
+          ]
+        },
+        {
+          id: "major-vehicle-components",
+          title: "Major Vehicle Components",
+          children: [
+            { id: "electrical-systems", title: "Electrical Systems" },
+            { id: "braking-systems", title: "Braking Systems" },
+            { id: "engine-systems", title: "Engine Systems" }
+          ]
+        }
+      ];
+      
+      // Generate JavaScript code
+      const jsCode = `// Default hierarchical navigation structure
+const navigationConfig = ${JSON.stringify(defaultNavigation, null, 2)};`;
+      
+      // Write to file
+      fs.writeFileSync('./site/js/navigation-config.js', jsCode);
+      
+      // Create content manifest
+      let manifestCode = '// Content manifest - maps IDs to content files\nconst contentManifest = {\n';
+      
+      // Add mappings for common IDs
+      const commonMappings = {
+        "automotive-information": "Automotive Information",
+        "basic-maintenance": "Basic Maintenance",
+        "major-vehicle-components": "Major Vehicle Components",
+        "history-of-automobiles": "History of Automobiles",
+        "automobile-fundamentals": "Automobile Fundamentals",
+        "types-of-vehicles": "Types of Vehicles",
+        "vehicle-maintenance": "Vehicle Maintenance",
+        "electrical-systems": "Electrical Systems",
+        "braking-systems": "Braking Systems",
+        "engine-systems": "Engine Systems",
+        "electric-vehicles": "Electric Vehicles",
+        "emergency-repairs": "Emergency Repairs"
+      };
+      
+      Object.entries(commonMappings).forEach(([id, title]) => {
+        manifestCode += `  "${id}": { "title": "${title}" },\n`;
+      });
+      
+      // Add default entry
+      manifestCode += `  "default": { "title": "Automotive Documentation" }\n};`;
+      
+      // Write to file
+      fs.writeFileSync('./site/js/content-manifest.js', manifestCode);
+    }
     
-    // Add predefined mappings
-    const mappings = {
-      "automotive-information": "Automotive Information",
-      "basic-maintenance": "Basic Maintenance",
-      "major-vehicle-components": "Major Vehicle Components",
-      "history-of-automobiles": "History of Automobiles",
-      "automobile-fundamentals": "Automobile Fundamentals",
-      "types-of-vehicles": "Types of Vehicles",
-      "vehicle-maintenance": "Vehicle Maintenance",
-      "electrical-systems": "Electrical Systems",
-      "braking-systems": "Braking Systems",
-      "engine-systems": "Engine Systems",
-      "electric-vehicles": "Electric Vehicles",
-      "emergency-repairs": "Emergency Repairs",
-      "default": "Automotive Documentation"
-    };
-    
-    Object.entries(mappings).forEach(([id, title], index, array) => {
-      const isLast = index === array.length - 1;
-      manifestCode += `  "${id}": { "title": "${title}" }${isLast ? '' : ','}\n`;
-    });
-    
-    manifestCode += '};';
-    fs.writeFileSync('./site/js/content-manifest.js', manifestCode);
-    
-    console.log('Navigation configuration generated from DITA map');
+    // Start processing
+    processDitaMap();
     EOF
     
-    # Run the processing script
-    node process-navigation.js
+    # Execute the extraction script
+    node ./extract-navigation.js
     
-    # If navigation generation failed, use the default
+    # Check if navigation config was created, if not use default
     if [ ! -f "./site/js/navigation-config.js" ]; then
-      echo "Navigation generation failed, using default configuration"
+      echo "Navigation extraction failed, using default navigation"
       
+      # Create hierarchical navigation config matching the structure in the image
       cat > ./site/js/navigation-config.js << 'EOF'
-      // Default navigation structure
+      // Hierarchical navigation structure from DITA map
       const navigationConfig = [
         {
           id: "automotive-information",
@@ -134,25 +258,5 @@
           ]
         }
       ];
-      EOF
-      
-      # Create content manifest
-      cat > ./site/js/content-manifest.js << 'EOF'
-      // Content manifest - maps IDs to content files
-      const contentManifest = {
-        "automotive-information": { "title": "Automotive Information" },
-        "basic-maintenance": { "title": "Basic Maintenance" },
-        "major-vehicle-components": { "title": "Major Vehicle Components" },
-        "history-of-automobiles": { "title": "History of Automobiles" },
-        "automobile-fundamentals": { "title": "Automobile Fundamentals" },
-        "types-of-vehicles": { "title": "Types of Vehicles" },
-        "vehicle-maintenance": { "title": "Vehicle Maintenance" },
-        "electrical-systems": { "title": "Electrical Systems" },
-        "braking-systems": { "title": "Braking Systems" },
-        "engine-systems": { "title": "Engine Systems" },
-        "electric-vehicles": { "title": "Electric Vehicles" },
-        "emergency-repairs": { "title": "Emergency Repairs" },
-        "default": { "title": "Automotive Documentation" }
-      };
       EOF
     fi
