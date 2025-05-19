@@ -1,369 +1,369 @@
 # Step 13: Add Simple Search Functionality
-- name: Add Simple Search Functionality
-  run: |
-    # Add search container to the sidebar in index.html
-    sed -i '/<div class="sidebar">/a \
-    <div class="search-container">\
-      <div class="search-input-container">\
-        <input type="text" id="search-input" placeholder="Search documentation...">\
-        <button id="search-button">Search</button>\
-      </div>\
-      <div id="search-results" class="search-results"></div>\
-    </div>' ./site/index.html
-    
-    # Add search styles to style.css
-    cat >> ./site/css/style.css << 'EOF'
-
-    /* Search Styles */
-    .search-container {
-      margin-bottom: 20px;
-      padding-bottom: 15px;
-      border-bottom: 1px solid #ddd;
-    }
-    
-    .search-input-container {
-      display: flex;
-    }
-    
-    #search-input {
-      flex: 1;
-      padding: 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px 0 0 4px;
-    }
-    
-    #search-button {
-      padding: 8px 12px;
-      background-color: #2c3e50;
-      color: white;
-      border: none;
-      border-radius: 0 4px 4px 0;
-      cursor: pointer;
-    }
-    
-    .search-results {
-      margin-top: 10px;
-      max-height: 400px;
-      overflow-y: auto;
-    }
-    
-    .search-results-count {
-      padding: 5px;
-      font-weight: bold;
-      margin-bottom: 10px;
-      background-color: #f5f5f5;
-      border-radius: 4px;
-    }
-    
-    .search-result {
-      padding: 10px;
-      margin-bottom: 8px;
-      border-bottom: 1px solid #eee;
-      cursor: pointer;
-    }
-    
-    .search-result:hover {
-      background-color: #f5f5f5;
-    }
-    
-    .search-result-title {
-      font-weight: bold;
-      margin-bottom: 5px;
-    }
-    
-    .search-result-context {
-      font-size: 0.9em;
-      color: #555;
-    }
-    
-    .search-highlight {
-      background-color: #ffeb3b;
-      font-weight: bold;
-      padding: 1px 2px;
-    }
-    
-    .search-message {
-      padding: 10px;
-      font-style: italic;
-      color: #888;
-    }
-    
-    .search-loading {
-      text-align: center;
-      padding: 10px;
-    }
-    
-    .search-loading:after {
-      content: '';
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border: 2px solid #ddd;
-      border-radius: 50%;
-      border-top-color: #555;
-      animation: search-spin 1s linear infinite;
-      margin-left: 5px;
-    }
-    
-    @keyframes search-spin {
-      to { transform: rotate(360deg); }
-    }
-    EOF
-    
-    # Create the search script file
-    cat > ./site/js/simple-search.js << 'EOF'
-    // Simple search implementation for DITA SPA
-    
-    // Global variables
-    let searchIndex = {};
-    let isIndexBuilt = false;
-    let isIndexBuilding = false;
-    
-    // Initialize search
-    function initSearch() {
-      // Get references to DOM elements
-      const searchInput = document.getElementById('search-input');
-      const searchButton = document.getElementById('search-button');
-      
-      // Add event listeners
-      searchButton.addEventListener('click', handleSearch);
-      searchInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-          handleSearch();
-        }
-      });
-      
-      // Log initialization
-      console.log('[DITA-Search] Simple search initialized');
-    }
-    
-    // Handle search action
-    function handleSearch() {
-      const searchInput = document.getElementById('search-input');
-      const searchResults = document.getElementById('search-results');
-      const query = searchInput.value.trim().toLowerCase();
-      
-      // Validate search query
-      if (query.length < 2) {
-        searchResults.innerHTML = '<div class="search-message">Please enter at least 2 characters to search.</div>';
-        return;
-      }
-      
-      // Show loading state
-      searchResults.innerHTML = '<div class="search-loading">Searching...</div>';
-      
-      // Build index if not already built
-      if (!isIndexBuilt && !isIndexBuilding) {
-        isIndexBuilding = true;
-        buildSearchIndex().then(() => {
-          isIndexBuilt = true;
-          isIndexBuilding = false;
-          performSearch(query);
-        });
-      } else if (isIndexBuilding) {
-        // If index is currently building, wait for it
-        const checkInterval = setInterval(() => {
-          if (isIndexBuilt) {
-            clearInterval(checkInterval);
-            performSearch(query);
-          }
-        }, 200);
-      } else {
-        // Index is ready, perform search immediately
-        performSearch(query);
-      }
-    }
-    
-    // Build search index by loading content files
-    async function buildSearchIndex() {
-      console.log('[DITA-Search] Building search index...');
-      
-      // Get all topic IDs from navigation configuration
-      const topicIds = collectTopicIds();
-      console.log(`[DITA-Search] Found ${topicIds.length} topics to index`);
-      
-      // Process each topic
-      for (const topicId of topicIds) {
-        try {
-          await indexTopic(topicId);
-        } catch (error) {
-          console.error(`[DITA-Search] Error indexing topic ${topicId}:`, error);
-        }
-      }
-      
-      console.log(`[DITA-Search] Indexing complete. Indexed ${Object.keys(searchIndex).length} topics.`);
-    }
-    
-    // Collect all topic IDs from navigation
-    function collectTopicIds() {
-      const ids = new Set();
-      
-      // Recursive function to extract IDs from navigation tree
-      function extractIds(items) {
-        if (!items || !Array.isArray(items)) return;
-        
-        items.forEach(item => {
-          if (item.id) {
-            ids.add(item.id);
+      - name: Add Simple Search Functionality
+        run: |
+          # Add search container to the sidebar in index.html
+          sed -i '/<div class="sidebar">/a \
+            <div class="search-container">\
+              <div class="search-input-container">\
+                <input type="text" id="search-input" placeholder="Search documentation...">\
+                <button id="search-button">Search</button>\
+              </div>\
+              <div id="search-results" class="search-results"></div>\
+            </div>' ./site/index.html
+          
+          # Add search styles to style.css
+          cat >> ./site/css/style.css << 'EOF'
+          
+          /* Search Styles */
+          .search-container {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #ddd;
           }
           
-          if (item.children) {
-            extractIds(item.children);
+          .search-input-container {
+            display: flex;
           }
-        });
-      }
-      
-      // Extract from navigation configuration
-      if (window.navigationConfig) {
-        extractIds(window.navigationConfig);
-      }
-      
-      // Also check content ID map
-      if (window.contentIdMap) {
-        Object.keys(window.contentIdMap).forEach(id => {
-          if (id !== 'default') {
-            ids.add(id);
-          }
-        });
-      }
-      
-      return Array.from(ids);
-    }
-    
-    // Index a single topic
-    async function indexTopic(topicId) {
-      try {
-        // Get topic title
-        const title = getPageTitle(topicId);
-        
-        // Load content using the SPA's existing content loading function
-        const content = await loadContent(topicId);
-        
-        // Extract text content from HTML
-        const tempElement = document.createElement('div');
-        tempElement.innerHTML = content;
-        
-        // Get text content
-        const textContent = tempElement.textContent || tempElement.innerText || '';
-        
-        // Store in search index
-        searchIndex[topicId] = {
-          id: topicId,
-          title: title,
-          content: textContent
-        };
-        
-        return true;
-      } catch (error) {
-        console.error(`[DITA-Search] Failed to index topic ${topicId}:`, error);
-        return false;
-      }
-    }
-    
-    // Perform search on the built index
-    function performSearch(query) {
-      const searchResults = document.getElementById('search-results');
-      console.log(`[DITA-Search] Searching for: ${query}`);
-      
-      // Search through indexed topics
-      const results = [];
-      
-      for (const topicId in searchIndex) {
-        const topic = searchIndex[topicId];
-        const contentLower = topic.content.toLowerCase();
-        const titleLower = topic.title.toLowerCase();
-        
-        // Check for matches in title or content
-        if (titleLower.includes(query) || contentLower.includes(query)) {
-          // Find context around the match for display
-          let context = '';
-          let matchIndex = contentLower.indexOf(query);
           
-          if (matchIndex !== -1) {
-            // Extract context around the match
-            const startPos = Math.max(0, matchIndex - 40);
-            const endPos = Math.min(contentLower.length, matchIndex + query.length + 40);
+          #search-input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px 0 0 4px;
+          }
+          
+          #search-button {
+            padding: 8px 12px;
+            background-color: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+          }
+          
+          .search-results {
+            margin-top: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+          }
+          
+          .search-results-count {
+            padding: 5px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+          }
+          
+          .search-result {
+            padding: 10px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+          }
+          
+          .search-result:hover {
+            background-color: #f5f5f5;
+          }
+          
+          .search-result-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+          }
+          
+          .search-result-context {
+            font-size: 0.9em;
+            color: #555;
+          }
+          
+          .search-highlight {
+            background-color: #ffeb3b;
+            font-weight: bold;
+            padding: 1px 2px;
+          }
+          
+          .search-message {
+            padding: 10px;
+            font-style: italic;
+            color: #888;
+          }
+          
+          .search-loading {
+            text-align: center;
+            padding: 10px;
+          }
+          
+          .search-loading:after {
+            content: '';
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border: 2px solid #ddd;
+            border-radius: 50%;
+            border-top-color: #555;
+            animation: search-spin 1s linear infinite;
+            margin-left: 5px;
+          }
+          
+          @keyframes search-spin {
+            to { transform: rotate(360deg); }
+          }
+          EOF
+          
+          # Create the search script file
+          cat > ./site/js/simple-search.js << 'EOF'
+          // Simple search implementation for DITA SPA
+          
+          // Global variables
+          let searchIndex = {};
+          let isIndexBuilt = false;
+          let isIndexBuilding = false;
+          
+          // Initialize search
+          function initSearch() {
+            // Get references to DOM elements
+            const searchInput = document.getElementById('search-input');
+            const searchButton = document.getElementById('search-button');
             
-            // Get surrounding text
-            context = topic.content.substring(startPos, endPos);
+            // Add event listeners
+            searchButton.addEventListener('click', handleSearch);
+            searchInput.addEventListener('keypress', function(e) {
+              if (e.key === 'Enter') {
+                handleSearch();
+              }
+            });
             
-            // Add ellipsis if we're not at the beginning/end
-            if (startPos > 0) {
-              context = '...' + context;
+            // Log initialization
+            console.log('[DITA-Search] Simple search initialized');
+          }
+          
+          // Handle search action
+          function handleSearch() {
+            const searchInput = document.getElementById('search-input');
+            const searchResults = document.getElementById('search-results');
+            const query = searchInput.value.trim().toLowerCase();
+            
+            // Validate search query
+            if (query.length < 2) {
+              searchResults.innerHTML = '<div class="search-message">Please enter at least 2 characters to search.</div>';
+              return;
             }
             
-            if (endPos < topic.content.length) {
-              context = context + '...';
+            // Show loading state
+            searchResults.innerHTML = '<div class="search-loading">Searching...</div>';
+            
+            // Build index if not already built
+            if (!isIndexBuilt && !isIndexBuilding) {
+              isIndexBuilding = true;
+              buildSearchIndex().then(() => {
+                isIndexBuilt = true;
+                isIndexBuilding = false;
+                performSearch(query);
+              });
+            } else if (isIndexBuilding) {
+              // If index is currently building, wait for it
+              const checkInterval = setInterval(() => {
+                if (isIndexBuilt) {
+                  clearInterval(checkInterval);
+                  performSearch(query);
+                }
+              }, 200);
+            } else {
+              // Index is ready, perform search immediately
+              performSearch(query);
             }
           }
           
-          // Add to results
-          results.push({
-            id: topicId,
-            title: topic.title,
-            context: context,
-            score: titleLower.includes(query) ? 2 : 1 // Title matches score higher
-          });
-        }
-      }
-      
-      // Sort results by score (title matches first)
-      results.sort((a, b) => b.score - a.score);
-      
-      // Display results
-      if (results.length === 0) {
-        searchResults.innerHTML = '<div class="search-message">No results found. Try different keywords.</div>';
-        return;
-      }
-      
-      // Create results HTML
-      let resultsHtml = `<div class="search-results-count">Found ${results.length} results</div>`;
-      
-      // Add each result
-      results.forEach(result => {
-        const highlightedContext = highlightText(result.context, query);
-        const highlightedTitle = highlightText(result.title, query);
-        
-        resultsHtml += `
-          <div class="search-result" data-id="${result.id}">
-            <div class="search-result-title">${highlightedTitle}</div>
-            <div class="search-result-context">${highlightedContext}</div>
-          </div>
-        `;
-      });
-      
-      // Update results container
-      searchResults.innerHTML = resultsHtml;
-      
-      // Add click event handlers
-      document.querySelectorAll('.search-result').forEach(resultElement => {
-        resultElement.addEventListener('click', function() {
-          const topicId = this.getAttribute('data-id');
-          navigateToPage(topicId);
-          searchResults.innerHTML = ''; // Clear results after navigation
-        });
-      });
-    }
-    
-    // Highlight search term in text
-    function highlightText(text, query) {
-      if (!text) return '';
-      
-      // Escape special regex characters
-      const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-      
-      // Create regex to find the query (case insensitive)
-      const regex = new RegExp(`(${escapedQuery})`, 'gi');
-      
-      // Replace with highlighted version
-      return text.replace(regex, '<span class="search-highlight">$1</span>');
-    }
-    
-    // Initialize search when DOM is ready
-    document.addEventListener('DOMContentLoaded', initSearch);
-    EOF
-    
-    # Add script reference to index.html
-    sed -i '/<script src="js\/app.js"><\/script>/a \    <script src="js\/simple-search.js"></script>' ./site/index.html
-    
-    echo "Simple search functionality added successfully"
+          // Build search index by loading content files
+          async function buildSearchIndex() {
+            console.log('[DITA-Search] Building search index...');
+            
+            // Get all topic IDs from navigation configuration
+            const topicIds = collectTopicIds();
+            console.log(`[DITA-Search] Found ${topicIds.length} topics to index`);
+            
+            // Process each topic
+            for (const topicId of topicIds) {
+              try {
+                await indexTopic(topicId);
+              } catch (error) {
+                console.error(`[DITA-Search] Error indexing topic ${topicId}:`, error);
+              }
+            }
+            
+            console.log(`[DITA-Search] Indexing complete. Indexed ${Object.keys(searchIndex).length} topics.`);
+          }
+          
+          // Collect all topic IDs from navigation
+          function collectTopicIds() {
+            const ids = new Set();
+            
+            // Recursive function to extract IDs from navigation tree
+            function extractIds(items) {
+              if (!items || !Array.isArray(items)) return;
+              
+              items.forEach(item => {
+                if (item.id) {
+                  ids.add(item.id);
+                }
+                
+                if (item.children) {
+                  extractIds(item.children);
+                }
+              });
+            }
+            
+            // Extract from navigation configuration
+            if (window.navigationConfig) {
+              extractIds(window.navigationConfig);
+            }
+            
+            // Also check content ID map
+            if (window.contentIdMap) {
+              Object.keys(window.contentIdMap).forEach(id => {
+                if (id !== 'default') {
+                  ids.add(id);
+                }
+              });
+            }
+            
+            return Array.from(ids);
+          }
+          
+          // Index a single topic
+          async function indexTopic(topicId) {
+            try {
+              // Get topic title
+              const title = getPageTitle(topicId);
+              
+              // Load content using the SPA's existing content loading function
+              const content = await loadContent(topicId);
+              
+              // Extract text content from HTML
+              const tempElement = document.createElement('div');
+              tempElement.innerHTML = content;
+              
+              // Get text content
+              const textContent = tempElement.textContent || tempElement.innerText || '';
+              
+              // Store in search index
+              searchIndex[topicId] = {
+                id: topicId,
+                title: title,
+                content: textContent
+              };
+              
+              return true;
+            } catch (error) {
+              console.error(`[DITA-Search] Failed to index topic ${topicId}:`, error);
+              return false;
+            }
+          }
+          
+          // Perform search on the built index
+          function performSearch(query) {
+            const searchResults = document.getElementById('search-results');
+            console.log(`[DITA-Search] Searching for: ${query}`);
+            
+            // Search through indexed topics
+            const results = [];
+            
+            for (const topicId in searchIndex) {
+              const topic = searchIndex[topicId];
+              const contentLower = topic.content.toLowerCase();
+              const titleLower = topic.title.toLowerCase();
+              
+              // Check for matches in title or content
+              if (titleLower.includes(query) || contentLower.includes(query)) {
+                // Find context around the match for display
+                let context = '';
+                let matchIndex = contentLower.indexOf(query);
+                
+                if (matchIndex !== -1) {
+                  // Extract context around the match
+                  const startPos = Math.max(0, matchIndex - 40);
+                  const endPos = Math.min(contentLower.length, matchIndex + query.length + 40);
+                  
+                  // Get surrounding text
+                  context = topic.content.substring(startPos, endPos);
+                  
+                  // Add ellipsis if we're not at the beginning/end
+                  if (startPos > 0) {
+                    context = '...' + context;
+                  }
+                  
+                  if (endPos < topic.content.length) {
+                    context = context + '...';
+                  }
+                }
+                
+                // Add to results
+                results.push({
+                  id: topicId,
+                  title: topic.title,
+                  context: context,
+                  score: titleLower.includes(query) ? 2 : 1 // Title matches score higher
+                });
+              }
+            }
+            
+            // Sort results by score (title matches first)
+            results.sort((a, b) => b.score - a.score);
+            
+            // Display results
+            if (results.length === 0) {
+              searchResults.innerHTML = '<div class="search-message">No results found. Try different keywords.</div>';
+              return;
+            }
+            
+            // Create results HTML
+            let resultsHtml = `<div class="search-results-count">Found ${results.length} results</div>`;
+            
+            // Add each result
+            results.forEach(result => {
+              const highlightedContext = highlightText(result.context, query);
+              const highlightedTitle = highlightText(result.title, query);
+              
+              resultsHtml += `
+                <div class="search-result" data-id="${result.id}">
+                  <div class="search-result-title">${highlightedTitle}</div>
+                  <div class="search-result-context">${highlightedContext}</div>
+                </div>
+              `;
+            });
+            
+            // Update results container
+            searchResults.innerHTML = resultsHtml;
+            
+            // Add click event handlers
+            document.querySelectorAll('.search-result').forEach(resultElement => {
+              resultElement.addEventListener('click', function() {
+                const topicId = this.getAttribute('data-id');
+                navigateToPage(topicId);
+                searchResults.innerHTML = ''; // Clear results after navigation
+              });
+            });
+          }
+          
+          // Highlight search term in text
+          function highlightText(text, query) {
+            if (!text) return '';
+            
+            // Escape special regex characters
+            const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            
+            // Create regex to find the query (case insensitive)
+            const regex = new RegExp(`(${escapedQuery})`, 'gi');
+            
+            // Replace with highlighted version
+            return text.replace(regex, '<span class="search-highlight">$1</span>');
+          }
+          
+          // Initialize search when DOM is ready
+          document.addEventListener('DOMContentLoaded', initSearch);
+          EOF
+          
+          # Add script reference to index.html
+          sed -i '/<script src="js\/app.js"><\/script>/a \    <script src="js\/simple-search.js"></script>' ./site/index.html
+          
+          echo "Simple search functionality added successfully"
