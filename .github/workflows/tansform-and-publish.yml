@@ -167,6 +167,16 @@ jobs:
           # Create content directory for SPA fragments
           mkdir -p ./site/content
           
+          # Create a directory for images
+          mkdir -p ./site/images
+          
+          # Copy all image files to the images directory
+          echo "Copying image files..."
+          find ./dita-source -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp {} ./site/images/ \;
+          
+          # Also look for images in the DITA-OT output and copy those
+          find ./site -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -not -path "./site/images/*" -exec cp {} ./site/images/ \;
+          
           # List files to check output
           echo "Generated files:"
           find ./site -type f | sort
@@ -199,6 +209,9 @@ jobs:
                      sed '/<header/,/<\/header>/d' | 
                      sed '/<nav/,/<\/nav>/d' | 
                      sed '/<footer/,/<\/footer>/d')
+            
+            # Fix image paths - update to use SPA image directory
+            content=$(echo "$content" | sed -E 's/(src|href)="([^":]*).(jpg|png|gif|svg)"/$1="\/images\/\2.\3"/gi')
             
             # Get title from the original file
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
