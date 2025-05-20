@@ -3,34 +3,34 @@ name: DITA to SPA Transformation with Auto-Generated Navigation
 on:
   push:
     branches:
-      - main # For the primary, live documentation deployment
-      - '**' # For all other branches (feature, bugfix, etc.)
-      - '!gh-pages' # IMPORTANT: Prevent infinite loop if deploying to gh-pages branch itself
-    tags-ignore: # Prevent tags from triggering builds unless specifically desired
-      - '**'
-  workflow_dispatch: # Allows manual trigger
+      - main # For primary deployment
+      - "**" # For all branches
+      - "!gh-pages" # Prevent loop if deploying to gh-pages
+    tags-ignore:
+      - "**" # Don't trigger on tags
+  workflow_dispatch: # Allow manual trigger
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed for peaceiris/actions-gh-pages
+      contents: write # Needed for deployment
 
     steps:
       # Step 1: Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Fetch all history for branch information
+          fetch-depth: 0 # Fetch all history for branch information
 
-      # Step 2: Set up Java (required for DITA-OT)
+      # Step 2: Set up Java for DITA-OT
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # Step 3: Install DITA-OT and required tools
+      # Step 3: Install DITA-OT and XML tools
       - name: Set up DITA-OT and XML tools
         run: |
           # Install XML tools
@@ -42,7 +42,16 @@ jobs:
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Parse DITAMAP to generate navigation structure
+      # Step 4: Set branch name for use in later steps
+      - name: Set branch name
+        id: branch
+        run: |
+          BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+          echo "name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "current_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_OUTPUT
+          echo "Branch name set to: $BRANCH_NAME"
+
+      # Step 5: Parse DITAMAP to generate navigation structure
       - name: Parse DITAMAP Structure
         run: |
           echo "Parsing DITAMAP structure from dita-source/automotive.ditamap"
@@ -163,7 +172,7 @@ jobs:
           echo "DITAMAP parsing complete"
           cat ./navigation-structure.json
 
-      # Step 5: Transform DITA to HTML and prepare images
+      # Step 6: Transform DITA to HTML and prepare images
       - name: Transform DITA to HTML and Prepare Images
         run: |
           # Using HTML5 format with parameters for better output
@@ -220,7 +229,7 @@ jobs:
           echo "Files in images directory:"
           ls -la ./site/images/ || echo "No files in images directory"
 
-      # Step 6: Process HTML files
+      # Step 7: Process HTML files
       - name: Process HTML Content
         run: |
           # Create content directory for SPA fragments
@@ -305,7 +314,7 @@ jobs:
           echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-id-map.js
           echo "};" >> ./site/js/content-id-map.js
 
-      # Step 7: Generate Navigation Configuration
+      # Step 8: Generate Navigation Configuration
       - name: Generate Navigation Configuration
         run: |
           mkdir -p ./site/js ./site/css
@@ -322,7 +331,7 @@ jobs:
 
           echo "Navigation configuration generated from DITAMAP structure"
 
-      # Step 8: Create SPA CSS with improved styling
+      # Step 9: Create SPA CSS with improved styling
       - name: Create SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
@@ -512,7 +521,7 @@ jobs:
           }
           EOF
 
-      # Step 9: Create SPA JavaScript Application
+      # Step 10: Create SPA JavaScript Application
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
@@ -836,7 +845,7 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create index.html
+      # Step 11: Create index.html
       - name: Create Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
@@ -896,7 +905,7 @@ jobs:
           </html>
           EOF
 
-      # Step 11: Create 404.html for SPA routing
+      # Step 12: Create 404.html for SPA routing
       - name: Create 404 Page
         run: |
           cat > ./site/404.html << 'EOF'
@@ -938,7 +947,7 @@ jobs:
           </html>
           EOF
 
-      # Step 12: Create default content for container nodes
+      # Step 13: Create default content for container nodes
       - name: Create Default Content
         run: |
           # Create content directory if it doesn't exist
@@ -979,7 +988,7 @@ jobs:
             done
           fi
 
-      # Step 13: Create Branch Previews Directory and Index
+      # Step 14: Create Branch Previews Directory and Index
       - name: Create Branch Previews Directory
         if: github.ref == 'refs/heads/main'
         run: |
@@ -1154,7 +1163,7 @@ jobs:
                     const li = document.createElement('li');
                     li.className = 'branch-item';
                     
-                    const branchSlug = branch.name.replace(/\//g, '-').toLowerCase();
+                    const branchSlug = branch.slug || branch.name.replace(/\//g, '-').toLowerCase();
                     
                     li.innerHTML = `
                       <span class="branch-name">${branch.name}</span>
@@ -1193,99 +1202,100 @@ jobs:
           }
           EOF
 
-      # Step 14: Generate Branch Metadata
+      # Step 15: Generate Branch Metadata
       - name: Generate Branch Metadata
         run: |
-          # Extract repository name from GitHub context
-          REPO_NAME=$(echo $GITHUB_REPOSITORY | cut -d'/' -f2)
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          
           # Create metadata directory if it doesn't exist
           mkdir -p ./preview-metadata
           
           # If this is not the main branch, create branch info file
-          if [ "$BRANCH_NAME" != "main" ]; then
-            # Create branch json file - use a slug-friendly name
-            BRANCH_SLUG=$(echo "$BRANCH_NAME" | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]')
-            
-            cat > "./preview-metadata/${BRANCH_SLUG}.json" << EOF
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            # Create branch json file - using the prepared branch name from previous step
+            cat > "./preview-metadata/${{ steps.branch.outputs.name }}.json" << EOF
           {
-            "name": "${BRANCH_NAME}",
-            "slug": "${BRANCH_SLUG}",
-            "updated_at": "${CURRENT_DATE}"
+            "name": "${GITHUB_REF#refs/heads/}",
+            "slug": "${{ steps.branch.outputs.name }}",
+            "updated_at": "${{ steps.branch.outputs.current_date }}"
           }
           EOF
-            echo "Created branch metadata file for ${BRANCH_NAME}"
+            echo "Created branch metadata file for ${GITHUB_REF#refs/heads/}"
           fi
 
-      # Step 15: Deploy to GitHub Pages
-      - name: Deploy to GitHub Pages (Main Branch)
-        if: github.ref == 'refs/heads/main' # Only runs if the push is to the 'main' branch
+      # Step 16: Deploy based on branch
+      - name: Deploy (Main Branch)
+        if: github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site # Publishes to the root of gh-pages
-          exclude_assets: '' # Don't exclude any assets
-          
-      - name: Deploy to GitHub Pages (Branch Preview)
-        # Runs if not main branch
+          publish_dir: ./site
+          exclude_assets: ''
+
+      - name: Deploy (Branch Preview)
         if: github.ref != 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
-          # Deploy to a subdirectory based on the branch name
-          destination_dir: preview/branch-${{ github.ref_name | replace('/', '-') | lower }}
-          # Don't use force_orphan as we don't want to delete other branch previews
+          destination_dir: preview/branch-${{ steps.branch.outputs.name }}
           force_orphan: false
-          
-      # Step 16: Update Branch Preview Index (Only run on main branch)
+
+      # Step 17: Update Branch Preview Index (Main branch only)
       - name: Update Branch Preview Index
         if: github.ref == 'refs/heads/main'
         run: |
           # Checkout gh-pages branch to get existing preview-metadata
-          git fetch origin gh-pages:gh-pages || echo "Could not fetch gh-pages branch"
-          git checkout gh-pages -- preview-metadata || echo "No preview-metadata folder found"
+          git fetch origin gh-pages || echo "Could not fetch gh-pages branch"
           
-          # Create directory if it doesn't exist
-          mkdir -p preview-metadata
+          # Try to get preview-metadata or create new folder
+          git checkout origin/gh-pages -- preview-metadata || mkdir -p preview-metadata
           
           # Find all branch metadata files and build a list
           echo "Building branch list JSON"
-          BRANCHES_JSON="{"
-          BRANCHES_JSON+="\"last_updated\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\","
-          BRANCHES_JSON+="\"branches\": ["
           
-          # Find all branches that have been pushed
+          # Generate branches.json file
+          echo "{" > branches.json
+          echo "  \"last_updated\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"," >> branches.json
+          echo "  \"branches\": [" >> branches.json
+          
+          # Add branch metadata entries
           FIRST=true
           for file in preview-metadata/*.json; do
             if [ -f "$file" ]; then
               if [ "$FIRST" = true ]; then
                 FIRST=false
               else
-                BRANCHES_JSON+=","
+                echo "," >> branches.json
               fi
-              BRANCHES_JSON+=$(cat "$file")
+              cat "$file" >> branches.json
             fi
           done
           
-          BRANCHES_JSON+="]}"
+          echo "  ]" >> branches.json
+          echo "}" >> branches.json
           
-          # Write the branches.json file
-          echo "$BRANCHES_JSON" > ./site/previews/branches.json
-          echo "Branch list updated"
+          # Update branches.json
+          mkdir -p ./site/previews
+          cp branches.json ./site/previews/branches.json
           
-          # Add the branch metadata to gh-pages
-          git checkout gh-pages || git checkout -b gh-pages
-          mkdir -p previews
-          cp ./site/previews/index.html ./previews/index.html
-          cp ./site/previews/branches.json ./previews/branches.json
-          mkdir -p preview-metadata
-          cp -r ./preview-metadata/* ./preview-metadata/ || echo "No metadata files to copy"
+          # Deploy separately
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
           
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          # Use a separate commit for preview metadata only
+          git checkout --orphan gh-pages-temp
+          
+          # Copy files from existing gh-pages if it exists
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            git reset --hard origin/gh-pages
+          fi
+          
+          # Update the preview files
+          mkdir -p previews preview-metadata
+          cp ./site/previews/index.html ./previews/
+          cp ./site/previews/branches.json ./previews/
+          cp -r ./preview-metadata/* ./preview-metadata/ 2>/dev/null || echo "No metadata to copy"
+          
+          # Commit and push changes
           git add ./previews/ ./preview-metadata/
           git commit -m "Update branch preview index" || echo "No changes to commit"
-          git push origin gh-pages || echo "Failed to push changes"
+          git push origin gh-pages-temp:gh-pages || echo "Push failed, will be updated on next run"
