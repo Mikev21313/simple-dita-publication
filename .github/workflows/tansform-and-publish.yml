@@ -1,119 +1,443 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DITA Documentation</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      line-height: 1.6;
-      margin: 0;
-      padding: 20px;
-      max-width: 800px;
-      margin: 0 auto;
-    }
-    h1 {
-      color: #333;
-      border-bottom: 1px solid #ddd;
-      padding-bottom: 10px;
-    }
-    .button {
-      display: inline-block;
-      padding: 10px 15px;
-      background-color: #4a90e2;
-      color: white;
-      text-decoration: none;
-      border-radius: 4px;
-      font-weight: bold;
-      margin: 10px 0;
-    }
-    .button:hover {
-      background-color: #3a80d2;
-    }
-    .card {
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      padding: 15px;
-      margin: 15px 0;
-      background-color: #f9f9f9;
-    }
-    .branch-list {
-      list-style-type: none;
-      padding: 0;
-    }
-    .branch-list li {
-      margin-bottom: 10px;
-      padding: 10px;
-      border-left: 4px solid #4a90e2;
-      background-color: #f5f5f5;
-    }
-  </style>
-</head>
-<body>
-  <h1>DITA Documentation Portal</h1>
-  
-  <div class="card">
-    <h2>Main Documentation</h2>
-    <p>View the latest documentation from the main branch.</p>
-    <a href="./main/" class="button">View Main Documentation</a>
-  </div>
-  
-  <div class="card">
-    <h2>Branch Reviews</h2>
-    <p>The following branches are available for review:</p>
-    
-    <ul class="branch-list" id="branch-list">
-      <li>Loading branches...</li>
-    </ul>
-  </div>
-  
-  <script>
-    // Simple function to load branches
-    async function loadBranches() {
-      try {
-        const response = await fetch('./branch-manifest.json');
-        if (!response.ok) {
-          throw new Error('Failed to load branches');
-        }
-        
-        const data = await response.json();
-        const branches = data.branches || [];
-        
-        if (branches.length === 0) {
-          document.getElementById('branch-list').innerHTML = '<li>No branches available for review.</li>';
-          return;
-        }
-        
-        const branchItems = branches.map(branch => {
-          if (branch.name === 'main') return '';
+name: DITA to SPA Transformation with Branch Review
+
+on:
+  push:
+    branches:
+      - '**'  # This will trigger on all branches
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Step 1: Checkout repository 
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Set up Java (required for DITA-OT)
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # Step 3: Extract branch name for deployment path
+      - name: Extract branch name
+        shell: bash
+        run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | sed 's/\//-/g')" >> $GITHUB_ENV
+        id: extract_branch
+
+      # Step 4: Install DITA-OT
+      - name: Set up DITA-OT
+        run: |
+          wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
+          unzip dita-ot-4.0.2.zip
+          chmod +x dita-ot-4.0.2/bin/dita
+
+      # Step 5: Transform DITA to HTML (only if DITA content exists)
+      - name: Transform DITA to HTML
+        run: |
+          # Check if DITA source directory exists
+          if [ -d "dita-source" ] && [ -f "dita-source/automotive.ditamap" ]; then
+            # Using HTML5 format with parameters for better output
+            ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
+            echo "DITA transformation complete"
+          else
+            # Create site directory if it doesn't exist
+            mkdir -p ./site
+            echo "No DITA source found, skipping transformation"
+          fi
           
-          const date = new Date(branch.timestamp);
-          const formattedDate = date.toLocaleString();
+          # Create content directory for SPA fragments
+          mkdir -p ./site/content
           
-          return `
-            <li>
-              <strong>${branch.name}</strong><br>
-              <small>Updated: ${formattedDate} by ${branch.author || 'Unknown'}</small><br>
-              <a href="./branches/${branch.name}/" style="color: #4a90e2;">View Documentation</a> | 
-              <a href="https://github.com/mikev21313/simple-dita-publication/compare/main...${branch.name}" target="_blank" style="color: #4a90e2;">Compare Changes</a>
-            </li>
-          `;
-        }).filter(item => item !== '').join('');
-        
-        if (branchItems) {
-          document.getElementById('branch-list').innerHTML = branchItems;
-        } else {
-          document.getElementById('branch-list').innerHTML = '<li>No branches available for review.</li>';
-        }
-      } catch (error) {
-        console.error('Error loading branches:', error);
-        document.getElementById('branch-list').innerHTML = `<li>Error loading branches: ${error.message}</li>`;
-      }
-    }
-    
-    // Load branches when the page loads
-    window.addEventListener('DOMContentLoaded', loadBranches);
-  </script>
-</body>
-</html>
+          # List files to check output
+          echo "Generated files:"
+          find ./site -type f | sort 2>/dev/null || echo "No files generated yet"
+
+      # Step 6: Process HTML files into content fragments
+      - name: Process HTML Content
+        run: |
+          # Create content directory if it doesn't exist
+          mkdir -p ./site/content
+          
+          # Process each HTML file to extract content if they exist
+          find ./site -name "*.html" -type f | while read file; do
+            # Skip processing if this is the index.html we'll create later
+            if [[ "$file" == "./site/index.html" ]]; then
+              continue
+            fi
+            
+            filename=$(basename "$file")
+            id="${filename%.html}"
+            echo "Processing $filename (ID: $id)"
+            
+            # Extract content from file 
+            content=$(sed -n '/<body/,/<\/body>/p' "$file" 2>/dev/null | 
+                     sed '/<body/d;/<\/body>/d' | 
+                     sed '/<header/,/<\/header>/d' | 
+                     sed '/<nav/,/<\/nav>/d' | 
+                     sed '/<footer/,/<\/footer>/d')
+            
+            # Get title from the original file
+            title=$(grep -o "<title>.*</title>" "$file" 2>/dev/null | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
+            if [ -z "$title" ]; then
+              title=$(echo "$id" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+            fi
+            
+            # Create content file
+            echo "$content" > "./site/content/$id.html"
+            
+            # Map from DITA filename to content ID (if needed)
+            
+            # Add to the content manifest
+            echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
+          done
+          
+          # If no files were processed, create a placeholder
+          if [ ! -f "./site/content-list.tmp" ]; then
+            echo "  \"placeholder\": { \"title\": \"Placeholder Content\" }," > ./site/content-list.tmp
+            echo "<h1>Placeholder Content</h1><p>No content has been added yet.</p>" > "./site/content/placeholder.html"
+          fi
+
+      # Step 7: Create necessary directories and files
+      - name: Create Required Directories and Files
+        run: |
+          # Create directories
+          mkdir -p ./site/js ./site/css ./site/content
+          
+          # Create navigation config
+          cat > ./site/js/navigation-config.js << 'EOF'
+          // Hierarchical navigation structure
+          const navigationConfig = [
+            {
+              id: "placeholder",
+              title: "Documentation",
+              children: []
+            }
+          ];
+          EOF
+          
+          # Create content manifest from processed content
+          echo "// Content manifest - maps IDs to content files" > ./site/js/content-manifest.js
+          echo "const contentManifest = {" >> ./site/js/content-manifest.js
+          
+          # Add entries from our temp file if it exists
+          if [ -f "./site/content-list.tmp" ]; then
+            cat ./site/content-list.tmp >> ./site/js/content-manifest.js
+          fi
+          
+          # Close the manifest
+          echo "  \"default\": { \"title\": \"Documentation\" }" >> ./site/js/content-manifest.js
+          echo "};" >> ./site/js/content-manifest.js
+          
+          # Clean up temp file
+          rm -f ./site/content-list.tmp
+
+      # Step 8: Create SPA CSS
+      - name: Create SPA CSS
+        run: |
+          cat > ./site/css/style.css << 'EOF'
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100%;
+            overflow: hidden;
+          }
+          
+          /* Basic styling for the page */
+          .content-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+          }
+          
+          .sidebar {
+            width: 250px;
+            background-color: #f5f5f5;
+            padding: 20px;
+            height: 100%;
+            overflow-y: auto;
+            border-right: 1px solid #ddd;
+          }
+          
+          .main-content {
+            flex: 1;
+            padding: 20px;
+            height: 100%;
+            overflow-y: auto;
+          }
+          
+          /* More styles would be here but abbreviated for clarity */
+          EOF
+
+      # Step 9: Create SPA JavaScript
+      - name: Create SPA JavaScript
+        run: |
+          cat > ./site/js/app.js << 'EOF'
+          // SPA Application
+          console.log('Documentation app initialized');
+          
+          // DOM Elements
+          const contentEl = document.getElementById('content');
+          const contentTitleEl = document.getElementById('content-title');
+          
+          // Initialize the application when DOM is ready
+          document.addEventListener('DOMContentLoaded', function() {
+            console.log('Document loaded');
+            
+            // Display initial content
+            contentEl.innerHTML = '<h1>Documentation</h1><p>Select a topic from the navigation menu.</p>';
+            contentTitleEl.textContent = 'Documentation';
+          });
+          EOF
+
+      # Step 10: Create direct landing page for branches
+      - name: Create Branch Landing Page
+        run: |
+          # Create a landing page for branch review
+          cat > ./site/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>DITA Documentation Portal</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                margin: 0;
+                padding: 20px;
+                max-width: 800px;
+                margin: 0 auto;
+              }
+              h1 {
+                color: #333;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 10px;
+              }
+              .button {
+                display: inline-block;
+                padding: 10px 15px;
+                background-color: #4a90e2;
+                color: white;
+                text-decoration: none;
+                border-radius: 4px;
+                font-weight: bold;
+                margin: 10px 0;
+              }
+              .button:hover {
+                background-color: #3a80d2;
+              }
+              .card {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 15px;
+                margin: 15px 0;
+                background-color: #f9f9f9;
+              }
+              .branch-list {
+                list-style-type: none;
+                padding: 0;
+              }
+              .branch-list li {
+                margin-bottom: 10px;
+                padding: 10px;
+                border-left: 4px solid #4a90e2;
+                background-color: #f5f5f5;
+              }
+            </style>
+          </head>
+          <body>
+            <h1>DITA Documentation Portal</h1>
+            
+            <div class="card">
+              <h2>Main Documentation</h2>
+              <p>View the latest documentation from the main branch.</p>
+              <a href="./main/" class="button">View Main Documentation</a>
+            </div>
+            
+            <div class="card">
+              <h2>Branch Reviews</h2>
+              <p>The following branches are available for review:</p>
+              
+              <ul class="branch-list" id="branch-list">
+                <li>Loading branches...</li>
+              </ul>
+            </div>
+            
+            <script>
+              // Simple function to load branches
+              async function loadBranches() {
+                try {
+                  const response = await fetch('./branch-manifest.json');
+                  if (!response.ok) {
+                    throw new Error('Failed to load branches');
+                  }
+                  
+                  const data = await response.json();
+                  const branches = data.branches || [];
+                  
+                  if (branches.length === 0) {
+                    document.getElementById('branch-list').innerHTML = '<li>No branches available for review.</li>';
+                    return;
+                  }
+                  
+                  const branchItems = branches.map(branch => {
+                    if (branch.name === 'main') return '';
+                    
+                    const date = new Date(branch.timestamp);
+                    const formattedDate = date.toLocaleString();
+                    
+                    return `
+                      <li>
+                        <strong>${branch.name}</strong><br>
+                        <small>Updated: ${formattedDate} by ${branch.author || 'Unknown'}</small><br>
+                        <a href="./branches/${branch.name}/" style="color: #4a90e2;">View Documentation</a> | 
+                        <a href="https://github.com/mikev21313/simple-dita-publication/compare/main...${branch.name}" target="_blank" style="color: #4a90e2;">Compare Changes</a>
+                      </li>
+                    `;
+                  }).filter(item => item !== '').join('');
+                  
+                  if (branchItems) {
+                    document.getElementById('branch-list').innerHTML = branchItems;
+                  } else {
+                    document.getElementById('branch-list').innerHTML = '<li>No branches available for review.</li>';
+                  }
+                } catch (error) {
+                  console.error('Error loading branches:', error);
+                  document.getElementById('branch-list').innerHTML = `<li>Error loading branches: ${error.message}</li>`;
+                }
+              }
+              
+              // Load branches when the page loads
+              window.addEventListener('DOMContentLoaded', loadBranches);
+            </script>
+          </body>
+          </html>
+          EOF
+
+      # Step 11: Create branch-specific page
+      - name: Create Branch Page
+        run: |
+          # Create directory for branch-specific content
+          mkdir -p ./site/main
+          
+          # Create index.html for branch
+          cat > ./site/main/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Main Documentation</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                margin: 0;
+                padding: 20px;
+              }
+              h1 {
+                color: #333;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 10px;
+              }
+              .content {
+                max-width: 800px;
+                margin: 0 auto;
+              }
+              .back-link {
+                display: inline-block;
+                margin-bottom: 20px;
+                color: #4a90e2;
+                text-decoration: none;
+              }
+              .back-link:hover {
+                text-decoration: underline;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="content">
+              <a href="../" class="back-link">← Back to Branch Selection</a>
+              <h1>Main Branch Documentation</h1>
+              <p>This is the documentation from the main branch.</p>
+              <p>Content is currently being developed.</p>
+            </div>
+          </body>
+          </html>
+          EOF
+
+      # Step 12: Create branch manifest file
+      - name: Create Branch Manifest
+        run: |
+          # Create branch manifest
+          cat > ./site/branch-manifest.json << EOF
+          {
+            "branches": [
+              {
+                "name": "main",
+                "timestamp": "$(date -u "+%Y-%m-%dT%H:%M:%SZ")",
+                "author": "$GITHUB_ACTOR",
+                "commit": "$GITHUB_SHA",
+                "url": "main"
+              },
+              {
+                "name": "$BRANCH_NAME",
+                "timestamp": "$(date -u "+%Y-%m-%dT%H:%M:%SZ")",
+                "author": "$GITHUB_ACTOR",
+                "commit": "$GITHUB_SHA",
+                "url": "branches/$BRANCH_NAME"
+              }
+            ],
+            "lastUpdated": "$(date -u "+%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+          
+          # Remove duplicate entries for main branch if current branch is main
+          if [ "$BRANCH_NAME" == "main" ]; then
+            # Use jq if available to properly format JSON
+            if command -v jq >/dev/null 2>&1; then
+              jq '.branches = [.branches[0]]' ./site/branch-manifest.json > ./site/branch-manifest.tmp
+              mv ./site/branch-manifest.tmp ./site/branch-manifest.json
+            else
+              # Simple sed-based approach as fallback
+              sed -i '/"name": "main",/,/"url": "main"/!d' ./site/branch-manifest.json
+            fi
+          fi
+
+      # Step 13: Create branch-specific directory if not main
+      - name: Create Branch Directory
+        if: env.BRANCH_NAME != 'main'
+        run: |
+          # Create directory for branch
+          mkdir -p "./site/branches/$BRANCH_NAME"
+          
+          # Copy main template to branch
+          cp ./site/main/index.html "./site/branches/$BRANCH_NAME/index.html"
+          
+          # Update content to show branch name
+          sed -i "s/Main Branch Documentation/$BRANCH_NAME Branch Documentation/g" "./site/branches/$BRANCH_NAME/index.html"
+          sed -i "s/This is the documentation from the main branch./This is the documentation from the $BRANCH_NAME branch./g" "./site/branches/$BRANCH_NAME/index.html"
+
+      # Step 14: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          keep_files: true
+          force_orphan: false
