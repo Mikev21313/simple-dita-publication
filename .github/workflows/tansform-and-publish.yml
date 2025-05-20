@@ -1,15 +1,8 @@
-name: DITA to SPA with Branch Preview System
+name: DITA to SPA Transformation with Collapsible Navigation
 
 on:
   push:
-    branches:
-      - main
-      - "**"
-      - "!gh-pages"
-    tags-ignore:
-      - "**"
-  pull_request:
-    types: [opened, reopened, synchronize]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -17,313 +10,196 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: read
-
     steps:
-      # Step 1: Checkout repository
+      # Step 1: Checkout repository 
       - name: Checkout repository
         uses: actions/checkout@v3
+
+      # Step 2: Set up Java (required for DITA-OT)
+      - name: Set up Java
+        uses: actions/setup-java@v3
         with:
-          fetch-depth: 0
+          distribution: 'temurin'
+          java-version: '17'
 
-      # Step 2: Set up environment and extract branch information
-      - name: Set up environment
-        id: setup
+      # Step 3: Install DITA-OT
+      - name: Set up DITA-OT
         run: |
-          # Create all needed directories first
-          mkdir -p ./site/js ./site/css ./site/content ./site/previews ./branch-metadata
-          
-          # Extract branch information
-          BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-          CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
-          echo "CURRENT_DATE=${CURRENT_DATE}" >> $GITHUB_ENV
-          
-          # Extract author and commit info
-          AUTHOR=$(git log -1 --pretty=format:'%an')
-          COMMIT_MSG=$(git log -1 --pretty=format:'%s')
-          COMMIT_SHA=$(git log -1 --pretty=format:'%h')
-          echo "AUTHOR=${AUTHOR}" >> $GITHUB_ENV
-          echo "COMMIT_MSG=${COMMIT_MSG}" >> $GITHUB_ENV
-          echo "COMMIT_SHA=${COMMIT_SHA}" >> $GITHUB_ENV
-          
-          echo "Branch: ${BRANCH_NAME}"
-          echo "Author: ${AUTHOR}"
-          echo "Commit: ${COMMIT_SHA} - ${COMMIT_MSG}"
-          
-          # Detect if this is a PR
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
-            echo "PR_NUMBER=${PR_NUMBER}" >> $GITHUB_ENV
-            echo "Pull Request #${PR_NUMBER} detected"
-          fi
-          
-          # Detect DITAMAP location (search for *.ditamap files)
-          DITAMAPS=$(find . -name "*.ditamap" -not -path "*/\.git/*" -not -path "*/node_modules/*")
-          if [ -z "$DITAMAPS" ]; then
-            echo "Warning: No DITAMAP files found in repository"
-            echo "DITAMAP_FOUND=false" >> $GITHUB_ENV
-          else
-            echo "Found DITAMAP files:"
-            echo "$DITAMAPS"
-            # Use the first found DITAMAP as the main one
-            MAIN_DITAMAP=$(echo "$DITAMAPS" | head -n 1)
-            echo "MAIN_DITAMAP=${MAIN_DITAMAP}" >> $GITHUB_ENV
-            echo "DITAMAP_FOUND=true" >> $GITHUB_ENV
-            echo "Using ${MAIN_DITAMAP} as main DITAMAP"
-          fi
-
-      # Step 3: Install required tools
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxml2-utils xsltproc
-
-      # Step 4: Set up Java and DITA-OT (only if DITAMAP found)
-      - name: Set up Java and DITA-OT
-        if: env.DITAMAP_FOUND == 'true'
-        run: |
-          echo "Setting up Java and DITA-OT"
-          java -version
-          
-          # Install DITA-OT
           wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
-          
-          # Test DITA-OT installation
-          ./dita-ot-4.0.2/bin/dita --version
-          if [ $? -ne 0 ]; then
-            echo "Error: DITA-OT installation failed"
-            exit 1
-          fi
-          
-          echo "DITA-OT setup completed successfully"
 
-      # Step 5: Transform DITA to HTML (only if DITAMAP found)
+      # Step 4: Transform DITA to HTML
       - name: Transform DITA to HTML
-        if: env.DITAMAP_FOUND == 'true'
         run: |
-          echo "Transforming DITA to HTML using ${MAIN_DITAMAP}"
+          # Using HTML5 format with parameters for better output
+          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
+          echo "DITA transformation complete"
           
-          # Get the directory of the DITAMAP
-          DITAMAP_DIR=$(dirname "${MAIN_DITAMAP}")
+          # Create content directory for SPA fragments
+          mkdir -p ./site/content
           
-          # Run DITA-OT transformation
-          ./dita-ot-4.0.2/bin/dita --input="${MAIN_DITAMAP}" --format=html5 --output=./site/dita-output
-          
-          # Check if transformation succeeded
-          if [ $? -ne 0 ]; then
-            echo "Warning: DITA transformation failed, creating sample content instead"
-            mkdir -p ./site/dita-output
-            echo "<h1>Sample Content</h1><p>DITA transformation failed. This is placeholder content.</p>" > ./site/dita-output/index.html
-          fi
-          
-          # Process HTML files into content fragments
-          echo "Processing HTML files into content fragments"
-          for file in ./site/dita-output/*.html; do
-            if [ -f "$file" ]; then
-              # Skip processing if this is the index.html
-              if [[ "$(basename "$file")" == "index.html" ]]; then
-                continue
-              fi
-              
-              filename=$(basename "$file")
-              id="${filename%.html}"
-              echo "Processing $filename (ID: $id)"
-              
-              # Extract content from file (handle different HTML structures)
-              content=$(sed -n '/<body/,/<\/body>/p' "$file" | 
-                       sed '/<body/d;/<\/body>/d' | 
-                       sed '/<header/,/<\/header>/d;/<nav/,/<\/nav>/d;/<footer/,/<\/footer>/d')
-              
-              # Get title from the original file
-              title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-              if [ -z "$title" ]; then
-                title=$(echo "$id" | tr '_' ' ' | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-              fi
-              
-              # Create content file
-              echo "$content" > "./site/content/$id.html"
-              echo "Created content fragment for $id"
+          # List files to check output
+          echo "Generated files:"
+          find ./site -type f | sort
+
+      # Step 5: Process HTML files into content fragments
+      - name: Process HTML Content
+        run: |
+          # Process each HTML file to extract content
+          for file in ./site/*.html; do
+            # Skip processing if this is the index.html we'll create later
+            if [[ "$file" == "./site/index.html" ]]; then
+              continue
             fi
+            
+            filename=$(basename "$file")
+            id="${filename%.html}"
+            echo "Processing $filename (ID: $id)"
+            
+            # Extract content from file 
+            content=$(sed -n '/<body/,/<\/body>/p' "$file" | 
+                     sed '/<body/d;/<\/body>/d' | 
+                     sed '/<header/,/<\/header>/d' | 
+                     sed '/<nav/,/<\/nav>/d' | 
+                     sed '/<footer/,/<\/footer>/d')
+            
+            # Get title from the original file
+            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
+            if [ -z "$title" ]; then
+              title=$(echo "$id" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+            fi
+            
+            # Create content file
+            echo "$content" > "./site/content/$id.html"
+            
+            # Map from DITA filename to content ID
+            case "$id" in
+              "car_basics") 
+                echo "$content" > "./site/content/automobile-fundamentals.html" 
+                echo "Created mapping: car_basics.html → automobile-fundamentals.html"
+                ;;
+              "car_components") 
+                echo "$content" > "./site/content/major-vehicle-components.html" 
+                echo "Created mapping: car_components.html → major-vehicle-components.html"
+                ;;
+              "car_history") 
+                echo "$content" > "./site/content/history-of-automobiles.html" 
+                echo "Created mapping: car_history.html → history-of-automobiles.html"
+                ;;
+              "car_maintenance") 
+                echo "$content" > "./site/content/vehicle-maintenance.html" 
+                echo "Created mapping: car_maintenance.html → vehicle-maintenance.html"
+                ;;
+              "car_types") 
+                echo "$content" > "./site/content/types-of-vehicles.html" 
+                echo "Created mapping: car_types.html → types-of-vehicles.html"
+                ;;
+              "electrical") 
+                echo "$content" > "./site/content/electrical-systems.html" 
+                echo "Created mapping: electrical.html → electrical-systems.html"
+                ;;
+              "engines") 
+                echo "$content" > "./site/content/engine-systems.html" 
+                echo "Created mapping: engines.html → engine-systems.html"
+                ;;
+              "evs") 
+                echo "$content" > "./site/content/electric-vehicles.html" 
+                echo "Created mapping: evs.html → electric-vehicles.html"
+                ;;
+              "brakes") 
+                echo "$content" > "./site/content/braking-systems.html" 
+                echo "Created mapping: brakes.html → braking-systems.html"
+                ;;
+              "emergency_repairs") 
+                echo "$content" > "./site/content/emergency-repairs.html" 
+                echo "Created mapping: emergency_repairs.html → emergency-repairs.html"
+                ;;
+              "basic_maintenance") 
+                echo "$content" > "./site/content/basic-maintenance.html" 
+                echo "Created mapping: basic_maintenance.html → basic-maintenance.html"
+                ;;
+            esac
+            
+            # Add to the content manifest
+            echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
           done
-          
-          # Create default page if no content files were created
-          if [ ! "$(ls -A ./site/content/)" ]; then
-            echo "<h1>Documentation</h1><p>Welcome to the documentation. No content has been generated yet.</p>" > ./site/content/home.html
-            echo "Created default home page since no content was found"
-          fi
 
-      # Step 6: Create sample content if no DITAMAP found
-      - name: Create sample content
-        if: env.DITAMAP_FOUND != 'true'
+      # Step 6: Create hierarchical navigation configuration
+      - name: Create Navigation Config
         run: |
-          echo "No DITAMAP found, creating sample content"
+          mkdir -p ./site/js ./site/css
           
-          # Create basic pages
-          echo "<h1>Home</h1><p>Welcome to the documentation. This is a sample page created because no DITA content was found.</p>" > ./site/content/home.html
-          echo "<h1>About</h1><p>This is a sample about page.</p>" > ./site/content/about.html
-          echo "<h1>Overview</h1><p>This is a sample overview page.</p>" > ./site/content/overview.html
+          # Create hierarchical navigation config matching the structure in the image
+          cat > ./site/js/navigation-config.js << 'EOF'
+          // Hierarchical navigation structure from DITA map
+          const navigationConfig = [
+            {
+              id: "automotive-information",
+              title: "Automotive Information",
+              children: [
+                { id: "history-of-automobiles", title: "History of Automobiles" },
+                { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
+                { 
+                  id: "types-of-vehicles", 
+                  title: "Types of Vehicles",
+                  children: [
+                    { id: "electric-vehicles", title: "Electric Vehicles" }
+                  ]
+                }
+              ]
+            },
+            {
+              id: "basic-maintenance",
+              title: "Basic Maintenance",
+              children: [
+                { id: "emergency-repairs", title: "Emergency Repairs" },
+                { id: "vehicle-maintenance", title: "Vehicle Maintenance" }
+              ]
+            },
+            {
+              id: "major-vehicle-components",
+              title: "Major Vehicle Components",
+              children: [
+                { id: "electrical-systems", title: "Electrical Systems" },
+                { id: "braking-systems", title: "Braking Systems" },
+                { id: "engine-systems", title: "Engine Systems" }
+              ]
+            }
+          ];
+          EOF
           
-          echo "Sample content created successfully"
-
-      # Step 7: Extract or create navigation structure
-      - name: Process navigation structure
-        run: |
-          echo "Processing navigation structure"
+          # Create content manifest from processed content
+          echo "// Content manifest - maps IDs to content files" > ./site/js/content-manifest.js
+          echo "const contentManifest = {" >> ./site/js/content-manifest.js
           
-          if [ "${DITAMAP_FOUND}" == "true" ]; then
-            echo "Attempting to extract navigation from DITAMAP"
-            
-            # Create XSLT for navigation extraction
-            cat > extract-nav.xsl << 'EOF'
-            <?xml version="1.0" encoding="UTF-8"?>
-            <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-              <xsl:output method="text"/>
-              
-              <xsl:template match="/">
-                <xsl:text>const navigationConfig = [&#10;</xsl:text>
-                <xsl:apply-templates select="//topicref"/>
-                <xsl:text>];&#10;</xsl:text>
-              </xsl:template>
-              
-              <xsl:template match="topicref">
-                <xsl:text>  {&#10;</xsl:text>
-                <xsl:text>    "id": "</xsl:text>
-                <xsl:choose>
-                  <xsl:when test="@href">
-                    <xsl:value-of select="translate(@href, '.dita', '')"/>
-                  </xsl:when>
-                  <xsl:otherwise>
-                    <xsl:value-of select="generate-id()"/>
-                  </xsl:otherwise>
-                </xsl:choose>
-                <xsl:text>",&#10;</xsl:text>
-                <xsl:text>    "title": "</xsl:text>
-                <xsl:choose>
-                  <xsl:when test="@navtitle">
-                    <xsl:value-of select="@navtitle"/>
-                  </xsl:when>
-                  <xsl:otherwise>
-                    <xsl:value-of select="@title"/>
-                  </xsl:otherwise>
-                </xsl:choose>
-                <xsl:text>",&#10;</xsl:text>
-                
-                <xsl:if test="topicref">
-                  <xsl:text>    "children": [&#10;</xsl:text>
-                  <xsl:apply-templates select="topicref"/>
-                  <xsl:text>    ]&#10;</xsl:text>
-                </xsl:if>
-                
-                <xsl:text>  }</xsl:text>
-                <xsl:if test="position() != last()">
-                  <xsl:text>,&#10;</xsl:text>
-                </xsl:if>
-              </xsl:template>
-            </xsl:stylesheet>
-            EOF
-            
-            # Try to extract navigation with XSLT
-            if xsltproc extract-nav.xsl "${MAIN_DITAMAP}" > ./site/js/navigation-config.js; then
-              echo "Successfully extracted navigation from DITAMAP"
-            else
-              echo "Failed to extract navigation with XSLT, creating fallback"
-              # Create fallback navigation
-              create_fallback_navigation
-            fi
-          else
-            echo "No DITAMAP found, creating default navigation"
-            create_fallback_navigation
+          # Add entries from our temp file if it exists
+          if [ -f "./site/content-list.tmp" ]; then
+            cat ./site/content-list.tmp >> ./site/js/content-manifest.js
           fi
           
-          # Create content manifest
-          create_content_manifest
+          # Add explicit mappings for hyphenated IDs
+          echo "  \"automotive-information\": { \"title\": \"Automotive Information\" }," >> ./site/js/content-manifest.js
+          echo "  \"basic-maintenance\": { \"title\": \"Basic Maintenance\" }," >> ./site/js/content-manifest.js
+          echo "  \"braking-systems\": { \"title\": \"Braking Systems\" }," >> ./site/js/content-manifest.js
+          echo "  \"automobile-fundamentals\": { \"title\": \"Automobile Fundamentals\" }," >> ./site/js/content-manifest.js
+          echo "  \"major-vehicle-components\": { \"title\": \"Major Vehicle Components\" }," >> ./site/js/content-manifest.js
+          echo "  \"history-of-automobiles\": { \"title\": \"History of Automobiles\" }," >> ./site/js/content-manifest.js
+          echo "  \"vehicle-maintenance\": { \"title\": \"Vehicle Maintenance\" }," >> ./site/js/content-manifest.js
+          echo "  \"types-of-vehicles\": { \"title\": \"Types of Vehicles\" }," >> ./site/js/content-manifest.js
+          echo "  \"electrical-systems\": { \"title\": \"Electrical Systems\" }," >> ./site/js/content-manifest.js
+          echo "  \"emergency-repairs\": { \"title\": \"Emergency Repairs\" }," >> ./site/js/content-manifest.js
+          echo "  \"engine-systems\": { \"title\": \"Engine Systems\" }," >> ./site/js/content-manifest.js
+          echo "  \"electric-vehicles\": { \"title\": \"Electric Vehicles\" }," >> ./site/js/content-manifest.js
           
-          # Helper functions
-          function create_fallback_navigation {
-            # Create a fallback navigation structure based on content files
-            echo "// Fallback navigation structure" > ./site/js/navigation-config.js
-            echo "const navigationConfig = [" >> ./site/js/navigation-config.js
-            
-            # Check if we have content files
-            if [ "$(ls -A ./site/content/)" ]; then
-              # Add home/index if it exists
-              if [ -f "./site/content/home.html" ] || [ -f "./site/content/index.html" ]; then
-                echo "  {" >> ./site/js/navigation-config.js
-                echo "    \"id\": \"home\"," >> ./site/js/navigation-config.js
-                echo "    \"title\": \"Home\"" >> ./site/js/navigation-config.js
-                echo "  }," >> ./site/js/navigation-config.js
-              fi
-              
-              # Add other content files
-              first=true
-              for file in ./site/content/*.html; do
-                if [ -f "$file" ]; then
-                  filename=$(basename "$file" .html)
-                  # Skip home/index as we already added it
-                  if [[ "$filename" == "home" || "$filename" == "index" ]]; then
-                    continue
-                  fi
-                  
-                  # Get title from file
-                  title=$(grep -o "<h1>.*</h1>" "$file" | sed 's/<h1>\(.*\)<\/h1>/\1/' | head -1)
-                  if [ -z "$title" ]; then
-                    title=$(echo "$filename" | tr '-' ' ' | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-                  fi
-                  
-                  # Add to navigation
-                  echo "  {" >> ./site/js/navigation-config.js
-                  echo "    \"id\": \"$filename\"," >> ./site/js/navigation-config.js
-                  echo "    \"title\": \"$title\"" >> ./site/js/navigation-config.js
-                  
-                  # Add comma if not the last item
-                  if [ -f "$(ls ./site/content/*.html | grep -v "home.html" | grep -v "index.html" | sort | tail -n 1)" != "$file" ]; then
-                    echo "  }," >> ./site/js/navigation-config.js
-                  else
-                    echo "  }" >> ./site/js/navigation-config.js
-                  fi
-                fi
-              done
-            else
-              # No content files, create a simple structure
-              echo "  {" >> ./site/js/navigation-config.js
-              echo "    \"id\": \"home\"," >> ./site/js/navigation-config.js
-              echo "    \"title\": \"Home\"" >> ./site/js/navigation-config.js
-              echo "  }" >> ./site/js/navigation-config.js
-            fi
-            
-            echo "];" >> ./site/js/navigation-config.js
-          }
+          # Close the manifest
+          echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-manifest.js
+          echo "};" >> ./site/js/content-manifest.js
           
-          function create_content_manifest {
-            # Create the content manifest
-            echo "// Content manifest - maps IDs to content files" > ./site/js/content-manifest.js
-            echo "const contentManifest = {" >> ./site/js/content-manifest.js
-            
-            # Add entries for content files
-            if [ "$(ls -A ./site/content/)" ]; then
-              for file in ./site/content/*.html; do
-                if [ -f "$file" ]; then
-                  filename=$(basename "$file" .html)
-                  title=$(grep -o "<h1>.*</h1>" "$file" | sed 's/<h1>\(.*\)<\/h1>/\1/' | head -1)
-                  if [ -z "$title" ]; then
-                    title=$(echo "$filename" | tr '-' ' ' | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-                  fi
-                  
-                  # Add to manifest
-                  echo "  \"$filename\": { \"title\": \"$title\" }," >> ./site/js/content-manifest.js
-                fi
-              done
-            fi
-            
-            # Add default entry and close manifest
-            echo "  \"default\": { \"title\": \"Documentation\" }" >> ./site/js/content-manifest.js
-            echo "};" >> ./site/js/content-manifest.js
-          }
+          # Clean up temp file
+          rm -f ./site/content-list.tmp
 
-      # Step 8: Create SPA CSS
+      # Step 7: Create SPA CSS with improved navigation styling
       - name: Create SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
@@ -337,57 +213,8 @@ jobs:
             font-family: Arial, sans-serif;
             line-height: 1.6;
             display: flex;
-            flex-direction: column;
-            min-height: 100vh;
+            height: 100vh;
             width: 100%;
-            overflow-x: hidden;
-          }
-          
-          .review-banner {
-            background-color: #f0f8ff;
-            border-bottom: 1px solid #007bff;
-            padding: 10px 20px;
-            z-index: 1000;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          }
-          
-          .review-banner-text {
-            font-size: 14px;
-          }
-          
-          .review-banner-buttons {
-            display: flex;
-            gap: 10px;
-          }
-          
-          .review-banner-buttons button {
-            padding: 5px 10px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-          }
-          
-          .approve-btn {
-            background-color: #28a745;
-            color: white;
-          }
-          
-          .reject-btn {
-            background-color: #dc3545;
-            color: white;
-          }
-          
-          .comment-btn {
-            background-color: #007bff;
-            color: white;
-          }
-          
-          .main-container {
-            display: flex;
-            flex: 1;
-            height: calc(100vh - 40px); /* Height minus review banner */
             overflow: hidden;
           }
           
@@ -395,7 +222,7 @@ jobs:
             width: 250px;
             background-color: #f5f5f5;
             padding: 20px;
-            height: 100%;
+            height: 100vh;
             overflow-y: auto;
             border-right: 1px solid #ddd;
           }
@@ -403,7 +230,7 @@ jobs:
           .main-content {
             flex: 1;
             padding: 20px;
-            height: 100%;
+            height: 100vh;
             overflow-y: auto;
           }
           
@@ -498,44 +325,9 @@ jobs:
             height: auto;
           }
           
-          /* Comment system styling */
-          .comment-box {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 300px;
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          /* Fix for duplicate headings */
+          .main-content h1:first-child + h1 {
             display: none;
-            z-index: 1000;
-          }
-          
-          .comment-box-header {
-            background: #f5f5f5;
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          }
-          
-          .comment-box-content {
-            padding: 10px;
-          }
-          
-          .comment-box textarea {
-            width: 100%;
-            min-height: 100px;
-            margin-bottom: 10px;
-            padding: 5px;
-          }
-          
-          .comment-box-buttons {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
           }
           
           /* Loading state */
@@ -551,72 +343,23 @@ jobs:
             display: block;
           }
           
-          /* Branch list styling */
-          .branch-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-          }
-          
-          .branch-card {
-            border: 1px solid #ddd;
-            border-radius: 6px;
+          /* Error state */
+          .error {
+            background-color: #fff8f8;
+            border-left: 4px solid #e74c3c;
             padding: 15px;
-            background: white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            transition: transform 0.2s, box-shadow 0.2s;
+            margin-bottom: 20px;
+            color: #333;
           }
           
-          .branch-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+          .error h2 {
+            color: #e74c3c;
+            margin-top: 0;
           }
           
-          .branch-name {
-            font-weight: bold;
-            margin-bottom: 10px;
-            font-size: 18px;
-          }
-          
-          .branch-meta {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 15px;
-          }
-          
-          .branch-actions {
-            display: flex;
-            gap: 10px;
-          }
-          
-          .branch-button {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 4px;
-            text-decoration: none;
-            font-weight: 500;
-            text-align: center;
-          }
-          
-          .branch-view {
-            background: #0366d6;
-            color: white;
-          }
-          
-          .branch-pr {
-            background: #28a745;
-            color: white;
-          }
-          
-          .branch-pr.no-pr {
-            background: #666;
-            cursor: not-allowed;
-          }
-          
-          /* Mobile responsiveness */
+          /* Responsive design for mobile */
           @media (max-width: 768px) {
-            .main-container {
+            body {
               flex-direction: column;
               height: auto;
             }
@@ -625,75 +368,32 @@ jobs:
               width: 100%;
               height: auto;
               max-height: 40vh;
-              order: 2;
             }
             
             .main-content {
-              order: 1;
               height: auto;
               min-height: 60vh;
             }
-            
-            .review-banner {
-              flex-direction: column;
-              align-items: flex-start;
-              padding: 10px;
-            }
-            
-            .review-banner-buttons {
-              margin-top: 10px;
-              width: 100%;
-              justify-content: space-between;
-            }
-            
-            .branch-list {
-              grid-template-columns: 1fr;
-            }
-          }
-          
-          /* Error state */
-          .error {
-            background-color: #fff8f8;
-            border-left: 4px solid #dc3545;
-            padding: 15px;
-            margin-bottom: 20px;
-          }
-          
-          .error h2 {
-            color: #dc3545;
-            margin-top: 0;
           }
           EOF
 
-      # Step 9: Create SPA JavaScript
-      - name: Create SPA JavaScript
+      # Step 8: Create SPA JavaScript Application with section collapsing
+      - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // SPA Application with review functionality
+          // SPA Application with collapsible section headers
           
           // DOM Elements
           const contentEl = document.getElementById('content');
           const contentTitleEl = document.getElementById('content-title');
           const navigationEl = document.getElementById('navigation');
-          const reviewBannerEl = document.getElementById('review-banner');
-          const commentBoxEl = document.getElementById('comment-box');
-          const loadingEl = document.getElementById('loading');
           
           // Base path handling for GitHub Pages
           const getBasePath = () => {
             if (location.hostname.includes('github.io')) {
               const pathSegments = location.pathname.split('/');
-              // Skip empty first segment and handle preview/branch- prefix
-              let basePath = '';
               if (pathSegments.length > 1) {
-                if (pathSegments[1] === 'preview' && pathSegments.length > 2) {
-                  // For branch previews: /preview/branch-name/
-                  basePath = '/' + pathSegments.slice(0, 3).join('/');
-                } else {
-                  // For main site: /repo-name/
-                  basePath = '/' + pathSegments[1];
-                }
-                return basePath;
+                return '/' + pathSegments[1];
               }
             }
             return '';
@@ -702,15 +402,6 @@ jobs:
           // Current state
           let currentPage = null;
           const basePath = getBasePath();
-          
-          // Review information
-          const branchInfo = {
-            name: document.body.getAttribute('data-branch-name') || 'unknown',
-            author: document.body.getAttribute('data-author') || 'unknown',
-            commitMsg: document.body.getAttribute('data-commit-msg') || 'unknown',
-            commitSha: document.body.getAttribute('data-commit-sha') || 'unknown',
-            prNumber: document.body.getAttribute('data-pr-number') || null
-          };
           
           // Debug logging function
           function debug(message, data) {
@@ -721,123 +412,23 @@ jobs:
           function initApp() {
             debug('Initializing app with base path:', basePath);
             
-            // Ensure navigationConfig exists
-            if (typeof navigationConfig === 'undefined') {
-              console.error('Navigation configuration not found');
-              navigationConfig = [{ id: 'home', title: 'Home' }];
-            }
-            
-            // Ensure contentManifest exists
-            if (typeof contentManifest === 'undefined') {
-              console.error('Content manifest not found');
-              contentManifest = { 'default': { title: 'Documentation' } };
-            }
-            
             // Render navigation
             renderNavigation(navigationConfig);
-            
-            // Setup review banner if in review mode
-            setupReviewBanner();
             
             // Set up event listeners
             window.addEventListener('popstate', handlePopState);
             
             // Load initial page based on URL or default
-            const initialPageId = getPageIdFromUrl() || (navigationConfig[0] ? navigationConfig[0].id : 'home');
+            const initialPageId = getPageIdFromUrl() || navigationConfig[0].id;
             debug('Initial page ID:', initialPageId);
             navigateToPage(initialPageId, false);
-            
-            // Set up comment box functionality
-            setupCommentBox();
-          }
-          
-          // Setup review banner
-          function setupReviewBanner() {
-            if (reviewBannerEl) {
-              const bannerTextEl = reviewBannerEl.querySelector('.review-banner-text');
-              
-              if (bannerTextEl) {
-                let bannerText = `Reviewing branch: ${branchInfo.name}`;
-                if (branchInfo.prNumber) {
-                  bannerText += ` (PR #${branchInfo.prNumber})`;
-                }
-                bannerText += ` - Latest commit: ${branchInfo.commitMsg} (${branchInfo.commitSha}) by ${branchInfo.author}`;
-                
-                bannerTextEl.textContent = bannerText;
-              }
-              
-              // Set up button event listeners
-              const approveBtn = reviewBannerEl.querySelector('.approve-btn');
-              const rejectBtn = reviewBannerEl.querySelector('.reject-btn');
-              const commentBtn = reviewBannerEl.querySelector('.comment-btn');
-              
-              if (approveBtn) {
-                approveBtn.addEventListener('click', () => {
-                  alert('Approved! In a real implementation, this would trigger an API call to approve the PR or branch.');
-                });
-              }
-              
-              if (rejectBtn) {
-                rejectBtn.addEventListener('click', () => {
-                  alert('Rejected! In a real implementation, this would trigger an API call to request changes on the PR or branch.');
-                });
-              }
-              
-              if (commentBtn) {
-                commentBtn.addEventListener('click', () => {
-                  toggleCommentBox();
-                });
-              }
-            }
-          }
-          
-          // Set up comment box
-          function setupCommentBox() {
-            if (commentBoxEl) {
-              const closeBtn = commentBoxEl.querySelector('.close-btn');
-              const submitBtn = commentBoxEl.querySelector('.submit-btn');
-              const commentTextarea = commentBoxEl.querySelector('textarea');
-              
-              if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
-                  commentBoxEl.style.display = 'none';
-                });
-              }
-              
-              if (submitBtn && commentTextarea) {
-                submitBtn.addEventListener('click', () => {
-                  const commentText = commentTextarea.value.trim();
-                  if (commentText) {
-                    // In a real implementation, this would post to an API
-                    alert(`Comment submitted: ${commentText}`);
-                    commentTextarea.value = '';
-                    commentBoxEl.style.display = 'none';
-                  }
-                });
-              }
-            }
-          }
-          
-          // Toggle comment box
-          function toggleCommentBox() {
-            if (commentBoxEl) {
-              if (commentBoxEl.style.display === 'none' || !commentBoxEl.style.display) {
-                commentBoxEl.style.display = 'block';
-              } else {
-                commentBoxEl.style.display = 'none';
-              }
-            }
           }
           
           // Render the navigation menu with hierarchy
           function renderNavigation(items, parentEl = navigationEl) {
-            if (!parentEl) return;
-            
             const ul = document.createElement('ul');
             
             items.forEach(item => {
-              if (!item || !item.id || !item.title) return;
-              
               const li = document.createElement('li');
               
               // Add class if item has children
@@ -859,7 +450,7 @@ jobs:
               a.setAttribute('data-id', item.id);
               a.href = `#${item.id}`;
               
-              // Click handler for navigation
+              // IMPORTANT CHANGE: Modified click handler for section titles
               a.addEventListener('click', (e) => {
                 e.preventDefault();
                 
@@ -889,12 +480,8 @@ jobs:
           function expandNavigationTo(pageId) {
             // Helper to search for a page in the navigation tree
             function findPageInNavigation(items, id, path = []) {
-              if (!items) return null;
-              
               for (let i = 0; i < items.length; i++) {
                 const item = items[i];
-                if (!item) continue;
-                
                 const currentPath = [...path, item];
                 
                 if (item.id === id) {
@@ -919,21 +506,14 @@ jobs:
             // Expand all parent items in the path
             for (let i = 0; i < path.length - 1; i++) {
               const item = path[i];
-              const navItem = document.querySelector(`.sidebar li a[data-id="${item.id}"]`);
-              if (navItem) {
-                const li = navItem.parentElement;
-                li.classList.add('expanded');
-              }
+              const li = document.querySelector(`.sidebar li a[data-id="${item.id}"]`).parentElement;
+              li.classList.add('expanded');
             }
           }
           
           // Navigate to a specific page
           function navigateToPage(pageId, pushState = true) {
             debug('Navigating to page:', pageId);
-            
-            // Show loading indicator
-            if (loadingEl) loadingEl.style.display = 'block';
-            document.body.classList.add('loading');
             
             // Update active state in navigation
             updateActiveNavItem(pageId);
@@ -946,6 +526,9 @@ jobs:
               history.pushState({ pageId }, '', `#${pageId}`);
             }
             
+            // Show loading indicator
+            document.body.classList.add('loading');
+            
             // Update current page
             currentPage = pageId;
             
@@ -957,17 +540,18 @@ jobs:
               .then(content => {
                 // Update title
                 const title = getPageTitle(pageId);
-                if (contentTitleEl) contentTitleEl.textContent = title;
+                contentTitleEl.textContent = title;
                 document.title = title;
                 
-                // Update content
-                if (contentEl) {
-                  contentEl.innerHTML = content;
-                  contentEl.setAttribute('data-page-id', pageId);
+                // Fix for duplicate headings
+                if (content.includes(`<h1>${title}</h1>`)) {
+                  content = content.replace(`<h1>${title}</h1>`, '');
                 }
                 
+                // Update content
+                contentEl.innerHTML = content;
+                
                 // Hide loading indicator
-                if (loadingEl) loadingEl.style.display = 'none';
                 document.body.classList.remove('loading');
                 debug('Content loaded successfully');
               })
@@ -976,32 +560,21 @@ jobs:
                 // Try alternate ID
                 loadContent(altPageId)
                   .then(content => {
-                    const title = getPageTitle(pageId);
-                    if (contentTitleEl) contentTitleEl.textContent = title;
-                    document.title = title;
-                    
-                    if (contentEl) {
-                      contentEl.innerHTML = content;
-                      contentEl.setAttribute('data-page-id', pageId);
-                    }
-                    
-                    if (loadingEl) loadingEl.style.display = 'none';
+                    contentTitleEl.textContent = getPageTitle(pageId);
+                    document.title = getPageTitle(pageId);
+                    contentEl.innerHTML = content;
                     document.body.classList.remove('loading');
                     debug('Content loaded from alternate ID');
                   })
                   .catch(altError => {
                     console.error('Failed to load content:', altError);
-                    if (contentEl) {
-                      contentEl.innerHTML = `
-                        <div class="error">
-                          <h2>Content Not Found</h2>
-                          <p>The requested content "${pageId}" could not be loaded.</p>
-                          <p>Please select another topic from the navigation menu.</p>
-                        </div>
-                      `;
-                    }
-                    
-                    if (loadingEl) loadingEl.style.display = 'none';
+                    contentEl.innerHTML = `
+                      <div class="error">
+                        <h2>Content Not Found</h2>
+                        <p>The requested content "${pageId}" could not be loaded.</p>
+                        <p>Please select another topic from the navigation menu.</p>
+                      </div>
+                    `;
                     document.body.classList.remove('loading');
                   });
               });
@@ -1012,17 +585,12 @@ jobs:
             const contentPath = `${basePath}/content/${pageId}.html`;
             debug('Fetching from URL:', contentPath);
             
-            try {
-              const response = await fetch(contentPath);
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-              }
-              
-              return await response.text();
-            } catch (error) {
-              console.error('Error loading content:', error);
-              throw error;
+            const response = await fetch(contentPath);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
             }
+            
+            return await response.text();
           }
           
           // Update active state in navigation
@@ -1049,7 +617,7 @@ jobs:
           
           // Handle popstate event (browser back/forward)
           function handlePopState(event) {
-            const pageId = event.state?.pageId || getPageIdFromUrl() || (navigationConfig[0] ? navigationConfig[0].id : 'home');
+            const pageId = event.state?.pageId || getPageIdFromUrl() || navigationConfig[0].id;
             debug('Popstate event, loading page:', pageId);
             navigateToPage(pageId, false);
           }
@@ -1073,10 +641,10 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create index.html with branch review info
-      - name: Create Index HTML with Review Info
+      # Step 9: Create index.html
+      - name: Create Index HTML
         run: |
-          cat > ./site/index.html << EOF
+          cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
           <head>
@@ -1086,13 +654,6 @@ jobs:
             <meta http-equiv="Pragma" content="no-cache">
             <meta http-equiv="Expires" content="0">
             
-            <!-- Branch information metadata -->
-            <meta name="branch-name" content="${BRANCH_NAME}">
-            <meta name="branch-author" content="${AUTHOR}">
-            <meta name="branch-commit" content="${COMMIT_SHA}">
-            <meta name="branch-commit-msg" content="${COMMIT_MSG}">
-            <meta name="pr-number" content="${PR_NUMBER:-}">
-            
             <!-- Base path handling for GitHub Pages -->
             <script>
               // Dynamically set the base href based on deployment environment
@@ -1100,15 +661,8 @@ jobs:
                 // For GitHub Pages repository sites
                 if (location.hostname.includes('github.io')) {
                   const pathSegments = location.pathname.split('/');
-                  let basePath = '';
                   if (pathSegments.length > 1) {
-                    if (pathSegments[1] === 'preview' && pathSegments.length > 2) {
-                      // For branch previews: /preview/branch-name/
-                      basePath = '/' + pathSegments.slice(0, 3).join('/');
-                    } else {
-                      // For main site: /repo-name/
-                      basePath = '/' + pathSegments[1];
-                    }
+                    const basePath = '/' + pathSegments[1];
                     document.write('<base href="' + basePath + '/">');
                     console.log('Base path set to:', basePath);
                   }
@@ -1116,53 +670,21 @@ jobs:
               })();
             </script>
             
-            <title>Documentation Review - ${BRANCH_NAME}</title>
+            <title>Automotive Documentation</title>
             <link rel="stylesheet" href="css/style.css">
           </head>
-          <body data-branch-name="${BRANCH_NAME}" data-author="${AUTHOR}" data-commit-msg="${COMMIT_MSG}" data-commit-sha="${COMMIT_SHA}" data-pr-number="${PR_NUMBER:-}">
-            <!-- Review banner for branch previews -->
-            <div id="review-banner" class="review-banner">
-              <div class="review-banner-text">
-                Reviewing branch: ${BRANCH_NAME}
-              </div>
-              <div class="review-banner-buttons">
-                <button class="approve-btn">Approve</button>
-                <button class="reject-btn">Request Changes</button>
-                <button class="comment-btn">Comment</button>
-              </div>
+          <body>
+            <div class="sidebar">
+              <h2>Navigation</h2>
+              <div id="navigation"></div>
             </div>
-            
-            <div class="main-container">
-              <div class="sidebar">
-                <h2>Navigation</h2>
-                <div id="navigation"></div>
-              </div>
-              
-              <div class="main-content">
-                <h1 id="content-title">Loading...</h1>
-                <div id="loading">Loading content...</div>
-                <div id="content">
-                  <!-- Content will load here -->
-                  <div class="initial-loading">
-                    <p>Initializing documentation viewer...</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Comment box -->
-            <div id="comment-box" class="comment-box">
-              <div class="comment-box-header">
-                <h3>Add Comment</h3>
-                <button class="close-btn">×</button>
-              </div>
-              <div class="comment-box-content">
-                <textarea placeholder="Enter your comment here..."></textarea>
-                <div class="comment-box-buttons">
-                  <button class="submit-btn">Submit</button>
-                </div>
-                <div class="comment-list">
-                  <!-- Comments will be listed here -->
+            <div class="main-content">
+              <h1 id="content-title">Loading...</h1>
+              <div id="loading">Loading content...</div>
+              <div id="content">
+                <!-- Content will load here -->
+                <div class="initial-loading">
+                  <p>Initializing documentation viewer...</p>
                 </div>
               </div>
             </div>
@@ -1175,316 +697,83 @@ jobs:
           </html>
           EOF
 
-      # Step 11: Create Branch Previews Index (Main branch only)
-      - name: Create Branch Previews Index
-        if: github.ref == 'refs/heads/main'
+      # Step 10: Create 404.html page for SPA routing
+      - name: Create 404 Page for SPA Routing
         run: |
-          mkdir -p ./site/previews
-          
-          cat > ./site/previews/index.html << 'EOF'
+          cat > ./site/404.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Documentation Branch Reviews</title>
-            <style>
-              body {
-                font-family: Arial, sans-serif;
-                max-width: 1000px;
-                margin: 0 auto;
-                padding: 20px;
-                color: #333;
-              }
-              h1 {
-                border-bottom: 1px solid #eee;
-                padding-bottom: 10px;
-                margin-bottom: 20px;
-              }
-              .controls {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-              }
-              .refresh-button {
-                background: #0366d6;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-weight: 500;
-              }
-              .last-update {
-                color: #666;
-                font-style: italic;
-              }
-              .branch-list {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-                gap: 20px;
-              }
-              .branch-card {
-                border: 1px solid #ddd;
-                border-radius: 6px;
-                padding: 15px;
-                background: white;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                transition: transform 0.2s, box-shadow 0.2s;
-              }
-              .branch-card:hover {
-                transform: translateY(-3px);
-                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-              }
-              .branch-name {
-                font-weight: bold;
-                margin-bottom: 10px;
-                font-size: 18px;
-              }
-              .branch-meta {
-                color: #666;
-                font-size: 14px;
-                margin-bottom: 15px;
-              }
-              .branch-meta div {
-                margin-bottom: 3px;
-              }
-              .branch-actions {
-                display: flex;
-                gap: 10px;
-              }
-              .branch-button {
-                flex: 1;
-                display: inline-block;
-                padding: 8px 0;
-                border-radius: 4px;
-                text-decoration: none;
-                font-weight: 500;
-                text-align: center;
-              }
-              .branch-view {
-                background: #0366d6;
-                color: white;
-              }
-              .branch-pr {
-                background: #28a745;
-                color: white;
-              }
-              .branch-pr.no-pr {
-                background: #666;
-                cursor: not-allowed;
-              }
-              .empty-state {
-                text-align: center;
-                padding: 40px;
-                color: #666;
-                background: #f9f9f9;
-                border-radius: 8px;
-              }
-              .back-link {
-                margin-top: 20px;
-                display: inline-block;
-              }
-              @media (max-width: 768px) {
-                .branch-list {
-                  grid-template-columns: 1fr;
-                }
-                .controls {
-                  flex-direction: column;
-                  align-items: flex-start;
-                  gap: 10px;
-                }
-              }
-            </style>
-          </head>
-          <body>
-            <h1>Documentation Branch Reviews</h1>
-            
-            <div class="controls">
-              <button id="refresh-button" class="refresh-button">Refresh Branch List</button>
-              <span id="last-update" class="last-update">Last updated: Never</span>
-            </div>
-            
-            <div id="branch-container" class="branch-list">
-              <div class="empty-state">
-                Loading branch previews...
-              </div>
-            </div>
-            
-            <a href="../" class="back-link">Back to main documentation</a>
-            
+            <title>Redirecting...</title>
             <script>
-              document.addEventListener('DOMContentLoaded', () => {
-                const refreshButton = document.getElementById('refresh-button');
-                const lastUpdateElement = document.getElementById('last-update');
-                const branchContainer = document.getElementById('branch-container');
-                
-                refreshButton.addEventListener('click', fetchBranches);
-                
-                async function fetchBranches() {
-                  try {
-                    // Add timestamp to prevent caching
-                    const response = await fetch('./branches.json?' + Date.now());
-                    if (!response.ok) {
-                      throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (data.last_updated) {
-                      lastUpdateElement.textContent = 'Last updated: ' + new Date(data.last_updated).toLocaleString();
-                    }
-                    
-                    if (!data.branches || data.branches.length === 0) {
-                      branchContainer.innerHTML = `
-                        <div class="empty-state">
-                          No branch previews are currently available.
-                        </div>
-                      `;
-                      return;
-                    }
-                    
-                    let html = '';
-                    data.branches.forEach(branch => {
-                      const hasPR = branch.pr_number ? true : false;
-                      const updatedDate = branch.updated_at ? new Date(branch.updated_at).toLocaleString() : 'Unknown';
-                      
-                      html += `
-                        <div class="branch-card">
-                          <div class="branch-name">${branch.name || 'Unknown branch'}</div>
-                          <div class="branch-meta">
-                            <div>Updated: ${updatedDate}</div>
-                            <div>Author: ${branch.author || 'Unknown'}</div>
-                            ${branch.commit_sha ? `<div>Commit: ${branch.commit_sha}</div>` : ''}
-                            ${branch.pr_number ? `<div>PR: #${branch.pr_number}</div>` : ''}
-                          </div>
-                          <div class="branch-actions">
-                            <a href="../preview/branch-${branch.slug || branch.name}/" class="branch-button branch-view">View Preview</a>
-                            ${hasPR 
-                              ? `<a href="https://github.com/${window.location.pathname.split('/')[1]}/pull/${branch.pr_number}" class="branch-button branch-pr" target="_blank">View PR</a>`
-                              : `<span class="branch-button branch-pr no-pr">No PR</span>`
-                            }
-                          </div>
-                        </div>
-                      `;
-                    });
-                    
-                    branchContainer.innerHTML = html;
-                  } catch (error) {
-                    console.error('Error fetching branches:', error);
-                    branchContainer.innerHTML = `
-                      <div class="empty-state">
-                        Error loading branch data: ${error.message}
-                        <p>Please try again.</p>
-                      </div>
-                    `;
+              // Store the requested URL for processing after redirect
+              sessionStorage.redirect = location.href;
+              
+              // Dynamically determine the correct base path
+              function getBasePath() {
+                if (location.hostname.includes('github.io')) {
+                  const pathSegments = location.pathname.split('/');
+                  if (pathSegments.length > 1) {
+                    return '/' + pathSegments[1];
                   }
                 }
-                
-                // Initial fetch
-                fetchBranches();
-              });
+                return '';
+              }
+              
+              // Redirect to the main site with the correct base path
+              const basePath = getBasePath();
+              window.location.href = basePath + '/';
             </script>
+          </head>
+          <body>
+            <div style="text-align: center; font-family: Arial, sans-serif; margin-top: 100px;">
+              <h1>Redirecting to documentation...</h1>
+              <p>If you are not redirected automatically, <a href="/">click here</a>.</p>
+            </div>
           </body>
           </html>
           EOF
-          
-          # Create branches.json with any existing branch metadata
-          echo "{" > ./site/previews/branches.json
-          echo "  \"last_updated\": \"${CURRENT_DATE}\"," >> ./site/previews/branches.json
-          echo "  \"branches\": [" >> ./site/previews/branches.json
-          
-          # Sample branch data for testing
-          echo "    {" >> ./site/previews/branches.json
-          echo "      \"name\": \"${BRANCH_NAME}\"," >> ./site/previews/branches.json
-          echo "      \"slug\": \"${BRANCH_NAME}\"," >> ./site/previews/branches.json
-          echo "      \"updated_at\": \"${CURRENT_DATE}\"," >> ./site/previews/branches.json
-          echo "      \"author\": \"${AUTHOR}\"," >> ./site/previews/branches.json
-          echo "      \"commit_sha\": \"${COMMIT_SHA}\"," >> ./site/previews/branches.json
-          echo "      \"commit_msg\": \"${COMMIT_MSG}\"" >> ./site/previews/branches.json
-          if [ ! -z "${PR_NUMBER}" ]; then
-            echo "      ,\"pr_number\": \"${PR_NUMBER}\"" >> ./site/previews/branches.json
-          fi
-          echo "    }" >> ./site/previews/branches.json
-          
-          echo "  ]" >> ./site/previews/branches.json
-          echo "}" >> ./site/previews/branches.json
 
-      # Step 12: Create branch metadata
-      - name: Create branch metadata
+      # Step 11: Create placeholder content
+      - name: Create Default Content
         run: |
-          mkdir -p ./branch-metadata
-          cat > "./branch-metadata/${BRANCH_NAME}.json" << EOF
-          {
-            "name": "${GITHUB_REF#refs/heads/}",
-            "slug": "${BRANCH_NAME}",
-            "updated_at": "${CURRENT_DATE}",
-            "author": "${AUTHOR}",
-            "commit_sha": "${COMMIT_SHA}",
-            "commit_msg": "${COMMIT_MSG}"
-            ${PR_NUMBER:+, "pr_number": "${PR_NUMBER}"}
-          }
+          # Create default content page
+          mkdir -p ./site/content
+          
+          # Default automotive information page
+          cat > ./site/content/automotive-information.html << 'EOF'
+          <h1>Automotive Information</h1>
+          <p>Welcome to the automotive documentation. This comprehensive guide provides information about various aspects of automotive technology, maintenance, and repair.</p>
+          <p>Use the navigation menu to explore different topics related to automobiles.</p>
+          <p><strong>Main sections include:</strong></p>
+          <ul>
+            <li>History of Automobiles</li>
+            <li>Automobile Fundamentals</li>
+            <li>Types of Vehicles</li>
+          </ul>
           EOF
-
-      # Step 13: Update branches.json with all available branch data (main branch only)
-      - name: Update branches list (main branch only)
-        if: github.ref == 'refs/heads/main'
-        run: |
-          echo "Updating branch list on main branch"
           
-          # Check if there are any branch metadata files
-          if [ -d "./branch-metadata" ] && [ "$(ls -A ./branch-metadata)" ]; then
-            # Create a composite branches.json from all branch metadata
-            echo "{" > ./site/previews/branches.json
-            echo "  \"last_updated\": \"${CURRENT_DATE}\"," >> ./site/previews/branches.json
-            echo "  \"branches\": [" >> ./site/previews/branches.json
-            
-            FIRST=true
-            for file in ./branch-metadata/*.json; do
-              if [ -f "$file" ]; then
-                if [ "$FIRST" = true ]; then
-                  FIRST=false
-                else
-                  echo "," >> ./site/previews/branches.json
-                fi
-                
-                # Extract the content (remove first and last line - the opening and closing braces)
-                cat "$file" | sed '1s/^{//' | sed '$s/}$//' >> ./site/previews/branches.json
-              fi
-            done
-            
-            echo "  ]" >> ./site/previews/branches.json
-            echo "}" >> ./site/previews/branches.json
-            
-            echo "Branch list updated with $(ls -1 ./branch-metadata/*.json | wc -l) branches"
-          else
-            echo "No branch metadata files found"
-          fi
+          # Ensure all navigation items have content files by checking and creating if missing
+          for id in automotive-information basic-maintenance braking-systems automobile-fundamentals major-vehicle-components history-of-automobiles vehicle-maintenance types-of-vehicles electrical-systems emergency-repairs engine-systems electric-vehicles; do
+            if [ ! -f "./site/content/$id.html" ]; then
+              echo "Creating placeholder for $id"
+              
+              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+              
+              cat > "./site/content/$id.html" << EOF
+          <h1>${title}</h1>
+          <p>Information about ${title} is currently being developed.</p>
+          <p>Please check back later for updated content.</p>
+          EOF
+            fi
+          done
 
-      # Step 14: Deploy main site
-      - name: Deploy main site
-        if: github.ref == 'refs/heads/main'
+      # Step 12: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
-          force_orphan: false
-
-      # Step 15: Deploy branch preview
-      - name: Deploy branch preview
-        if: github.ref != 'refs/heads/main'
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
-          destination_dir: preview/branch-${{ env.BRANCH_NAME }}
-
-      # Step 16: Deploy branch metadata (all branches)
-      - name: Deploy branch metadata
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./branch-metadata
-          destination_dir: branch-metadata
-          keep_files: true
+          force_orphan: true
