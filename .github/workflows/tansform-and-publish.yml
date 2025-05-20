@@ -23,14 +23,19 @@ jobs:
         with:
           fetch-depth: 0 # Fetch all history for branch information
 
-      # Step 2: Set up Java for DITA-OT
+      # Step 2: Extract branch name (simplified)
+      - name: Extract branch name
+        shell: bash
+        run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      # Step 3: Set up Java for DITA-OT
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # Step 3: Install DITA-OT and XML tools
+      # Step 4: Install DITA-OT and XML tools
       - name: Set up DITA-OT and XML tools
         run: |
           # Install XML tools
@@ -41,15 +46,6 @@ jobs:
           wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
-
-      # Step 4: Set branch name for use in later steps
-      - name: Set branch name
-        id: branch
-        run: |
-          BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-          echo "name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-          echo "current_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_OUTPUT
-          echo "Branch name set to: $BRANCH_NAME"
 
       # Step 5: Parse DITAMAP to generate navigation structure
       - name: Parse DITAMAP Structure
@@ -532,19 +528,27 @@ jobs:
           const contentTitleEl = document.getElementById('content-title');
           const navigationEl = document.getElementById('navigation');
 
-          // Base path handling for GitHub Pages
+          // Base path handling for GitHub Pages - FIXED VERSION
           const getBasePath = () => {
             if (location.hostname.includes('github.io')) {
               const pathSegments = location.pathname.split('/');
-              // Adjust for potential branch previews or PR previews which add another segment
-              // e.g., /repo-name/preview/branch-my-feature/
-              // or /repo-name/preview/pr-123/
-              if (pathSegments.length >= 3 && pathSegments[2] === 'preview' && pathSegments.length >= 4) {
-                  return '/' + pathSegments[1] + '/' + pathSegments[2] + '/' + pathSegments[3];
-              } else if (pathSegments.length > 1) { // e.g., /repo-name/
-                return '/' + pathSegments[1];
+              
+              // Branch preview path format: /repo-name/preview/branch-name/
+              if (pathSegments.length >= 4 && pathSegments[2] === 'preview') {
+                const basePath = '/' + pathSegments.slice(1, 4).join('/');
+                console.log('Using branch preview base path:', basePath);
+                return basePath;
+              } 
+              
+              // Main site path format: /repo-name/
+              else if (pathSegments.length > 1) {
+                const basePath = '/' + pathSegments[1];
+                console.log('Using main site base path:', basePath);
+                return basePath;
               }
             }
+            
+            console.log('Using default empty base path');
             return '';
           };
 
@@ -845,7 +849,7 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 11: Create index.html
+      # Step 11: Create index.html with improved base path handling
       - name: Create Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
@@ -859,22 +863,33 @@ jobs:
             <meta http-equiv="Expires" content="0">
 
             <script>
-              // Set base path for GitHub Pages previews
-              if (location.hostname.includes('github.io')) {
-                const pathSegments = location.pathname.split('/');
-                // This logic needs to match the getBasePath in app.js
-                // /repo-name/preview/branch-name/
-                // pathSegments[1] is repo-name, pathSegments[2] is 'preview', pathSegments[3] is branch-name
-                if (pathSegments.length >= 3 && pathSegments[2] === 'preview' && pathSegments.length >= 4) {
-                    const basePath = '/' + pathSegments[1] + '/' + pathSegments[2] + '/' + pathSegments[3];
+              // Improved base path detection
+              function setBasePath() {
+                if (location.hostname.includes('github.io')) {
+                  const pathSegments = location.pathname.split('/');
+                  
+                  // Branch preview path: /repo-name/preview/branch-name/
+                  if (pathSegments.length >= 4 && pathSegments[2] === 'preview') {
+                    const basePath = '/' + pathSegments.slice(1, 4).join('/');
                     document.write('<base href="' + basePath + '/">');
-                    console.log('Base path set to (preview):', basePath);
-                } else if (pathSegments.length > 1) {
-                  const basePath = '/' + pathSegments[1];
-                  document.write('<base href="' + basePath + '/">');
-                  console.log('Base path set to (root):', basePath);
+                    console.log('Set branch preview base path:', basePath);
+                    return;
+                  }
+                  
+                  // Main site path: /repo-name/
+                  if (pathSegments.length >= 2) {
+                    const basePath = '/' + pathSegments[1];
+                    document.write('<base href="' + basePath + '/">');
+                    console.log('Set main site base path:', basePath);
+                    return;
+                  }
                 }
+                
+                console.log('Using default base path');
               }
+              
+              // Execute immediately
+              setBasePath();
             </script>
 
             <title>Automotive Documentation</title>
@@ -905,7 +920,7 @@ jobs:
           </html>
           EOF
 
-      # Step 12: Create 404.html for SPA routing
+      # Step 12: Create improved 404.html for SPA routing
       - name: Create 404 Page
         run: |
           cat > ./site/404.html << 'EOF'
@@ -918,23 +933,29 @@ jobs:
             <script>
               // Store the requested URL for processing after redirect
               sessionStorage.redirect = location.href;
-
-              // Determine the correct base path
+              
+              // Improved base path detection
               function getBasePath() {
                 if (location.hostname.includes('github.io')) {
                   const pathSegments = location.pathname.split('/');
-                  // This logic needs to match the getBasePath in app.js
-                  if (pathSegments.length >= 3 && pathSegments[2] === 'preview' && pathSegments.length >= 4) {
-                      return '/' + pathSegments[1] + '/' + pathSegments[2] + '/' + pathSegments[3];
-                  } else if (pathSegments.length > 1) {
+                  
+                  // Handle branch previews - format: /repo-name/preview/branch-name/
+                  if (pathSegments.length >= 4 && pathSegments[2] === 'preview') {
+                    return '/' + pathSegments.slice(1, 4).join('/');
+                  }
+                  
+                  // Handle main site - format: /repo-name/
+                  if (pathSegments.length >= 2) {
                     return '/' + pathSegments[1];
                   }
                 }
+                
                 return '';
               }
-
-              // Redirect to the main site
+              
+              // Get the base path and redirect
               const basePath = getBasePath();
+              console.log('Redirecting with base path:', basePath);
               window.location.href = basePath + '/';
             </script>
           </head>
@@ -1208,21 +1229,24 @@ jobs:
           # Create metadata directory if it doesn't exist
           mkdir -p ./preview-metadata
           
-          # If this is not the main branch, create branch info file
+          # For branch deployments only (not main branch)
           if [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            # Create branch json file - using the prepared branch name from previous step
-            cat > "./preview-metadata/${{ steps.branch.outputs.name }}.json" << EOF
+            # Current date in ISO format
+            CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            
+            # Create branch metadata file
+            echo "Creating branch metadata for ${{ env.BRANCH_NAME }}"
+            cat > "./preview-metadata/${{ env.BRANCH_NAME }}.json" << EOF
           {
             "name": "${GITHUB_REF#refs/heads/}",
-            "slug": "${{ steps.branch.outputs.name }}",
-            "updated_at": "${{ steps.branch.outputs.current_date }}"
+            "slug": "${{ env.BRANCH_NAME }}",
+            "updated_at": "${CURRENT_DATE}"
           }
           EOF
-            echo "Created branch metadata file for ${GITHUB_REF#refs/heads/}"
           fi
 
-      # Step 16: Deploy based on branch
-      - name: Deploy (Main Branch)
+      # Step 16: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages (Main)
         if: github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v3
         with:
@@ -1230,36 +1254,56 @@ jobs:
           publish_dir: ./site
           exclude_assets: ''
 
-      - name: Deploy (Branch Preview)
+      # Step 17: Deploy Branch Preview
+      - name: Deploy to GitHub Pages (Branch Preview)
         if: github.ref != 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
-          destination_dir: preview/branch-${{ steps.branch.outputs.name }}
+          destination_dir: preview/branch-${{ env.BRANCH_NAME }}
+          force_orphan: false  # Don't delete other branch previews
+          keep_files: true     # Keep existing files
+
+      # Step 18: Deploy Branch Metadata
+      - name: Deploy Branch Metadata
+        if: github.ref != 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./preview-metadata
+          destination_dir: preview-metadata
+          keep_files: true
           force_orphan: false
 
-      # Step 17: Update Branch Preview Index (Main branch only)
+      # Step 19: Update Branch Preview Index (Main branch only)
       - name: Update Branch Preview Index
         if: github.ref == 'refs/heads/main'
         run: |
-          # Checkout gh-pages branch to get existing preview-metadata
+          # Try to get existing metadata from gh-pages branch
           git fetch origin gh-pages || echo "Could not fetch gh-pages branch"
           
-          # Try to get preview-metadata or create new folder
-          git checkout origin/gh-pages -- preview-metadata || mkdir -p preview-metadata
+          # Create directory for metadata extraction
+          mkdir -p temp-metadata
           
-          # Find all branch metadata files and build a list
-          echo "Building branch list JSON"
+          # Try to checkout metadata or create new
+          git checkout origin/gh-pages -- preview-metadata || echo "No preview-metadata directory found"
           
-          # Generate branches.json file
+          # Copy metadata files or create empty dir
+          if [ -d "preview-metadata" ]; then
+            cp -r preview-metadata/* temp-metadata/ 2>/dev/null || echo "No metadata files to copy"
+          else
+            mkdir -p temp-metadata
+          fi
+          
+          # Generate updated branches.json file
           echo "{" > branches.json
           echo "  \"last_updated\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"," >> branches.json
           echo "  \"branches\": [" >> branches.json
           
           # Add branch metadata entries
           FIRST=true
-          for file in preview-metadata/*.json; do
+          for file in temp-metadata/*.json; do
             if [ -f "$file" ]; then
               if [ "$FIRST" = true ]; then
                 FIRST=false
@@ -1273,29 +1317,19 @@ jobs:
           echo "  ]" >> branches.json
           echo "}" >> branches.json
           
-          # Update branches.json
-          mkdir -p ./site/previews
+          # Update branches.json in site directory
           cp branches.json ./site/previews/branches.json
           
-          # Deploy separately
-          git config --global user.email "github-actions@github.com"
-          git config --global user.name "GitHub Actions"
-          
-          # Use a separate commit for preview metadata only
-          git checkout --orphan gh-pages-temp
-          
-          # Copy files from existing gh-pages if it exists
-          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
-            git reset --hard origin/gh-pages
-          fi
-          
-          # Update the preview files
-          mkdir -p previews preview-metadata
-          cp ./site/previews/index.html ./previews/
-          cp ./site/previews/branches.json ./previews/
-          cp -r ./preview-metadata/* ./preview-metadata/ 2>/dev/null || echo "No metadata to copy"
-          
-          # Commit and push changes
-          git add ./previews/ ./preview-metadata/
-          git commit -m "Update branch preview index" || echo "No changes to commit"
-          git push origin gh-pages-temp:gh-pages || echo "Push failed, will be updated on next run"
+          # Deploy the updated index file separately
+          cp branches.json ./branches.json  # Make a copy for deployment
+
+      # Step 20: Deploy Updated Branch Index (Main branch only)
+      - name: Deploy Updated Branch Index
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site/previews
+          destination_dir: previews
+          keep_files: true
+          force_orphan: false
