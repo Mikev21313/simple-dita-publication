@@ -1,8 +1,9 @@
-name: DITA to SPA Transformation with Collapsible Navigation
+name: DITA to SPA Transformation with Branch Review
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - '**'  # This will trigger on all branches
   workflow_dispatch:
 
 jobs:
@@ -22,14 +23,41 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # Step 3: Install DITA-OT
+      # Step 3: Extract branch name for deployment path
+      - name: Extract branch name
+        shell: bash
+        run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | sed 's/\//-/g')" >> $GITHUB_ENV
+        id: extract_branch
+
+      # Step 4: Install DITA-OT
       - name: Set up DITA-OT
         run: |
           wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Transform DITA to HTML
+      # Step 5: Clone gh-pages branch to get the branch manifest
+      - name: Fetch Branch Manifest
+        if: success()
+        run: |
+          # Create a directory for gh-pages branch
+          mkdir -p /tmp/gh-pages
+          
+          # Clone the gh-pages branch if it exists
+          git clone --branch gh-pages --single-branch --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git /tmp/gh-pages 2>/dev/null || echo "No gh-pages branch yet"
+          
+          # Create branches directory if it doesn't exist
+          mkdir -p /tmp/gh-pages/branches
+          
+          # Check if branch-manifest.json exists, if not create it
+          if [ ! -f "/tmp/gh-pages/branch-manifest.json" ]; then
+            echo '{"branches":[]}' > /tmp/gh-pages/branch-manifest.json
+          fi
+          
+          # Make branches directory if it doesn't exist
+          mkdir -p /tmp/gh-pages/branches
+
+      # Step 6: Transform DITA to HTML
       - name: Transform DITA to HTML
         run: |
           # Using HTML5 format with parameters for better output
@@ -43,7 +71,7 @@ jobs:
           echo "Generated files:"
           find ./site -type f | sort
 
-      # Step 5: Process HTML files into content fragments
+      # Step 7: Process HTML files into content fragments
       - name: Process HTML Content
         run: |
           # Process each HTML file to extract content
@@ -73,7 +101,7 @@ jobs:
             # Create content file
             echo "$content" > "./site/content/$id.html"
             
-            # Map from DITA filename to content ID
+            # Create mappings - same as before
             case "$id" in
               "car_basics") 
                 echo "$content" > "./site/content/automobile-fundamentals.html" 
@@ -125,7 +153,7 @@ jobs:
             echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
           done
 
-      # Step 6: Create hierarchical navigation configuration
+      # Step 8: Create hierarchical navigation configuration
       - name: Create Navigation Config
         run: |
           mkdir -p ./site/js ./site/css
@@ -199,7 +227,7 @@ jobs:
           # Clean up temp file
           rm -f ./site/content-list.tmp
 
-      # Step 7: Create SPA CSS with improved navigation styling
+      # Step 9: Create SPA CSS with improved navigation styling and branch tab
       - name: Create SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
@@ -213,8 +241,43 @@ jobs:
             font-family: Arial, sans-serif;
             line-height: 1.6;
             display: flex;
+            flex-direction: column;
             height: 100vh;
             width: 100%;
+            overflow: hidden;
+          }
+          
+          /* Tabs for navigation and branches */
+          .tabs {
+            display: flex;
+            background-color: #f0f0f0;
+            border-bottom: 1px solid #ddd;
+          }
+          
+          .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #f0f0f0;
+            border: none;
+            outline: none;
+            border-right: 1px solid #ddd;
+            font-weight: bold;
+            transition: background-color 0.2s;
+          }
+          
+          .tab:hover {
+            background-color: #e0e0e0;
+          }
+          
+          .tab.active {
+            background-color: #fff;
+            border-bottom: 2px solid #4a90e2;
+          }
+          
+          /* Main content area */
+          .content-container {
+            display: flex;
+            flex: 1;
             overflow: hidden;
           }
           
@@ -222,7 +285,7 @@ jobs:
             width: 250px;
             background-color: #f5f5f5;
             padding: 20px;
-            height: 100vh;
+            height: 100%;
             overflow-y: auto;
             border-right: 1px solid #ddd;
           }
@@ -230,7 +293,7 @@ jobs:
           .main-content {
             flex: 1;
             padding: 20px;
-            height: 100vh;
+            height: 100%;
             overflow-y: auto;
           }
           
@@ -240,6 +303,97 @@ jobs:
             color: #333;
             border-bottom: 1px solid #ddd;
             padding-bottom: 10px;
+          }
+          
+          /* Branch review panel */
+          .branch-panel {
+            display: none;
+            width: 250px;
+            background-color: #f5f5f5;
+            padding: 20px;
+            height: 100%;
+            overflow-y: auto;
+            border-right: 1px solid #ddd;
+          }
+          
+          .branch-panel.active {
+            display: block;
+          }
+          
+          .branch-panel h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #333;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+          }
+          
+          .branch-list {
+            list-style-type: none;
+          }
+          
+          .branch-list li {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #fff;
+            border-radius: 4px;
+            border-left: 4px solid #4a90e2;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+          
+          .branch-list li.current {
+            border-left-color: #2ecc71;
+            background-color: #f4fff4;
+          }
+          
+          .branch-list li.main {
+            border-left-color: #f39c12;
+            background-color: #fff8e1;
+          }
+          
+          .branch-name {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+          }
+          
+          .branch-date {
+            display: block;
+            font-size: 0.8em;
+            color: #666;
+            margin-bottom: 5px;
+          }
+          
+          .branch-actions {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+          }
+          
+          .branch-actions a {
+            text-decoration: none;
+            padding: 3px 8px;
+            font-size: 0.8em;
+            border-radius: 3px;
+            background-color: #f0f0f0;
+            color: #333;
+            border: 1px solid #ddd;
+          }
+          
+          .branch-actions a:hover {
+            background-color: #e0e0e0;
+          }
+          
+          .branch-actions a.view {
+            background-color: #dbeafe;
+            color: #1e3a8a;
+            border-color: #bbd6f8;
+          }
+          
+          .branch-actions a.compare {
+            background-color: #f0fff0;
+            color: #166534;
+            border-color: #bbf8c4;
           }
           
           /* Improved navigation styling for hierarchy */
@@ -310,6 +464,38 @@ jobs:
             font-weight: bold;
           }
           
+          /* Branch banner */
+          .branch-banner {
+            background-color: #f0f8ff;
+            border-bottom: 1px solid #bbd6f8;
+            color: #1e3a8a;
+            padding: 10px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          
+          .branch-banner span {
+            font-weight: bold;
+          }
+          
+          .branch-banner .branch-actions a {
+            margin-left: 15px;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            background-color: #dbeafe;
+            color: #1e3a8a;
+            border: 1px solid #bbd6f8;
+          }
+          
+          .branch-banner .branch-actions a:hover {
+            background-color: #bfdbfe;
+          }
+          
           /* Content styling */
           .main-content h1, .main-content h2, .main-content h3 {
             margin-top: 1em;
@@ -364,7 +550,11 @@ jobs:
               height: auto;
             }
             
-            .sidebar {
+            .content-container {
+              flex-direction: column;
+            }
+            
+            .sidebar, .branch-panel {
               width: 100%;
               height: auto;
               max-height: 40vh;
@@ -377,16 +567,67 @@ jobs:
           }
           EOF
 
-      # Step 8: Create SPA JavaScript Application with section collapsing
+      # Step 10: Create a branch manifest file to track branches
+      - name: Update Branch Manifest
+        run: |
+          # Get the existing manifest or create a new one
+          MANIFEST_FILE="/tmp/gh-pages/branch-manifest.json"
+          
+          # Create a timestamp for the current deployment
+          TIMESTAMP=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
+          
+          # Update the branch manifest
+          jq --arg branch "$BRANCH_NAME" \
+             --arg timestamp "$TIMESTAMP" \
+             --arg actor "$GITHUB_ACTOR" \
+             --arg sha "$GITHUB_SHA" \
+             --arg url "branches/$BRANCH_NAME" \
+             '
+             ($branch | ascii_downcase) as $lowerbranch |
+             .branches = [
+               (.branches[] | select(.name != $branch)) + 
+               if $branch == "main" then [] else [{"name": $branch, "timestamp": $timestamp, "author": $actor, "commit": $sha, "url": $url}] end
+             ] | .branches = .branches | .lastUpdated = $timestamp
+             ' \
+             $MANIFEST_FILE > branch-manifest-new.json
+          
+          # Check if we have a valid JSON file
+          if jq empty branch-manifest-new.json 2>/dev/null; then
+            # Copy to the site directory
+            cp branch-manifest-new.json ./site/branch-manifest.json
+            # Also update the original file for the next run
+            cp branch-manifest-new.json $MANIFEST_FILE
+          else
+            # Create a new manifest if there was an error
+            echo "Error updating manifest, creating a new one"
+            if [ "$BRANCH_NAME" == "main" ]; then
+              echo '{"branches":[],"lastUpdated":"'$TIMESTAMP'"}' > ./site/branch-manifest.json
+            else
+              echo '{"branches":[{"name":"'$BRANCH_NAME'","timestamp":"'$TIMESTAMP'","author":"'$GITHUB_ACTOR'","commit":"'$GITHUB_SHA'","url":"branches/'$BRANCH_NAME'"}],"lastUpdated":"'$TIMESTAMP'"}' > ./site/branch-manifest.json
+            fi
+            cp ./site/branch-manifest.json $MANIFEST_FILE
+          fi
+          
+          echo "Branch manifest updated for $BRANCH_NAME"
+          cat ./site/branch-manifest.json
+
+      # Step 11: Create SPA JavaScript Application with branch review functionality
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // SPA Application with collapsible section headers
+          // SPA Application with collapsible section headers and branch review
           
           // DOM Elements
           const contentEl = document.getElementById('content');
           const contentTitleEl = document.getElementById('content-title');
           const navigationEl = document.getElementById('navigation');
+          const branchesEl = document.getElementById('branches');
+          const branchBannerEl = document.getElementById('branch-banner');
+          const branchNameEl = document.getElementById('branch-name');
+          const navTabEl = document.getElementById('nav-tab');
+          const branchTabEl = document.getElementById('branch-tab');
+          const navPanelEl = document.getElementById('nav-panel');
+          const branchPanelEl = document.getElementById('branch-panel');
           
           // Base path handling for GitHub Pages
           const getBasePath = () => {
@@ -403,6 +644,32 @@ jobs:
           let currentPage = null;
           const basePath = getBasePath();
           
+          // Get branch name from URL path
+          function getBranchFromPath() {
+            const pathSegments = location.pathname.split('/');
+            // Look for "branches" segment in the path
+            for (let i = 0; i < pathSegments.length - 1; i++) {
+              if (pathSegments[i] === 'branches' && i + 1 < pathSegments.length) {
+                return pathSegments[i + 1];
+              }
+            }
+            // Default to main if no branch segment is found
+            return 'main';
+          }
+          
+          // Current branch
+          const currentBranch = getBranchFromPath();
+          
+          // Full repository URL (extracted from page URL)
+          function getRepoUrl() {
+            if (location.hostname.includes('github.io')) {
+              const username = location.hostname.split('.')[0];
+              const repo = location.pathname.split('/')[1];
+              return `https://github.com/${username}/${repo}`;
+            }
+            return '';
+          }
+          
           // Debug logging function
           function debug(message, data) {
             console.log(`[DITA-SPA] ${message}`, data || '');
@@ -411,6 +678,33 @@ jobs:
           // Initialize the application
           function initApp() {
             debug('Initializing app with base path:', basePath);
+            debug('Current branch:', currentBranch);
+            
+            // Update branch banner if not on main branch
+            if (currentBranch !== 'main' && branchBannerEl && branchNameEl) {
+              branchBannerEl.style.display = 'flex';
+              branchNameEl.textContent = currentBranch;
+            }
+            
+            // Set up tab event listeners
+            if (navTabEl && branchTabEl) {
+              navTabEl.addEventListener('click', () => {
+                navTabEl.classList.add('active');
+                branchTabEl.classList.remove('active');
+                navPanelEl.classList.add('active');
+                branchPanelEl.classList.remove('active');
+              });
+              
+              branchTabEl.addEventListener('click', () => {
+                branchTabEl.classList.add('active');
+                navTabEl.classList.remove('active');
+                branchPanelEl.classList.add('active');
+                navPanelEl.classList.remove('active');
+                
+                // Load branch list when tab is activated
+                loadBranchList();
+              });
+            }
             
             // Render navigation
             renderNavigation(navigationConfig);
@@ -422,6 +716,93 @@ jobs:
             const initialPageId = getPageIdFromUrl() || navigationConfig[0].id;
             debug('Initial page ID:', initialPageId);
             navigateToPage(initialPageId, false);
+          }
+          
+          // Load the list of branches
+          async function loadBranchList() {
+            if (!branchesEl) return;
+            
+            try {
+              // Show loading state
+              branchesEl.innerHTML = '<p>Loading branches...</p>';
+              
+              // Load branch manifest
+              const manifestPath = `${basePath}/branch-manifest.json`;
+              const response = await fetch(manifestPath);
+              
+              if (!response.ok) {
+                throw new Error(`Failed to load branch manifest: ${response.status}`);
+              }
+              
+              const manifest = await response.json();
+              debug('Loaded branch manifest:', manifest);
+              
+              // Format the branch list
+              renderBranchList(manifest.branches);
+            } catch (error) {
+              debug('Error loading branch list:', error);
+              branchesEl.innerHTML = `
+                <div class="error">
+                  <h3>Error Loading Branches</h3>
+                  <p>${error.message || 'Could not load branch list'}</p>
+                </div>
+              `;
+            }
+          }
+          
+          // Render the branch list
+          function renderBranchList(branches) {
+            if (!branchesEl) return;
+            
+            if (!branches || branches.length === 0) {
+              branchesEl.innerHTML = '<p>No branches available for review.</p>';
+              return;
+            }
+            
+            // Sort branches - main first, then by timestamp (newest first)
+            const sortedBranches = [...branches].sort((a, b) => {
+              if (a.name === 'main') return -1;
+              if (b.name === 'main') return 1;
+              return new Date(b.timestamp) - new Date(a.timestamp);
+            });
+            
+            // Create the list HTML
+            const repoUrl = getRepoUrl();
+            const branchItems = sortedBranches.map(branch => {
+              const date = new Date(branch.timestamp);
+              const formattedDate = date.toLocaleString();
+              const isCurrent = branch.name === currentBranch;
+              const isMain = branch.name === 'main';
+              const basePath = getBasePath();
+              
+              const viewUrl = isMain 
+                ? `${basePath}/` 
+                : `${basePath}/${branch.url}/`;
+                
+              const compareUrl = isMain 
+                ? '#' 
+                : `${repoUrl}/compare/main...${branch.name}`;
+              
+              return `
+                <li class="${isCurrent ? 'current' : ''} ${isMain ? 'main' : ''}">
+                  <span class="branch-name">${branch.name}</span>
+                  <span class="branch-date">Updated: ${formattedDate}</span>
+                  <span class="branch-author">By: ${branch.author || 'Unknown'}</span>
+                  <div class="branch-actions">
+                    <a href="${viewUrl}" class="view" ${isCurrent ? 'disabled' : ''}>
+                      ${isCurrent ? 'Current' : 'View'}
+                    </a>
+                    ${!isMain ? `<a href="${compareUrl}" target="_blank" class="compare">Compare</a>` : ''}
+                  </div>
+                </li>
+              `;
+            }).join('');
+            
+            branchesEl.innerHTML = `
+              <ul class="branch-list">
+                ${branchItems}
+              </ul>
+            `;
           }
           
           // Render the navigation menu with hierarchy
@@ -641,7 +1022,7 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 9: Create index.html
+      # Step 12: Create index.html with tabbed interface
       - name: Create Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
@@ -674,17 +1055,47 @@ jobs:
             <link rel="stylesheet" href="css/style.css">
           </head>
           <body>
-            <div class="sidebar">
-              <h2>Navigation</h2>
-              <div id="navigation"></div>
+            <!-- Branch review banner (hidden by default) -->
+            <div id="branch-banner" class="branch-banner" style="display: none;">
+              <div>
+                <span>Branch Review:</span> <span id="branch-name">unknown</span>
+              </div>
+              <div class="branch-actions">
+                <a href="../main/" target="_blank">View Main Branch</a>
+                <a href="https://github.com/your-repo/your-project/compare/main..._BRANCH_NAME_" target="_blank" id="compare-link">Compare Changes</a>
+              </div>
             </div>
-            <div class="main-content">
-              <h1 id="content-title">Loading...</h1>
-              <div id="loading">Loading content...</div>
-              <div id="content">
-                <!-- Content will load here -->
-                <div class="initial-loading">
-                  <p>Initializing documentation viewer...</p>
+            
+            <!-- Tabs navigation -->
+            <div class="tabs">
+              <button id="nav-tab" class="tab active">Navigation</button>
+              <button id="branch-tab" class="tab">Branches</button>
+            </div>
+            
+            <div class="content-container">
+              <!-- Navigation panel -->
+              <div id="nav-panel" class="sidebar active">
+                <h2>Documentation</h2>
+                <div id="navigation"></div>
+              </div>
+              
+              <!-- Branch review panel -->
+              <div id="branch-panel" class="branch-panel">
+                <h2>Branch Reviews</h2>
+                <div id="branches">
+                  <p>Click to load branches...</p>
+                </div>
+              </div>
+              
+              <!-- Main content -->
+              <div class="main-content">
+                <h1 id="content-title">Loading...</h1>
+                <div id="loading">Loading content...</div>
+                <div id="content">
+                  <!-- Content will load here -->
+                  <div class="initial-loading">
+                    <p>Initializing documentation viewer...</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -693,11 +1104,34 @@ jobs:
             <script src="js/navigation-config.js"></script>
             <script src="js/content-manifest.js"></script>
             <script src="js/app.js"></script>
+            
+            <!-- Update branch compare link -->
+            <script>
+              (function() {
+                // Get branch name from path
+                function getBranchFromPath() {
+                  const pathSegments = location.pathname.split('/');
+                  for (let i = 0; i < pathSegments.length - 1; i++) {
+                    if (pathSegments[i] === 'branches' && i + 1 < pathSegments.length) {
+                      return pathSegments[i + 1];
+                    }
+                  }
+                  return 'main';
+                }
+                
+                const branchName = getBranchFromPath();
+                const compareLink = document.getElementById('compare-link');
+                
+                if (compareLink && branchName !== 'main') {
+                  compareLink.href = compareLink.href.replace('_BRANCH_NAME_', branchName);
+                }
+              })();
+            </script>
           </body>
           </html>
           EOF
 
-      # Step 10: Create 404.html page for SPA routing
+      # Step 13: Create 404.html page for SPA routing
       - name: Create 404 Page for SPA Routing
         run: |
           cat > ./site/404.html << 'EOF'
@@ -722,9 +1156,23 @@ jobs:
                 return '';
               }
               
+              // Determine if this is a branch path
+              function getBranchPath() {
+                const path = location.pathname;
+                if (path.includes('/branches/')) {
+                  const segments = path.split('/');
+                  const branchIndex = segments.indexOf('branches');
+                  if (branchIndex >= 0 && branchIndex + 1 < segments.length) {
+                    return '/branches/' + segments[branchIndex + 1] + '/';
+                  }
+                }
+                return '/';
+              }
+              
               // Redirect to the main site with the correct base path
               const basePath = getBasePath();
-              window.location.href = basePath + '/';
+              const branchPath = getBranchPath();
+              window.location.href = basePath + branchPath;
             </script>
           </head>
           <body>
@@ -736,7 +1184,7 @@ jobs:
           </html>
           EOF
 
-      # Step 11: Create placeholder content
+      # Step 14: Create placeholder content
       - name: Create Default Content
         run: |
           # Create default content page
@@ -770,10 +1218,12 @@ jobs:
             fi
           done
 
-      # Step 12: Deploy to GitHub Pages
+      # Step 15: Deploy to GitHub Pages with branch-specific path
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
-          force_orphan: true
+          destination_dir: ${{ env.BRANCH_NAME == 'main' && '' || format('branches/{0}', env.BRANCH_NAME) }}
+          force_orphan: ${{ env.BRANCH_NAME == 'main' && 'true' || 'false' }}
+          keep_files: true  # Important to keep existing branch deployments
