@@ -1929,7 +1929,3 @@ jobs:
           publish_dir: ./site
 
           force_orphan: true
-
-
-
-this is a working code can we implement this temporary branch feature? before coding can we clarify the workflow
