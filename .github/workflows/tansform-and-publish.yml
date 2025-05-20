@@ -1494,10 +1494,10 @@ jobs:
             echo "Creating branch metadata for ${BRANCH_NAME}"
             cat > "./preview-metadata/${BRANCH_NAME}.json" << EOF
           {
+
             "name": "${GITHUB_REF#refs/heads/}",
             "slug": "${BRANCH_NAME}",
-            "updated_at": "${CURRENT_DATE}"
-          }
+            "updated_at": "${CURRENT_DATE}"          }
           EOF
             echo "Branch metadata created"
           fi
