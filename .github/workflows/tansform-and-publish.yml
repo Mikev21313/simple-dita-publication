@@ -1,24 +1,17 @@
-name: DITA to SPA Transformation with Auto-Generated Navigation
+name: DITA to SPA Transformation with Collapsible Navigation
 
 on:
   push:
-    branches:
-      - main # For the primary, live documentation deployment
-      - '*' # For all other branches (feature, bugfix, etc.)
-    tags-ignore: # Prevent tags from triggering builds unless specifically desired
-      - '**'
-    branches-ignore:
-      - 'gh-pages' # IMPORTANT: Prevent infinite loop if deploying to gh-pages branch itself
-  workflow_dispatch: # Allows manual trigger
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed for peaceiris/actions-gh-pages
-
+      contents: write
     steps:
-      # Step 1: Checkout repository
+      # Step 1: Checkout repository 
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -29,299 +22,184 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # Step 3: Install DITA-OT and required tools
-      - name: Set up DITA-OT and XML tools
+      # Step 3: Install DITA-OT
+      - name: Set up DITA-OT
         run: |
-          # Install XML tools
-          sudo apt-get update
-          sudo apt-get install -y libxml2-utils xsltproc
-
-          # Install DITA-OT
           wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Parse DITAMAP to generate navigation structure
-      - name: Parse DITAMAP Structure
-        run: |
-          echo "Parsing DITAMAP structure from dita-source/automotive.ditamap"
-
-          # Create an XSLT file to transform DITAMAP to JSON navigation structure
-          cat > extract-nav.xsl << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-            <xsl:output method="text"/>
-
-            <xsl:template match="/">
-              [
-                <xsl:apply-templates select="//topicref[not(ancestor::topicref)]"/>
-              ]
-            </xsl:template>
-
-            <xsl:template match="topicref">
-              <xsl:variable name="href" select="@href"/>
-              <xsl:variable name="filename">
-                <xsl:choose>
-                  <xsl:when test="contains($href, '/')">
-                    <xsl:value-of select="substring-after(substring-before($href, '.'), '/')"/>
-                  </xsl:when>
-                  <xsl:otherwise>
-                    <xsl:value-of select="substring-before($href, '.')"/>
-                  </xsl:otherwise>
-                </xsl:choose>
-              </xsl:variable>
-
-              <xsl:variable name="id">
-                <xsl:choose>
-                  <xsl:when test="@id"><xsl:value-of select="@id"/></xsl:when>
-                  <xsl:otherwise><xsl:value-of select="translate($filename, '_', '-')"/></xsl:otherwise>
-                </xsl:choose>
-              </xsl:variable>
-
-              <xsl:variable name="title">
-                <xsl:choose>
-                  <xsl:when test="@navtitle"><xsl:value-of select="@navtitle"/></xsl:when>
-                  <xsl:when test="topicmeta/navtitle"><xsl:value-of select="topicmeta/navtitle"/></xsl:when>
-                  <xsl:otherwise>
-                    <xsl:value-of select="translate(translate($id, '-', ' '), '_', ' ')"/>
-                  </xsl:otherwise>
-                </xsl:choose>
-              </xsl:variable>
-
-              {
-                "id": "<xsl:value-of select="$id"/>",
-                "title": "<xsl:value-of select="$title"/>",
-                "filename": "<xsl:value-of select="$filename"/>",
-                "href": "<xsl:value-of select="$href"/>"
-                <xsl:if test="topicref">
-                  ,
-                  "children": [
-                    <xsl:apply-templates select="topicref"/>
-                  ]
-                </xsl:if>
-              }<xsl:if test="following-sibling::topicref">,</xsl:if>
-            </xsl:template>
-          </xsl:stylesheet>
-          EOF
-
-          # Apply XSLT to extract navigation from DITAMAP
-          xsltproc extract-nav.xsl dita-source/automotive.ditamap > ./navigation-structure.json
-
-          # Fix any JSON syntax issues
-          sed -i 's/\\n//g; s/\\t//g; s/\\"//g; s/\\//g; s/  / /g' ./navigation-structure.json
-
-          # Create a shell script to handle filename to id mapping
-          cat > ./generate-id-map.sh << 'EOF'
-          #!/bin/bash
-
-          # Function to convert underscore filenames to hyphenated ids
-          function filename_to_id() {
-            local filename=$1
-            echo "${filename//_/-}"
-          }
-
-          # Function to generate a title from an ID
-          function id_to_title() {
-            local id=$1
-            # Replace hyphens with spaces and capitalize each word
-            echo "$id" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g'
-          }
-
-          # Ensure directory exists
-          mkdir -p ./site/js
-
-          # Generate ID to title mapping as JavaScript
-          echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
-          echo "const contentIdMap = {" >> ./site/js/content-id-map.js
-
-          # Process each HTML file in the site directory
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
-            filename=$(basename "$file" .html)
-            id=$(filename_to_id "$filename")
-            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-
-            # If no title found, generate one from the ID
-            if [ -z "$title" ]; then
-              title=$(id_to_title "$id")
-            fi
-
-            # Handle special characters for shell safety
-            title=$(echo "$title" | sed 's/"/\\"/g')
-
-            # Add to content map file directly
-            echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$filename\" }," >> ./site/js/content-id-map.js
-          done
-
-          # Close the mapping object
-          echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-id-map.js
-          echo "};" >> ./site/js/content-id-map.js
-          EOF
-
-          chmod +x ./generate-id-map.sh
-
-          echo "DITAMAP parsing complete"
-          cat ./navigation-structure.json
-
-      # Step 5: Transform DITA to HTML and prepare images
-      - name: Transform DITA to HTML and Prepare Images
+      # Step 4: Transform DITA to HTML
+      - name: Transform DITA to HTML
         run: |
           # Using HTML5 format with parameters for better output
           ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
           echo "DITA transformation complete"
-
+          
           # Create content directory for SPA fragments
           mkdir -p ./site/content
-          mkdir -p ./site/images
+          
+          # List files to check output
+          echo "Generated files:"
+          find ./site -type f | sort
 
-          # List all DITA source content for debugging
-          echo "Full content of dita-source directory:"
-          find ./dita-source -type f | sort
-
-          # Copy all image files from dita-source to the images directory
-          echo "Copying all potential image files from dita-source:"
-          find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \;
-
-          # Also look for images in subdirectories
-          find ./dita-source -type d -name "*images*" -o -name "*img*" | while read dir; do
-            echo "Copying from image directory: $dir"
-            cp -rv $dir/* ./site/images/ || echo "No files in $dir"
-          done
-
-          # Extract image paths from HTML output
-          echo "Extracting image references from HTML files:"
-          grep -r "img src" ./site --include="*.html" | sed -E 's/.*src="([^"]*).*/\1/' > html-image-refs.txt
-          grep -r "image href" ./site --include="*.html" | sed -E 's/.*href="([^"]*).*/\1/' >> html-image-refs.txt
-
-          # Copy any image references found to the images directory
-          cat html-image-refs.txt | while read imgpath; do
-            # Extract just the filename if it's a path
-            filename=$(basename "$imgpath")
-            # Find the source file
-            find ./site -name "$filename" -exec cp -v {} ./site/images/ \;
-          done
-
-          # Find any image references in the HTML output and copy them
-          find ./site -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -not -path "./site/images/*" -exec cp -v {} ./site/images/ \;
-
-          # Create placeholder images if no images are found
-          if [ ! "$(ls -A ./site/images 2>/dev/null)" ]; then
-            echo "Creating placeholder test images"
-            # Use base64 encoded 1x1 pixel transparent PNG
-            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/test.png
-            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/2.jpg
-            echo "iVBORw0KGgoAAAANSUlBMVFVBMVEUAAAD///9aC+oCAAAAHElEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/3.jpg
-          fi
-
-          # Correct image file permissions
-          chmod -R 644 ./site/images/* || echo "No files to change permissions"
-
-          # List files in the images directory
-          echo "Files in images directory:"
-          ls -la ./site/images/ || echo "No files in images directory"
-
-      # Step 6: Process HTML files
+      # Step 5: Process HTML files into content fragments
       - name: Process HTML Content
         run: |
-          # Create content directory for SPA fragments
-          mkdir -p ./site/content
-          mkdir -p ./site/js
-
           # Process each HTML file to extract content
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
+          for file in ./site/*.html; do
             # Skip processing if this is the index.html we'll create later
             if [[ "$file" == "./site/index.html" ]]; then
               continue
             fi
-
+            
             filename=$(basename "$file")
             id="${filename%.html}"
-            hyphenated_id="${id//_/-}"
-            echo "Processing $filename (ID: $id, Hyphenated ID: $hyphenated_id)"
-
-            # Extract content from file
-            content=$(sed -n '/<body/,/<\/body>/p' "$file" |
-                      sed '/<body/d;/<\/body>/d' |
-                      sed '/<header/,/<\/header>/d' |
-                      sed '/<nav/,/<\/nav>/d' |
-                      sed '/<footer/,/<\/footer>/d')
-
-            # Fix image paths to use base SPA image directory
-            # 1. First convert DITA <image> tags to standard HTML <img> tags
-            content=$(echo "$content" | sed -E 's/<image([^>]*)href="([^"]*)"([^>]*)>/<img\1src="\2"\3>/gi')
-
-            # 2. Fix various image paths to use base SPA image directory
-            content=$(echo "$content" | sed -E 's/<img([^>]*)src="[^"]*\/([^\/"]*)\.([a-zA-Z0-9]+)"/<img\1src="images\/\2.\3"/gi')
-
-            # 3. Fix remaining img paths that might just be filenames
-            content=$(echo "$content" | sed -E 's/<img([^>]*)src="([^\/:"]*)\.(jpg|jpeg|png|gif|svg)"/<img\1src="images\/\2.\3"/gi')
-
-            # 4. Also handle images that might already have been correctly fixed
-            content=$(echo "$content" | sed -E 's/<img([^>]*)src="\/images\//<img\1src="images\//gi')
-
+            echo "Processing $filename (ID: $id)"
+            
+            # Extract content from file 
+            content=$(sed -n '/<body/,/<\/body>/p' "$file" | 
+                     sed '/<body/d;/<\/body>/d' | 
+                     sed '/<header/,/<\/header>/d' | 
+                     sed '/<nav/,/<\/nav>/d' | 
+                     sed '/<footer/,/<\/footer>/d')
+            
             # Get title from the original file
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
             if [ -z "$title" ]; then
-              title=$(echo "$id" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+              title=$(echo "$id" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
             fi
-
-            # Create content file with original filename
+            
+            # Create content file
             echo "$content" > "./site/content/$id.html"
-
-            # Also create a hyphenated version
-            if [[ "$id" != "$hyphenated_id" ]]; then
-              echo "$content" > "./site/content/$hyphenated_id.html"
-              echo "Created mapping: $id.html → $hyphenated_id.html"
-            fi
+            
+            # Map from DITA filename to content ID
+            case "$id" in
+              "car_basics") 
+                echo "$content" > "./site/content/automobile-fundamentals.html" 
+                echo "Created mapping: car_basics.html → automobile-fundamentals.html"
+                ;;
+              "car_components") 
+                echo "$content" > "./site/content/major-vehicle-components.html" 
+                echo "Created mapping: car_components.html → major-vehicle-components.html"
+                ;;
+              "car_history") 
+                echo "$content" > "./site/content/history-of-automobiles.html" 
+                echo "Created mapping: car_history.html → history-of-automobiles.html"
+                ;;
+              "car_maintenance") 
+                echo "$content" > "./site/content/vehicle-maintenance.html" 
+                echo "Created mapping: car_maintenance.html → vehicle-maintenance.html"
+                ;;
+              "car_types") 
+                echo "$content" > "./site/content/types-of-vehicles.html" 
+                echo "Created mapping: car_types.html → types-of-vehicles.html"
+                ;;
+              "electrical") 
+                echo "$content" > "./site/content/electrical-systems.html" 
+                echo "Created mapping: electrical.html → electrical-systems.html"
+                ;;
+              "engines") 
+                echo "$content" > "./site/content/engine-systems.html" 
+                echo "Created mapping: engines.html → engine-systems.html"
+                ;;
+              "evs") 
+                echo "$content" > "./site/content/electric-vehicles.html" 
+                echo "Created mapping: evs.html → electric-vehicles.html"
+                ;;
+              "brakes") 
+                echo "$content" > "./site/content/braking-systems.html" 
+                echo "Created mapping: brakes.html → braking-systems.html"
+                ;;
+              "emergency_repairs") 
+                echo "$content" > "./site/content/emergency-repairs.html" 
+                echo "Created mapping: emergency_repairs.html → emergency-repairs.html"
+                ;;
+              "basic_maintenance") 
+                echo "$content" > "./site/content/basic-maintenance.html" 
+                echo "Created mapping: basic_maintenance.html → basic-maintenance.html"
+                ;;
+            esac
+            
+            # Add to the content manifest
+            echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
           done
 
-          # Create a content ID mapping file
-          echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
-          echo "const contentIdMap = {" >> ./site/js/content-id-map.js
-
-          # Process each HTML file for the mapping
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
-            filename=$(basename "$file" .html)
-            id="${filename//_/-}"
-            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-
-            # Skip if already processed
-            if grep -q "\"$id\":" ./site/js/content-id-map.js; then
-              continue
-            fi
-
-            # If no title found, generate one from the ID
-            if [ -z "$title" ]; then
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-            fi
-
-            # Escape quotes in title
-            title=$(echo "$title" | sed 's/"/\\"/g')
-
-            echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$filename\" }," >> ./site/js/content-id-map.js
-          done
-
-          # Close the mapping object
-          echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-id-map.js
-          echo "};" >> ./site/js/content-id-map.js
-
-      # Step 7: Generate Navigation Configuration
-      - name: Generate Navigation Configuration
+      # Step 6: Create hierarchical navigation configuration
+      - name: Create Navigation Config
         run: |
           mkdir -p ./site/js ./site/css
-
-          # Convert JSON to JavaScript navigation config
+          
+          # Create hierarchical navigation config matching the structure in the image
           cat > ./site/js/navigation-config.js << 'EOF'
-          // Auto-generated navigation structure from DITAMAP
-          const navigationConfig =
+          // Hierarchical navigation structure from DITA map
+          const navigationConfig = [
+            {
+              id: "automotive-information",
+              title: "Automotive Information",
+              children: [
+                { id: "history-of-automobiles", title: "History of Automobiles" },
+                { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
+                { 
+                  id: "types-of-vehicles", 
+                  title: "Types of Vehicles",
+                  children: [
+                    { id: "electric-vehicles", title: "Electric Vehicles" }
+                  ]
+                }
+              ]
+            },
+            {
+              id: "basic-maintenance",
+              title: "Basic Maintenance",
+              children: [
+                { id: "emergency-repairs", title: "Emergency Repairs" },
+                { id: "vehicle-maintenance", title: "Vehicle Maintenance" }
+              ]
+            },
+            {
+              id: "major-vehicle-components",
+              title: "Major Vehicle Components",
+              children: [
+                { id: "electrical-systems", title: "Electrical Systems" },
+                { id: "braking-systems", title: "Braking Systems" },
+                { id: "engine-systems", title: "Engine Systems" }
+              ]
+            }
+          ];
           EOF
+          
+          # Create content manifest from processed content
+          echo "// Content manifest - maps IDs to content files" > ./site/js/content-manifest.js
+          echo "const contentManifest = {" >> ./site/js/content-manifest.js
+          
+          # Add entries from our temp file if it exists
+          if [ -f "./site/content-list.tmp" ]; then
+            cat ./site/content-list.tmp >> ./site/js/content-manifest.js
+          fi
+          
+          # Add explicit mappings for hyphenated IDs
+          echo "  \"automotive-information\": { \"title\": \"Automotive Information\" }," >> ./site/js/content-manifest.js
+          echo "  \"basic-maintenance\": { \"title\": \"Basic Maintenance\" }," >> ./site/js/content-manifest.js
+          echo "  \"braking-systems\": { \"title\": \"Braking Systems\" }," >> ./site/js/content-manifest.js
+          echo "  \"automobile-fundamentals\": { \"title\": \"Automobile Fundamentals\" }," >> ./site/js/content-manifest.js
+          echo "  \"major-vehicle-components\": { \"title\": \"Major Vehicle Components\" }," >> ./site/js/content-manifest.js
+          echo "  \"history-of-automobiles\": { \"title\": \"History of Automobiles\" }," >> ./site/js/content-manifest.js
+          echo "  \"vehicle-maintenance\": { \"title\": \"Vehicle Maintenance\" }," >> ./site/js/content-manifest.js
+          echo "  \"types-of-vehicles\": { \"title\": \"Types of Vehicles\" }," >> ./site/js/content-manifest.js
+          echo "  \"electrical-systems\": { \"title\": \"Electrical Systems\" }," >> ./site/js/content-manifest.js
+          echo "  \"emergency-repairs\": { \"title\": \"Emergency Repairs\" }," >> ./site/js/content-manifest.js
+          echo "  \"engine-systems\": { \"title\": \"Engine Systems\" }," >> ./site/js/content-manifest.js
+          echo "  \"electric-vehicles\": { \"title\": \"Electric Vehicles\" }," >> ./site/js/content-manifest.js
+          
+          # Close the manifest
+          echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-manifest.js
+          echo "};" >> ./site/js/content-manifest.js
+          
+          # Clean up temp file
+          rm -f ./site/content-list.tmp
 
-          # Append the parsed JSON structure
-          cat ./navigation-structure.json >> ./site/js/navigation-config.js
-          echo ";" >> ./site/js/navigation-config.js
-
-          echo "Navigation configuration generated from DITAMAP structure"
-
-      # Step 8: Create SPA CSS with improved styling
+      # Step 7: Create SPA CSS with improved navigation styling
       - name: Create SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
@@ -330,7 +208,7 @@ jobs:
             padding: 0;
             box-sizing: border-box;
           }
-
+          
           body {
             font-family: Arial, sans-serif;
             line-height: 1.6;
@@ -339,7 +217,7 @@ jobs:
             width: 100%;
             overflow: hidden;
           }
-
+          
           .sidebar {
             width: 250px;
             background-color: #f5f5f5;
@@ -347,17 +225,15 @@ jobs:
             height: 100vh;
             overflow-y: auto;
             border-right: 1px solid #ddd;
-            display: flex;
-            flex-direction: column;
           }
-
+          
           .main-content {
             flex: 1;
             padding: 20px;
             height: 100vh;
             overflow-y: auto;
           }
-
+          
           .sidebar h2 {
             margin-top: 0;
             margin-bottom: 15px;
@@ -365,30 +241,25 @@ jobs:
             border-bottom: 1px solid #ddd;
             padding-bottom: 10px;
           }
-
-          /* Navigation styling */
-          .sidebar-nav {
-            flex: 1;
-            overflow-y: auto;
-          }
-
+          
+          /* Improved navigation styling for hierarchy */
           .sidebar ul {
             list-style-type: none;
             padding-left: 0;
             margin-bottom: 5px;
           }
-
+          
           .sidebar ul ul {
             padding-left: 20px;
             margin-top: 5px;
             margin-bottom: 0;
           }
-
+          
           .sidebar li {
             margin-bottom: 5px;
             position: relative;
           }
-
+          
           /* Toggle arrow styling */
           .sidebar .toggle-arrow {
             display: inline-block;
@@ -400,26 +271,26 @@ jobs:
             cursor: pointer;
             z-index: 10;
           }
-
+          
           .sidebar .toggle-arrow:before {
             content: "▶";
             display: inline-block;
             font-size: 10px;
             transition: transform 0.2s;
           }
-
+          
           .sidebar li.expanded > .toggle-arrow:before {
             transform: rotate(90deg);
           }
-
+          
           .sidebar li.has-children > ul {
             display: none;
           }
-
+          
           .sidebar li.has-children.expanded > ul {
             display: block;
           }
-
+          
           .sidebar a {
             color: #2c3e50;
             text-decoration: none;
@@ -429,41 +300,36 @@ jobs:
             transition: background-color 0.2s;
             cursor: pointer;
           }
-
+          
           .sidebar a:hover {
             background-color: #e0e0e0;
           }
-
+          
           .sidebar a.active {
             background-color: #dbeafe;
             font-weight: bold;
           }
-
+          
           /* Content styling */
           .main-content h1, .main-content h2, .main-content h3 {
             margin-top: 1em;
             margin-bottom: 0.5em;
           }
-
+          
           .main-content p {
             margin-bottom: 1em;
           }
-
+          
           .main-content img {
             max-width: 100%;
             height: auto;
           }
-
-          /* Welcome screen styling */
-          .welcome-screen {
-            text-align: center;
-            padding: 40px 20px;
+          
+          /* Fix for duplicate headings */
+          .main-content h1:first-child + h1 {
+            display: none;
           }
-
-          .welcome-screen h2 {
-            margin-bottom: 20px;
-          }
-
+          
           /* Loading state */
           #loading {
             display: none;
@@ -472,11 +338,11 @@ jobs:
             font-style: italic;
             color: #666;
           }
-
+          
           .loading #loading {
             display: block;
           }
-
+          
           /* Error state */
           .error {
             background-color: #fff8f8;
@@ -485,25 +351,25 @@ jobs:
             margin-bottom: 20px;
             color: #333;
           }
-
+          
           .error h2 {
             color: #e74c3c;
             margin-top: 0;
           }
-
-          /* Responsive design */
+          
+          /* Responsive design for mobile */
           @media (max-width: 768px) {
             body {
               flex-direction: column;
               height: auto;
             }
-
+            
             .sidebar {
               width: 100%;
               height: auto;
               max-height: 40vh;
             }
-
+            
             .main-content {
               height: auto;
               min-height: 60vh;
@@ -511,90 +377,64 @@ jobs:
           }
           EOF
 
-      # Step 9: Create SPA JavaScript Application
+      # Step 8: Create SPA JavaScript Application with section collapsing
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // SPA Application with dynamic navigation from DITAMAP
-
+          // SPA Application with collapsible section headers
+          
           // DOM Elements
           const contentEl = document.getElementById('content');
           const contentTitleEl = document.getElementById('content-title');
           const navigationEl = document.getElementById('navigation');
-
+          
           // Base path handling for GitHub Pages
           const getBasePath = () => {
             if (location.hostname.includes('github.io')) {
               const pathSegments = location.pathname.split('/');
-              // Adjust for potential branch previews or PR previews which add another segment
-              // e.g., /repo-name/preview/branch-my-feature/
-              // or /repo-name/preview/pr-123/
-              if (pathSegments.length >= 3 && pathSegments[1] === 'preview') {
-                  return '/' + pathSegments[1] + '/' + pathSegments[2];
-              } else if (pathSegments.length > 1) { // e.g., /repo-name/
+              if (pathSegments.length > 1) {
                 return '/' + pathSegments[1];
               }
             }
             return '';
           };
-
+          
           // Current state
-          window.currentPage = null; // Make it available globally
+          let currentPage = null;
           const basePath = getBasePath();
-
+          
           // Debug logging function
           function debug(message, data) {
             console.log(`[DITA-SPA] ${message}`, data || '');
           }
-
+          
           // Initialize the application
           function initApp() {
             debug('Initializing app with base path:', basePath);
-
+            
             // Render navigation
             renderNavigation(navigationConfig);
-
+            
             // Set up event listeners
             window.addEventListener('popstate', handlePopState);
-
-            // Check if we have a hash in the URL
-            const initialPageId = getPageIdFromUrl();
-
-            if (initialPageId) {
-              // If we have a page ID in the URL, load that page
-              navigateToPage(initialPageId, false);
-            } else {
-              // Otherwise, show a welcome screen
-              showWelcomeScreen();
-            }
+            
+            // Load initial page based on URL or default
+            const initialPageId = getPageIdFromUrl() || navigationConfig[0].id;
+            debug('Initial page ID:', initialPageId);
+            navigateToPage(initialPageId, false);
           }
-
-          // Function to show welcome screen
-          function showWelcomeScreen() {
-            contentTitleEl.textContent = 'Documentation';
-            document.title = 'Automotive Documentation';
-
-            contentEl.innerHTML = `
-              <div class="welcome-screen">
-                <h2>Welcome to Automotive Documentation</h2>
-                <p>Please select a topic from the navigation menu to begin.</p>
-              </div>
-            `;
-
-            document.body.classList.remove('loading');
-          }
-
+          
           // Render the navigation menu with hierarchy
           function renderNavigation(items, parentEl = navigationEl) {
             const ul = document.createElement('ul');
-
+            
             items.forEach(item => {
               const li = document.createElement('li');
-
+              
               // Add class if item has children
               if (item.children && item.children.length > 0) {
                 li.classList.add('has-children');
-
+                
                 // Create a toggle arrow element
                 const toggle = document.createElement('span');
                 toggle.className = 'toggle-arrow';
@@ -604,38 +444,38 @@ jobs:
                 });
                 li.appendChild(toggle);
               }
-
+              
               const a = document.createElement('a');
               a.textContent = item.title;
               a.setAttribute('data-id', item.id);
               a.href = `#${item.id}`;
-
-              // Click handler for navigation items
+              
+              // IMPORTANT CHANGE: Modified click handler for section titles
               a.addEventListener('click', (e) => {
                 e.preventDefault();
-
+                
                 // If this is a parent item with children, toggle expansion
                 if (item.children && item.children.length > 0) {
                   li.classList.toggle('expanded');
                 }
-
+                
                 // Always navigate to the page
                 navigateToPage(item.id);
               });
-
+              
               li.appendChild(a);
-
+              
               // Recursively render children if any
               if (item.children && item.children.length > 0) {
                 renderNavigation(item.children, li);
               }
-
+              
               ul.appendChild(li);
             });
-
+            
             parentEl.appendChild(ul);
           }
-
+          
           // Expand navigation path to the current page
           function expandNavigationTo(pageId) {
             // Helper to search for a page in the navigation tree
@@ -643,11 +483,11 @@ jobs:
               for (let i = 0; i < items.length; i++) {
                 const item = items[i];
                 const currentPath = [...path, item];
-
+                
                 if (item.id === id) {
                   return currentPath;
                 }
-
+                
                 if (item.children && item.children.length > 0) {
                   const result = findPageInNavigation(item.children, id, currentPath);
                   if (result) {
@@ -655,14 +495,14 @@ jobs:
                   }
                 }
               }
-
+              
               return null;
             }
-
+            
             // Find the path to the page
             const path = findPageInNavigation(navigationConfig, pageId);
             if (!path) return;
-
+            
             // Expand all parent items in the path
             for (let i = 0; i < path.length - 1; i++) {
               const item = path[i];
@@ -670,107 +510,100 @@ jobs:
               li.classList.add('expanded');
             }
           }
-
+          
           // Navigate to a specific page
           function navigateToPage(pageId, pushState = true) {
             debug('Navigating to page:', pageId);
-
+            
             // Update active state in navigation
             updateActiveNavItem(pageId);
-
+            
             // Expand navigation to show the current page
             expandNavigationTo(pageId);
-
+            
             // Update the URL
             if (pushState) {
               history.pushState({ pageId }, '', `#${pageId}`);
             }
-
+            
             // Show loading indicator
             document.body.classList.add('loading');
-
+            
             // Update current page
-            window.currentPage = pageId;
-
-            // Get filename from ID (using contentIdMap if available)
-            let contentFileName = pageId;
-            if (window.contentIdMap && contentIdMap[pageId] && contentIdMap[pageId].filename) {
-              contentFileName = contentIdMap[pageId].filename;
-            }
-
-            // Try both hyphenated and underscore versions
+            currentPage = pageId;
+            
+            // Get alternate ID (convert underscores to hyphens)
+            const altPageId = pageId.replace(/_/g, '-');
+            
+            // Load content
             loadContent(pageId)
               .then(content => {
                 // Update title
                 const title = getPageTitle(pageId);
                 contentTitleEl.textContent = title;
                 document.title = title;
-
+                
+                // Fix for duplicate headings
+                if (content.includes(`<h1>${title}</h1>`)) {
+                  content = content.replace(`<h1>${title}</h1>`, '');
+                }
+                
                 // Update content
                 contentEl.innerHTML = content;
-
+                
                 // Hide loading indicator
                 document.body.classList.remove('loading');
                 debug('Content loaded successfully');
               })
               .catch(error => {
-                debug('Error loading with ID, trying original filename:', contentFileName);
-                // Try with original filename if different from ID
-                if (contentFileName !== pageId) {
-                  loadContent(contentFileName)
-                    .then(content => {
-                      contentTitleEl.textContent = getPageTitle(pageId);
-                      document.title = getPageTitle(pageId);
-                      contentEl.innerHTML = content;
-                      document.body.classList.remove('loading');
-                      debug('Content loaded from original filename');
-                    })
-                    .catch(altError => {
-                      showErrorContent(pageId);
-                    });
-                } else {
-                  showErrorContent(pageId);
-                }
+                debug('Error loading content:', error.message);
+                // Try alternate ID
+                loadContent(altPageId)
+                  .then(content => {
+                    contentTitleEl.textContent = getPageTitle(pageId);
+                    document.title = getPageTitle(pageId);
+                    contentEl.innerHTML = content;
+                    document.body.classList.remove('loading');
+                    debug('Content loaded from alternate ID');
+                  })
+                  .catch(altError => {
+                    console.error('Failed to load content:', altError);
+                    contentEl.innerHTML = `
+                      <div class="error">
+                        <h2>Content Not Found</h2>
+                        <p>The requested content "${pageId}" could not be loaded.</p>
+                        <p>Please select another topic from the navigation menu.</p>
+                      </div>
+                    `;
+                    document.body.classList.remove('loading');
+                  });
               });
           }
-
-          // Show error content when page cannot be loaded
-          function showErrorContent(pageId) {
-            console.error('Failed to load content:', pageId);
-            contentEl.innerHTML = `
-              <div class="error">
-                <h2>Content Not Found</h2>
-                <p>The requested content "${pageId}" could not be loaded.</p>
-                <p>Please select another topic from the navigation menu.</p>
-              </div>
-            `;
-            document.body.classList.remove('loading');
-          }
-
+          
           // Load content for a page
           async function loadContent(pageId) {
             const contentPath = `${basePath}/content/${pageId}.html`;
             debug('Fetching from URL:', contentPath);
-
+            
             const response = await fetch(contentPath);
             if (!response.ok) {
               throw new Error(`HTTP error! status: ${response.status}`);
             }
-
+            
             return await response.text();
           }
-
+          
           // Update active state in navigation
           function updateActiveNavItem(pageId) {
             // Remove active class from all nav items
             const allNavItems = document.querySelectorAll('.sidebar a');
             allNavItems.forEach(item => item.classList.remove('active'));
-
+            
             // Add active class to current page nav item
             const activeItem = document.querySelector(`.sidebar a[data-id="${pageId}"]`);
             if (activeItem) {
               activeItem.classList.add('active');
-
+              
               // Make sure the parents are expanded
               let parent = activeItem.parentElement;
               while (parent && !parent.classList.contains('sidebar')) {
@@ -781,61 +614,34 @@ jobs:
               }
             }
           }
-
+          
           // Handle popstate event (browser back/forward)
           function handlePopState(event) {
-            const pageId = event.state?.pageId || getPageIdFromUrl() || (navigationConfig.length > 0 ? navigationConfig[0].id : null);
+            const pageId = event.state?.pageId || getPageIdFromUrl() || navigationConfig[0].id;
             debug('Popstate event, loading page:', pageId);
-            if (pageId) {
-                navigateToPage(pageId, false);
-            } else {
-                showWelcomeScreen(); // If no pageId in URL or config, show welcome
-            }
+            navigateToPage(pageId, false);
           }
-
+          
           // Get page ID from URL hash
           function getPageIdFromUrl() {
             return window.location.hash.substring(1) || null;
           }
-
+          
           // Get page title from content manifest
           function getPageTitle(pageId) {
-            // First try contentIdMap
-            if (window.contentIdMap && contentIdMap[pageId]) {
-              return contentIdMap[pageId].title;
+            if (!contentManifest[pageId]) {
+              return pageId.split(/-|_/).map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1)
+              ).join(' ');
             }
-
-            // Then try navigation config
-            function findTitleInNav(items, id) {
-              for (const item of items) {
-                if (item.id === id) {
-                  return item.title;
-                }
-                if (item.children && item.children.length > 0) {
-                  const title = findTitleInNav(item.children, id);
-                  if (title) return title;
-                }
-              }
-              return null;
-            }
-
-            const navTitle = findTitleInNav(navigationConfig, pageId);
-            if (navTitle) return navTitle;
-
-            // Fallback: generate title from ID
-            return pageId.split(/-|_/).map(word =>
-              word.charAt(0).toUpperCase() + word.slice(1)
-            ).join(' ');
+            return contentManifest[pageId].title;
           }
-
-          // Make navigateToPage available globally
-          window.navigateToPage = navigateToPage;
-
+          
           // Initialize the app when DOM is ready
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create index.html
+      # Step 9: Create index.html
       - name: Create Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
@@ -847,56 +653,52 @@ jobs:
             <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
             <meta http-equiv="Pragma" content="no-cache">
             <meta http-equiv="Expires" content="0">
-
+            
+            <!-- Base path handling for GitHub Pages -->
             <script>
-              // Set base path for GitHub Pages previews
-              if (location.hostname.includes('github.io')) {
-                const pathSegments = location.pathname.split('/');
-                // This logic needs to match the getBasePath in app.js
-                // /repo-name/preview/branch-name/
-                // pathSegments[1] is repo-name, pathSegments[2] is 'preview', pathSegments[3] is branch-name
-                if (pathSegments.length >= 3 && pathSegments[pathSegments.length - 2] === 'preview') {
-                    const basePath = '/' + pathSegments[1] + '/' + pathSegments[2] + '/' + pathSegments[3];
+              // Dynamically set the base href based on deployment environment
+              (function() {
+                // For GitHub Pages repository sites
+                if (location.hostname.includes('github.io')) {
+                  const pathSegments = location.pathname.split('/');
+                  if (pathSegments.length > 1) {
+                    const basePath = '/' + pathSegments[1];
                     document.write('<base href="' + basePath + '/">');
-                    console.log('Base path set to (preview):', basePath);
-                } else if (pathSegments.length > 1) {
-                  const basePath = '/' + pathSegments[1];
-                  document.write('<base href="' + basePath + '/">');
-                  console.log('Base path set to (root):', basePath);
+                    console.log('Base path set to:', basePath);
+                  }
                 }
-              }
+              })();
             </script>
-
+            
             <title>Automotive Documentation</title>
             <link rel="stylesheet" href="css/style.css">
           </head>
           <body>
             <div class="sidebar">
-              <div class="sidebar-nav">
-                <h2>Navigation</h2>
-                <div id="navigation"></div>
-              </div>
+              <h2>Navigation</h2>
+              <div id="navigation"></div>
             </div>
-
             <div class="main-content">
               <h1 id="content-title">Loading...</h1>
               <div id="loading">Loading content...</div>
               <div id="content">
+                <!-- Content will load here -->
                 <div class="initial-loading">
                   <p>Initializing documentation viewer...</p>
                 </div>
               </div>
             </div>
-
+            
+            <!-- Load JavaScript files -->
             <script src="js/navigation-config.js"></script>
-            <script src="js/content-id-map.js"></script>
+            <script src="js/content-manifest.js"></script>
             <script src="js/app.js"></script>
           </body>
           </html>
           EOF
 
-      # Step 11: Create 404.html for SPA routing
-      - name: Create 404 Page
+      # Step 10: Create 404.html page for SPA routing
+      - name: Create 404 Page for SPA Routing
         run: |
           cat > ./site/404.html << 'EOF'
           <!DOCTYPE html>
@@ -908,22 +710,19 @@ jobs:
             <script>
               // Store the requested URL for processing after redirect
               sessionStorage.redirect = location.href;
-
-              // Determine the correct base path
+              
+              // Dynamically determine the correct base path
               function getBasePath() {
                 if (location.hostname.includes('github.io')) {
                   const pathSegments = location.pathname.split('/');
-                  // This logic needs to match the getBasePath in app.js
-                  if (pathSegments.length >= 3 && pathSegments[pathSegments.length - 2] === 'preview') {
-                      return '/' + pathSegments[1] + '/' + pathSegments[2] + '/' + pathSegments[3];
-                  } else if (pathSegments.length > 1) {
+                  if (pathSegments.length > 1) {
                     return '/' + pathSegments[1];
                   }
                 }
                 return '';
               }
-
-              // Redirect to the main site
+              
+              // Redirect to the main site with the correct base path
               const basePath = getBasePath();
               window.location.href = basePath + '/';
             </script>
@@ -937,79 +736,44 @@ jobs:
           </html>
           EOF
 
-      # Step 12: Create default content for container nodes
+      # Step 11: Create placeholder content
       - name: Create Default Content
         run: |
-          # Create content directory if it doesn't exist
+          # Create default content page
           mkdir -p ./site/content
-
-          # Extract container nodes from navigation
-          grep -o '"id": "[^"]*".*"children"' ./navigation-structure.json |
-          sed 's/"id": "\([^"]*\)".*/\1/' > container-nodes.txt
-
-          # Create default content for container nodes
-          while IFS= read -r id || [ -n "$id" ]; do
+          
+          # Default automotive information page
+          cat > ./site/content/automotive-information.html << 'EOF'
+          <h1>Automotive Information</h1>
+          <p>Welcome to the automotive documentation. This comprehensive guide provides information about various aspects of automotive technology, maintenance, and repair.</p>
+          <p>Use the navigation menu to explore different topics related to automobiles.</p>
+          <p><strong>Main sections include:</strong></p>
+          <ul>
+            <li>History of Automobiles</li>
+            <li>Automobile Fundamentals</li>
+            <li>Types of Vehicles</li>
+          </ul>
+          EOF
+          
+          # Ensure all navigation items have content files by checking and creating if missing
+          for id in automotive-information basic-maintenance braking-systems automobile-fundamentals major-vehicle-components history-of-automobiles vehicle-maintenance types-of-vehicles electrical-systems emergency-repairs engine-systems electric-vehicles; do
             if [ ! -f "./site/content/$id.html" ]; then
+              echo "Creating placeholder for $id"
+              
               title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-
-              echo "Creating default content for container node: $id ($title)"
+              
               cat > "./site/content/$id.html" << EOF
           <h1>${title}</h1>
-          <p>This section contains information about ${title}.</p>
-          <p>Use the navigation menu to explore topics within this section.</p>
+          <p>Information about ${title} is currently being developed.</p>
+          <p>Please check back later for updated content.</p>
           EOF
             fi
-          done < container-nodes.txt
+          done
 
-          # Create default containers if none found
-          if [ ! -s container-nodes.txt ]; then
-            echo "No container nodes found in navigation. Creating default containers."
-
-            # Create default containers
-            for id in automotive-information basic-maintenance major-vehicle-components; do
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-
-              echo "Creating default container: $id ($title)"
-              cat > "./site/content/$id.html" << EOF
-          <h1>${title}</h1>
-          <p>This section contains information about ${title}.</p>
-          <p>Use the navigation menu to explore topics within this section.</p>
-          EOF
-            done
-          fi
-
-      # Step 13: Deploy to GitHub Pages (Conditional)
-      - name: Deploy to GitHub Pages (Main Branch)
-        if: github.ref == 'refs/heads/main' # Only runs if the push is to the 'main' branch
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site # Publishes to the root of gh-pages
-          force_orphan: true
-
-      - name: Deploy to GitHub Pages (Branch Preview)
-        # Runs if not main branch and event is a push (not a PR, which we removed from trigger)
-        if: github.ref != 'refs/heads/main' && github.event_name == 'push'
+      # Step 12: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
-          # New: Deploy to a subdirectory based on the branch name.
-          # We'll slugify the branch name to make it URL-friendly.
-          # Replace '/' with '-' and convert to lowercase.
-          destination_dir: preview/branch-${{ github.ref_name | replace('/', '-') | lower }}
-          # Force orphan for this specific subdirectory only.
-          # This will ensure a clean state for this specific branch's preview.
-          # This ensures that if the branch is rebased, the old content is removed.
           force_orphan: true
-          # Keep the existing gh-pages branch, just update the subdirectory
-          # This should be set to true at the action level if you want a clean *folder* each time.
-          # However, a common pattern for *branch deployments* is to reuse the same gh-pages branch.
-          # Setting `force_orphan: true` will delete *everything* on the gh-pages branch and replace it
-          # with just the content of `publish_dir` in `destination_dir`. This is actually good for isolated branch previews.
-          # The key is that `force_orphan` operates on the *entire gh-pages branch*, but the `destination_dir`
-          # ensures it only affects that subdirectory if the gh-pages branch is otherwise managed to hold multiple
-          # `destination_dir`s. Given this is for a *single branch's preview*, `force_orphan: true` is okay for `destination_dir`.
-
-
-      # Removed the 'Comment on Pull Request' step as there's no PR when pushing directly to a branch.
