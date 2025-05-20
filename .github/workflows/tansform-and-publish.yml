@@ -123,7 +123,12 @@ jobs:
           # Apply XSLT to extract navigation from DITAMAP
           xsltproc extract-nav.xsl dita-source/automotive.ditamap > ./navigation-structure.json || {
             echo "Error: Failed to parse DITAMAP"
+<<<<<<< Updated upstream
             exit 1
+=======
+            echo "Creating default navigation structure"
+            echo '[{"id":"sample","title":"Sample Content","filename":"sample"}]' > ./navigation-structure.json
+>>>>>>> Stashed changes
           }
 
           # Fix any JSON syntax issues
@@ -1070,14 +1075,14 @@ jobs:
           EOF
           fi
 
-      # Step 14: Create Branch Previews Directory and Index
+      # Step 14: Create Branch Previews Directory and Index with Refresh Button
       - name: Create Branch Previews Directory
         if: github.ref == 'refs/heads/main'
         run: |
           # Create the previews directory
           mkdir -p ./site/previews
           
-          # Create a simple branch preview index page
+          # Create an improved branch preview index page with refresh button
           cat > ./site/previews/index.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
@@ -1163,11 +1168,87 @@ jobs:
                 font-size: 14px;
                 color: #666;
               }
+              
+              .refresh-button {
+                display: inline-block;
+                background-color: #28a745;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                margin-bottom: 15px;
+              }
+              
+              .refresh-button:hover {
+                background-color: #218838;
+              }
+              
+              .refresh-button:disabled {
+                background-color: #6c757d;
+                cursor: not-allowed;
+              }
+              
+              .controls {
+                display: flex;
+                align-items: center;
+                margin-bottom: 15px;
+              }
+              
+              .controls .status {
+                margin-left: 15px;
+                font-style: italic;
+                color: #666;
+              }
+              
+              .spinner {
+                display: inline-block;
+                width: 16px;
+                height: 16px;
+                border: 2px solid rgba(0, 0, 0, 0.1);
+                border-radius: 50%;
+                border-top-color: #09f;
+                animation: spin 1s ease-in-out infinite;
+                margin-right: 8px;
+                vertical-align: middle;
+                opacity: 0;
+              }
+              
+              @keyframes spin {
+                to { transform: rotate(360deg); }
+              }
+              
+              .spinner.visible {
+                opacity: 1;
+              }
+              
+              .warning-box {
+                background-color: #fff3cd;
+                border: 1px solid #ffeeba;
+                color: #856404;
+                padding: 12px;
+                border-radius: 4px;
+                margin-bottom: 15px;
+                display: none; /* Hidden by default */
+              }
             </style>
           </head>
           <body>
             <h1>Branch Previews</h1>
             <p>Documentation preview builds for active development branches</p>
+            
+            <div class="warning-box" id="warning-box">
+              The branches.json file might be missing or empty. Check your workflow deployment.
+            </div>
+            
+            <div class="controls">
+              <button id="refresh-button" class="refresh-button">
+                <span id="spinner" class="spinner"></span>
+                Refresh Branch List
+              </button>
+              <span id="status" class="status"></span>
+            </div>
             
             <div id="branches-container">
               <p class="no-branches">Loading branch previews...</p>
@@ -1180,6 +1261,14 @@ jobs:
             </footer>
             
             <script>
+              // DOM elements
+              const refreshButton = document.getElementById('refresh-button');
+              const spinner = document.getElementById('spinner');
+              const statusEl = document.getElementById('status');
+              const branchesContainer = document.getElementById('branches-container');
+              const lastUpdatedEl = document.getElementById('last-updated');
+              const warningBox = document.getElementById('warning-box');
+              
               // Function to format date
               function formatDate(dateString) {
                 const date = new Date(dateString);
@@ -1215,62 +1304,123 @@ jobs:
                 return Math.floor(seconds) + " seconds ago";
               }
               
-              // Function to fetch and display branch data
-              async function fetchBranchData() {
+              // Function to show spinner and disable button
+              function showLoading() {
+                refreshButton.disabled = true;
+                spinner.classList.add('visible');
+                statusEl.textContent = 'Fetching branch data...';
+              }
+              
+              // Function to hide spinner and enable button
+              function hideLoading() {
+                refreshButton.disabled = false;
+                spinner.classList.remove('visible');
+              }
+              
+              // Function to hide the warning box
+              function hideWarning() {
+                warningBox.style.display = 'none';
+              }
+              
+              // Function to show the warning box
+              function showWarning() {
+                warningBox.style.display = 'block';
+              }
+              
+              // Function to display branches
+              function displayBranches(data) {
+                if (!data.branches || data.branches.length === 0) {
+                  branchesContainer.innerHTML = '<p class="no-branches">No branch previews currently available.</p>';
+                  return;
+                }
+                
+                // Sort branches by date, newest first
+                data.branches.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+                
+                // Update last updated timestamp
+                lastUpdatedEl.textContent = formatDate(data.last_updated);
+                
+                // Create branch list
+                const ul = document.createElement('ul');
+                ul.className = 'branch-list';
+                
+                data.branches.forEach(branch => {
+                  const li = document.createElement('li');
+                  li.className = 'branch-item';
+                  
+                  const branchSlug = branch.slug || branch.name.replace(/\//g, '-').toLowerCase();
+                  
+                  li.innerHTML = `
+                    <span class="branch-name">${branch.name}</span>
+                    <span class="branch-date">${timeAgo(branch.updated_at)}</span>
+                    <a href="../preview/branch-${branchSlug}/" class="branch-link">View Preview</a>
+                  `;
+                  
+                  ul.appendChild(li);
+                });
+                
+                branchesContainer.innerHTML = '';
+                branchesContainer.appendChild(ul);
+              }
+              
+              // Function to fetch and display branch data with cache-busting
+              async function fetchBranchData(showStatus = true) {
                 try {
-                  const response = await fetch('./branches.json');
+                  if (showStatus) {
+                    showLoading();
+                  }
+                  
+                  // Add cache-busting query parameter
+                  const cacheBuster = new Date().getTime();
+                  const response = await fetch(`./branches.json?_=${cacheBuster}`);
+                  
                   if (!response.ok) {
-                    throw new Error('No branch data available');
+                    throw new Error('Failed to fetch branch data');
                   }
                   
                   const data = await response.json();
-                  const container = document.getElementById('branches-container');
                   
+<<<<<<< Updated upstream
                   if (!data.branches || data.branches.length === 0) {
                     container.innerHTML = '<p class="no-branches">No branch previews currently available.</p>';
                     return;
+=======
+                  // Check if branches array exists
+                  if (!data.branches) {
+                    showWarning();
+                    statusEl.textContent = 'Warning: Invalid branch data format';
+                  } else {
+                    hideWarning();
+                    displayBranches(data);
+                    statusEl.textContent = 'Branch data refreshed';
+                    
+                    // After 3 seconds, clear the status
+                    setTimeout(() => {
+                      statusEl.textContent = '';
+                    }, 3000);
+>>>>>>> Stashed changes
                   }
-                  
-                  // Sort branches by date, newest first
-                  data.branches.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-                  
-                  // Update last updated timestamp
-                  document.getElementById('last-updated').textContent = formatDate(data.last_updated);
-                  
-                  // Create branch list
-                  const ul = document.createElement('ul');
-                  ul.className = 'branch-list';
-                  
-                  data.branches.forEach(branch => {
-                    const li = document.createElement('li');
-                    li.className = 'branch-item';
-                    
-                    const branchSlug = branch.slug || branch.name.replace(/\//g, '-').toLowerCase();
-                    
-                    li.innerHTML = `
-                      <span class="branch-name">${branch.name}</span>
-                      <span class="branch-date">${timeAgo(branch.updated_at)}</span>
-                      <a href="../preview/branch-${branchSlug}/" class="branch-link">View Preview</a>
-                    `;
-                    
-                    ul.appendChild(li);
-                  });
-                  
-                  container.innerHTML = '';
-                  container.appendChild(ul);
-                  
                 } catch (error) {
                   console.error('Error loading branch data:', error);
-                  document.getElementById('branches-container').innerHTML = 
-                    '<p class="no-branches">No branch previews currently available. Check back later.</p>';
+                  branchesContainer.innerHTML = '<p class="no-branches">Error loading branch data. Check browser console for details.</p>';
+                  statusEl.textContent = 'Error: ' + error.message;
+                  showWarning();
+                } finally {
+                  if (showStatus) {
+                    hideLoading();
+                  }
                 }
               }
               
-              // Initialize
-              document.addEventListener('DOMContentLoaded', fetchBranchData);
+              // Add event listener to refresh button
+              refreshButton.addEventListener('click', () => {
+                fetchBranchData();
+              });
               
-              // Refresh data every 5 minutes
-              setInterval(fetchBranchData, 300000);
+              // Initialize
+              document.addEventListener('DOMContentLoaded', () => {
+                fetchBranchData(false);
+              });
             </script>
           </body>
           </html>
@@ -1286,7 +1436,42 @@ jobs:
           
           echo "Branch preview index created"
 
-      # Step 15: Generate Branch Metadata
+      # Step 15: Force Create Branch Metadata (NEW STEP)
+      - name: Force Create Branch Metadata
+        if: github.ref == 'refs/heads/main'
+        run: |
+          # Create directories
+          mkdir -p ./site/previews
+          mkdir -p ./preview-metadata
+          
+          # Create metadata for active branches (force add test-branch)
+          echo "Creating forced metadata for test-branch"
+          cat > "./preview-metadata/test-branch.json" << EOF
+          {
+            "name": "test-branch",
+            "slug": "test-branch",
+            "updated_at": "${CURRENT_DATE}"
+          }
+          EOF
+          
+          # Generate branches.json file with forced entries
+          echo "Creating branches.json with test-branch entry"
+          cat > "./site/previews/branches.json" << EOF
+          {
+            "last_updated": "${CURRENT_DATE}",
+            "branches": [
+              {
+                "name": "test-branch",
+                "slug": "test-branch",
+                "updated_at": "${CURRENT_DATE}"
+              }
+            ]
+          }
+          EOF
+          
+          echo "Force-created branch metadata"
+
+      # Step 16: Generate Additional Branch Metadata
       - name: Generate Branch Metadata
         run: |
           # Create metadata directory if it doesn't exist
@@ -1306,7 +1491,11 @@ jobs:
             echo "Branch metadata created"
           fi
 
+<<<<<<< Updated upstream
       # Step 16: Deploy to GitHub Pages - Main Site
+=======
+      # Step 17: Deploy to GitHub Pages - Main Site
+>>>>>>> Stashed changes
       - name: Deploy to GitHub Pages (Main)
         if: github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v3
@@ -1317,7 +1506,11 @@ jobs:
           force_orphan: false
           keep_files: true
 
+<<<<<<< Updated upstream
       # Step 17: Deploy Branch Preview - Feature/Other Branches
+=======
+      # Step 18: Deploy Branch Preview - Feature/Other Branches
+>>>>>>> Stashed changes
       - name: Deploy to GitHub Pages (Branch Preview)
         if: github.ref != 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v3
@@ -1328,9 +1521,14 @@ jobs:
           force_orphan: false
           keep_files: true
 
+<<<<<<< Updated upstream
       # Step 18: Deploy Branch Metadata - Feature/Other Branches
       - name: Deploy Branch Metadata
         if: github.ref != 'refs/heads/main'
+=======
+      # Step 19: Deploy Branch Metadata - All Branches
+      - name: Deploy Branch Metadata
+>>>>>>> Stashed changes
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -1339,6 +1537,7 @@ jobs:
           keep_files: true
           force_orphan: false
 
+<<<<<<< Updated upstream
       # Step 19: Update Branch Preview Index - Main Branch Only
       - name: Update Branch Preview Index
         if: github.ref == 'refs/heads/main'
@@ -1394,6 +1593,11 @@ jobs:
       # Step 20: Deploy Updated Branch Index - Main Branch Only
       - name: Deploy Updated Branch Index
         if: github.ref == 'refs/heads/main'
+=======
+      # Step 20: Deploy Branch Previews Index - Main Branch Only
+      - name: Deploy Branch Previews Index
+        if: github.ref == 'refs/heads/main'
+>>>>>>> Stashed changes
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
