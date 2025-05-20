@@ -124,7 +124,12 @@ jobs:
           xsltproc extract-nav.xsl dita-source/automotive.ditamap > ./navigation-structure.json || {
             echo "Error: Failed to parse DITAMAP"
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
             exit 1
+=======
+            echo "Creating default navigation structure"
+            echo '[{"id":"sample","title":"Sample Content","filename":"sample"}]' > ./navigation-structure.json
+>>>>>>> Stashed changes
 =======
             echo "Creating default navigation structure"
             echo '[{"id":"sample","title":"Sample Content","filename":"sample"}]' > ./navigation-structure.json
@@ -1381,10 +1386,13 @@ jobs:
                   const data = await response.json();
                   
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                   if (!data.branches || data.branches.length === 0) {
                     container.innerHTML = '<p class="no-branches">No branch previews currently available.</p>';
                     return;
 =======
+=======
+>>>>>>> Stashed changes
                   // Check if branches array exists
                   if (!data.branches) {
                     showWarning();
@@ -1398,6 +1406,9 @@ jobs:
                     setTimeout(() => {
                       statusEl.textContent = '';
                     }, 3000);
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
                   }
                 } catch (error) {
@@ -1492,7 +1503,11 @@ jobs:
           fi
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
       # Step 16: Deploy to GitHub Pages - Main Site
+=======
+      # Step 17: Deploy to GitHub Pages - Main Site
+>>>>>>> Stashed changes
 =======
       # Step 17: Deploy to GitHub Pages - Main Site
 >>>>>>> Stashed changes
@@ -1507,7 +1522,11 @@ jobs:
           keep_files: true
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
       # Step 17: Deploy Branch Preview - Feature/Other Branches
+=======
+      # Step 18: Deploy Branch Preview - Feature/Other Branches
+>>>>>>> Stashed changes
 =======
       # Step 18: Deploy Branch Preview - Feature/Other Branches
 >>>>>>> Stashed changes
@@ -1522,9 +1541,14 @@ jobs:
           keep_files: true
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
       # Step 18: Deploy Branch Metadata - Feature/Other Branches
       - name: Deploy Branch Metadata
         if: github.ref != 'refs/heads/main'
+=======
+      # Step 19: Deploy Branch Metadata - All Branches
+      - name: Deploy Branch Metadata
+>>>>>>> Stashed changes
 =======
       # Step 19: Deploy Branch Metadata - All Branches
       - name: Deploy Branch Metadata
@@ -1537,6 +1561,7 @@ jobs:
           keep_files: true
           force_orphan: false
 
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
       # Step 19: Update Branch Preview Index - Main Branch Only
       - name: Update Branch Preview Index
@@ -1593,6 +1618,11 @@ jobs:
       # Step 20: Deploy Updated Branch Index - Main Branch Only
       - name: Deploy Updated Branch Index
         if: github.ref == 'refs/heads/main'
+=======
+      # Step 20: Deploy Branch Previews Index - Main Branch Only
+      - name: Deploy Branch Previews Index
+        if: github.ref == 'refs/heads/main'
+>>>>>>> Stashed changes
 =======
       # Step 20: Deploy Branch Previews Index - Main Branch Only
       - name: Deploy Branch Previews Index
