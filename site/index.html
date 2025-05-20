@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  
+  <!-- Repository configuration -->
+  <script>
+    // Repository configuration
+    const repoConfig = {
+      name: "simple-dita-publication",
+      owner: "mikev21313",
+      basePath: "/simple-dita-publication",
+      mainBranch: "main"
+    };
+  </script>
+  
+  <!-- Base path handling for GitHub Pages -->
+  <script>
+    // Set the base href based on deployment environment
+    (function() {
+      // Get branch from path if present
+      function getBranchFromPath() {
+        const path = window.location.pathname;
+        const parts = path.split('/');
+        
+        // Find "branches" segment in URL
+        const branchesIndex = parts.indexOf('branches');
+        if (branchesIndex !== -1 && branchesIndex + 1 < parts.length) {
+          return parts[branchesIndex + 1];
+        }
+        
+        // Default to main branch if no branch segment found
+        return 'main';
+      }
+      
+      // Get correct base URL
+      const branch = getBranchFromPath();
+      const isMainBranch = branch === 'main';
+      let basePath = repoConfig.basePath;
+      
+      // Add branch path for non-main branches
+      if (!isMainBranch) {
+        basePath += `/branches/${branch}`;
+      }
+      
+      // Set the base href
+      document.write(`<base href="${basePath}/">`);
+      console.log('Base path set to:', basePath + '/');
+    })();
+  </script>
+  
+  <title>Automotive Documentation</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Branch review banner (hidden by default) -->
+  <div id="branch-banner" class="branch-banner" style="display: none;">
+    <div>
+      <span>Branch Review:</span> <span id="branch-name">unknown</span>
+    </div>
+    <div class="branch-actions">
+      <a href="../.." target="_blank">View Main Branch</a>
+      <a href="#" target="_blank" id="compare-link">Compare Changes</a>
+    </div>
+  </div>
+  
+  <!-- Tabs navigation -->
+  <div class="tabs">
+    <button id="nav-tab" class="tab active">Navigation</button>
+    <button id="branch-tab" class="tab">Branches</button>
+  </div>
+  
+  <div class="content-container">
+    <!-- Navigation panel -->
+    <div id="nav-panel" class="sidebar active">
+      <h2>Documentation</h2>
+      <div id="navigation"></div>
+    </div>
+    
+    <!-- Branch review panel -->
+    <div id="branch-panel" class="branch-panel">
+      <h2>Branch Reviews</h2>
+      <div id="branches">
+        <p>Click to load branches...</p>
+      </div>
+    </div>
+    
+    <!-- Main content -->
+    <div class="main-content">
+      <h1 id="content-title">Loading...</h1>
+      <div id="loading">Loading content...</div>
+      <div id="content">
+        <!-- Content will load here -->
+        <div class="initial-loading">
+          <p>Initializing documentation viewer...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Load JavaScript files -->
+  <script src="js/navigation-config.js"></script>
+  <script src="js/content-manifest.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
