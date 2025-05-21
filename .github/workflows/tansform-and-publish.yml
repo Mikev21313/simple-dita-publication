@@ -303,7 +303,7 @@ jobs:
             echo "No HTML files found to process. Creating sample content..."
             
             # Create sample content files
-            cat > "./site/content/getting-started.html" << 'EOF'
+            cat > "./site/content/getting-started.html" << EOF
             <h1>Getting Started</h1>
             <p>This is a sample getting started page for the documentation.</p>
             <p>In a real DITA conversion, this would contain content from your DITA source files.</p>
@@ -313,7 +313,7 @@ jobs:
             <p>You can also use the search bar to find specific content.</p>
             EOF
             
-            cat > "./site/content/user-guide.html" << 'EOF'
+            cat > "./site/content/user-guide.html" << EOF
             <h1>User Guide</h1>
             <p>This is a sample user guide page for the documentation.</p>
             <table class="table">
@@ -340,7 +340,7 @@ jobs:
             </table>
             EOF
             
-            cat > "./site/content/reference.html" << 'EOF'
+            cat > "./site/content/reference.html" << EOF
             <h1>API Reference</h1>
             <p>This is a sample reference page for the documentation.</p>
             <h2>Functions</h2>
@@ -359,7 +359,7 @@ jobs:
             EOF
             
             # Create a sample content for user-guide children
-            cat > "./site/content/installation.html" << 'EOF'
+            cat > "./site/content/installation.html" << EOF
             <h1>Installation Guide</h1>
             <p>This is a sample installation guide for the product.</p>
             <h2>System Requirements</h2>
@@ -377,7 +377,7 @@ jobs:
             </ol>
             EOF
             
-            cat > "./site/content/configuration.html" << 'EOF'
+            cat > "./site/content/configuration.html" << EOF
             <h1>Configuration Guide</h1>
             <p>This is a sample configuration guide for the product.</p>
             <h2>Basic Configuration</h2>
@@ -412,7 +412,7 @@ jobs:
 
             # Create a sample navigation config
             echo "Creating sample navigation config..."
-            cat > ./site/js/navigation-config.js << 'EOF'
+            cat > ./site/js/navigation-config.js << EOF
             // Auto-generated navigation structure
             const navigationConfig = [
               {
@@ -458,7 +458,7 @@ jobs:
             
             # Create content map
             echo "Creating sample content ID map..."
-            cat > ./site/js/content-id-map.js << 'EOF'
+            cat > ./site/js/content-id-map.js << EOF
             // Auto-generated content ID mapping
             const contentIdMap = {
               "welcome": { 
