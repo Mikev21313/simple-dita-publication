@@ -29,8 +29,102 @@ jobs:
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Transform DITA to HTML
-      - name: Transform DITA to HTML
+      # NEW STEP: Create XSLT for DITAMAP to Navigation JSON conversion
+      - name: Create DITAMAP to Navigation XSLT
+        run: |
+          cat > ditamap-to-nav.xsl << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <xsl:stylesheet version="2.0"
+            xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+            
+            <xsl:output method="text" encoding="UTF-8" indent="no"/>
+            
+            <!-- Main template -->
+            <xsl:template match="/">
+              <xsl:text>const navigationConfig = </xsl:text>
+              <xsl:apply-templates select="//map" mode="json"/>
+              <xsl:text>;</xsl:text>
+            </xsl:template>
+            
+            <!-- Process map element to JSON array -->
+            <xsl:template match="map" mode="json">
+              <xsl:text>[</xsl:text>
+              <xsl:apply-templates select="topicref" mode="json"/>
+              <xsl:text>]</xsl:text>
+            </xsl:template>
+            
+            <!-- Process topicref elements to JSON objects -->
+            <xsl:template match="topicref" mode="json">
+              <xsl:text>{</xsl:text>
+              
+              <!-- Get the ID from the href attribute, without extension -->
+              <xsl:variable name="href">
+                <xsl:value-of select="@href"/>
+              </xsl:variable>
+              <xsl:variable name="base-id">
+                <xsl:choose>
+                  <xsl:when test="contains($href, '.')">
+                    <xsl:value-of select="substring-before($href, '.')"/>
+                  </xsl:when>
+                  <xsl:otherwise>
+                    <xsl:value-of select="$href"/>
+                  </xsl:otherwise>
+                </xsl:choose>
+              </xsl:variable>
+              
+              <!-- Convert underscores to hyphens for the ID -->
+              <xsl:variable name="id">
+                <xsl:choose>
+                  <xsl:when test="$base-id != ''">
+                    <xsl:value-of select="translate($base-id, '_', '-')"/>
+                  </xsl:when>
+                  <xsl:otherwise>
+                    <xsl:value-of select="translate(@id, '_', '-')"/>
+                  </xsl:otherwise>
+                </xsl:choose>
+              </xsl:variable>
+              
+              <!-- Output the id property -->
+              <xsl:text>"id": "</xsl:text>
+              <xsl:value-of select="$id"/>
+              <xsl:text>",</xsl:text>
+              
+              <!-- Output the title property -->
+              <xsl:text>"title": "</xsl:text>
+              <xsl:choose>
+                <xsl:when test="@navtitle">
+                  <xsl:value-of select="@navtitle"/>
+                </xsl:when>
+                <xsl:otherwise>
+                  <xsl:value-of select="translate(substring($id, 1, 1), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')"/>
+                  <xsl:value-of select="substring($id, 2)"/>
+                  <xsl:text></xsl:text>
+                </xsl:otherwise>
+              </xsl:choose>
+              <xsl:text>"</xsl:text>
+              
+              <!-- Process child topicrefs if present -->
+              <xsl:if test="topicref">
+                <xsl:text>,</xsl:text>
+                <xsl:text>"children": [</xsl:text>
+                <xsl:apply-templates select="topicref" mode="json"/>
+                <xsl:text>]</xsl:text>
+              </xsl:if>
+              
+              <xsl:text>}</xsl:text>
+              
+              <!-- Add comma if not the last item -->
+              <xsl:if test="position() != last()">
+                <xsl:text>,</xsl:text>
+              </xsl:if>
+            </xsl:template>
+            
+          </xsl:stylesheet>
+          EOF
+          echo "Created XSLT for DITAMAP to navigation conversion"
+
+      # Step 4: Transform DITA to HTML and Extract Navigation
+      - name: Transform DITA to HTML and Extract Navigation
         run: |
           # Using HTML5 format with parameters for better output
           ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
@@ -39,11 +133,25 @@ jobs:
           # Create content directory for SPA fragments
           mkdir -p ./site/content
           
+          # Extract navigation structure from DITAMAP using XSLT
+          echo "Extracting navigation structure from DITAMAP"
+          cp dita-source/automotive.ditamap ./automotive.ditamap
+          
+          # Use XSLT to generate navigation JSON
+          ./dita-ot-4.0.2/bin/dita --input=./automotive.ditamap --format=xslt --xslt=./ditamap-to-nav.xsl --output=./site/js/navigation-config.js
+          
+          # Create a backup of the generated navigation for debugging
+          cp ./site/js/navigation-config.js ./site/js/navigation-config.js.generated
+          
           # List files to check output
           echo "Generated files:"
           find ./site -type f | sort
+          
+          # Print the navigation structure for debugging
+          echo "Generated navigation structure:"
+          cat ./site/js/navigation-config.js
 
-      # Step 5: Process HTML files into content fragments
+      # Step 5: Process HTML files into content fragments (same as before)
       - name: Process HTML Content
         run: |
           # Process each HTML file to extract content
@@ -70,104 +178,19 @@ jobs:
               title=$(echo "$id" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
             fi
             
-            # Create content file
-            echo "$content" > "./site/content/$id.html"
-            
-            # Map from DITA filename to content ID
-            case "$id" in
-              "car_basics") 
-                echo "$content" > "./site/content/automobile-fundamentals.html" 
-                echo "Created mapping: car_basics.html → automobile-fundamentals.html"
-                ;;
-              "car_components") 
-                echo "$content" > "./site/content/major-vehicle-components.html" 
-                echo "Created mapping: car_components.html → major-vehicle-components.html"
-                ;;
-              "car_history") 
-                echo "$content" > "./site/content/history-of-automobiles.html" 
-                echo "Created mapping: car_history.html → history-of-automobiles.html"
-                ;;
-              "car_maintenance") 
-                echo "$content" > "./site/content/vehicle-maintenance.html" 
-                echo "Created mapping: car_maintenance.html → vehicle-maintenance.html"
-                ;;
-              "car_types") 
-                echo "$content" > "./site/content/types-of-vehicles.html" 
-                echo "Created mapping: car_types.html → types-of-vehicles.html"
-                ;;
-              "electrical") 
-                echo "$content" > "./site/content/electrical-systems.html" 
-                echo "Created mapping: electrical.html → electrical-systems.html"
-                ;;
-              "engines") 
-                echo "$content" > "./site/content/engine-systems.html" 
-                echo "Created mapping: engines.html → engine-systems.html"
-                ;;
-              "evs") 
-                echo "$content" > "./site/content/electric-vehicles.html" 
-                echo "Created mapping: evs.html → electric-vehicles.html"
-                ;;
-              "brakes") 
-                echo "$content" > "./site/content/braking-systems.html" 
-                echo "Created mapping: brakes.html → braking-systems.html"
-                ;;
-              "emergency_repairs") 
-                echo "$content" > "./site/content/emergency-repairs.html" 
-                echo "Created mapping: emergency_repairs.html → emergency-repairs.html"
-                ;;
-              "basic_maintenance") 
-                echo "$content" > "./site/content/basic-maintenance.html" 
-                echo "Created mapping: basic_maintenance.html → basic-maintenance.html"
-                ;;
-            esac
+            # Create content file with underscores converted to hyphens
+            hyphenated_id=$(echo "$id" | tr '_' '-')
+            echo "$content" > "./site/content/$hyphenated_id.html"
+            echo "Created content: $id.html → $hyphenated_id.html"
             
             # Add to the content manifest
-            echo "  \"$id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
+            echo "  \"$hyphenated_id\": { \"title\": \"$title\" }," >> ./site/content-list.tmp
           done
 
-      # Step 6: Create hierarchical navigation configuration
-      - name: Create Navigation Config
+      # Step 6: Create content manifest (modified to use hyphenated IDs)
+      - name: Create Content Manifest
         run: |
           mkdir -p ./site/js ./site/css
-          
-          # Create hierarchical navigation config matching the structure in the image
-          cat > ./site/js/navigation-config.js << 'EOF'
-          // Hierarchical navigation structure from DITA map
-          const navigationConfig = [
-            {
-              id: "automotive-information",
-              title: "Automotive Information",
-              children: [
-                { id: "history-of-automobiles", title: "History of Automobiles" },
-                { id: "automobile-fundamentals", title: "Automobile Fundamentals" },
-                { 
-                  id: "types-of-vehicles", 
-                  title: "Types of Vehicles",
-                  children: [
-                    { id: "electric-vehicles", title: "Electric Vehicles" }
-                  ]
-                }
-              ]
-            },
-            {
-              id: "basic-maintenance",
-              title: "Basic Maintenance",
-              children: [
-                { id: "emergency-repairs", title: "Emergency Repairs" },
-                { id: "vehicle-maintenance", title: "Vehicle Maintenance" }
-              ]
-            },
-            {
-              id: "major-vehicle-components",
-              title: "Major Vehicle Components",
-              children: [
-                { id: "electrical-systems", title: "Electrical Systems" },
-                { id: "braking-systems", title: "Braking Systems" },
-                { id: "engine-systems", title: "Engine Systems" }
-              ]
-            }
-          ];
-          EOF
           
           # Create content manifest from processed content
           echo "// Content manifest - maps IDs to content files" > ./site/js/content-manifest.js
@@ -178,20 +201,6 @@ jobs:
             cat ./site/content-list.tmp >> ./site/js/content-manifest.js
           fi
           
-          # Add explicit mappings for hyphenated IDs
-          echo "  \"automotive-information\": { \"title\": \"Automotive Information\" }," >> ./site/js/content-manifest.js
-          echo "  \"basic-maintenance\": { \"title\": \"Basic Maintenance\" }," >> ./site/js/content-manifest.js
-          echo "  \"braking-systems\": { \"title\": \"Braking Systems\" }," >> ./site/js/content-manifest.js
-          echo "  \"automobile-fundamentals\": { \"title\": \"Automobile Fundamentals\" }," >> ./site/js/content-manifest.js
-          echo "  \"major-vehicle-components\": { \"title\": \"Major Vehicle Components\" }," >> ./site/js/content-manifest.js
-          echo "  \"history-of-automobiles\": { \"title\": \"History of Automobiles\" }," >> ./site/js/content-manifest.js
-          echo "  \"vehicle-maintenance\": { \"title\": \"Vehicle Maintenance\" }," >> ./site/js/content-manifest.js
-          echo "  \"types-of-vehicles\": { \"title\": \"Types of Vehicles\" }," >> ./site/js/content-manifest.js
-          echo "  \"electrical-systems\": { \"title\": \"Electrical Systems\" }," >> ./site/js/content-manifest.js
-          echo "  \"emergency-repairs\": { \"title\": \"Emergency Repairs\" }," >> ./site/js/content-manifest.js
-          echo "  \"engine-systems\": { \"title\": \"Engine Systems\" }," >> ./site/js/content-manifest.js
-          echo "  \"electric-vehicles\": { \"title\": \"Electric Vehicles\" }," >> ./site/js/content-manifest.js
-          
           # Close the manifest
           echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-manifest.js
           echo "};" >> ./site/js/content-manifest.js
@@ -199,7 +208,7 @@ jobs:
           # Clean up temp file
           rm -f ./site/content-list.tmp
 
-      # Step 7: Create SPA CSS with improved navigation styling
+      # Step 7: Create SPA CSS (same as before)
       - name: Create SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
@@ -377,7 +386,7 @@ jobs:
           }
           EOF
 
-      # Step 8: Create SPA JavaScript Application with section collapsing
+      # Step 8: Create SPA JavaScript Application (same as before)
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
@@ -419,7 +428,7 @@ jobs:
             window.addEventListener('popstate', handlePopState);
             
             // Load initial page based on URL or default
-            const initialPageId = getPageIdFromUrl() || navigationConfig[0].id;
+            const initialPageId = getPageIdFromUrl() || (navigationConfig[0]?.id || 'default');
             debug('Initial page ID:', initialPageId);
             navigateToPage(initialPageId, false);
           }
@@ -532,9 +541,6 @@ jobs:
             // Update current page
             currentPage = pageId;
             
-            // Get alternate ID (convert underscores to hyphens)
-            const altPageId = pageId.replace(/_/g, '-');
-            
             // Load content
             loadContent(pageId)
               .then(content => {
@@ -557,7 +563,9 @@ jobs:
               })
               .catch(error => {
                 debug('Error loading content:', error.message);
-                // Try alternate ID
+                
+                // Try alternate ID if exists
+                const altPageId = pageId.includes('-') ? pageId.replace(/-/g, '_') : pageId.replace(/_/g, '-');
                 loadContent(altPageId)
                   .then(content => {
                     contentTitleEl.textContent = getPageTitle(pageId);
@@ -617,7 +625,7 @@ jobs:
           
           // Handle popstate event (browser back/forward)
           function handlePopState(event) {
-            const pageId = event.state?.pageId || getPageIdFromUrl() || navigationConfig[0].id;
+            const pageId = event.state?.pageId || getPageIdFromUrl() || (navigationConfig[0]?.id || 'default');
             debug('Popstate event, loading page:', pageId);
             navigateToPage(pageId, false);
           }
@@ -629,20 +637,48 @@ jobs:
           
           // Get page title from content manifest
           function getPageTitle(pageId) {
-            if (!contentManifest[pageId]) {
-              return pageId.split(/-|_/).map(word => 
-                word.charAt(0).toUpperCase() + word.slice(1)
-              ).join(' ');
+            if (contentManifest[pageId]) {
+              return contentManifest[pageId].title;
             }
-            return contentManifest[pageId].title;
+            
+            // Try to find the title in the navigation
+            let title = findTitleInNavigation(navigationConfig, pageId);
+            if (title) {
+              return title;
+            }
+            
+            // Generate a title from the ID as fallback
+            return pageId.split(/-|_/).map(word => 
+              word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ');
+          }
+          
+          // Find a title in the navigation structure
+          function findTitleInNavigation(items, id) {
+            for (let i = 0; i < items.length; i++) {
+              const item = items[i];
+              
+              if (item.id === id) {
+                return item.title;
+              }
+              
+              if (item.children && item.children.length > 0) {
+                const title = findTitleInNavigation(item.children, id);
+                if (title) {
+                  return title;
+                }
+              }
+            }
+            
+            return null;
           }
           
           // Initialize the app when DOM is ready
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 9: Create index.html
-      - name: Create Index HTML
+      # Step 9 & 10: Create index.html and 404.html (same as before)
+      - name: Create Index and 404 HTML
         run: |
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
@@ -696,10 +732,7 @@ jobs:
           </body>
           </html>
           EOF
-
-      # Step 10: Create 404.html page for SPA routing
-      - name: Create 404 Page for SPA Routing
-        run: |
+          
           cat > ./site/404.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
@@ -736,36 +769,31 @@ jobs:
           </html>
           EOF
 
-      # Step 11: Create placeholder content
+      # Step 11: Create placeholder content for navigation parent nodes
       - name: Create Default Content
         run: |
-          # Create default content page
+          # Create placeholder content for parent nodes that may not have actual content
           mkdir -p ./site/content
           
-          # Default automotive information page
-          cat > ./site/content/automotive-information.html << 'EOF'
-          <h1>Automotive Information</h1>
-          <p>Welcome to the automotive documentation. This comprehensive guide provides information about various aspects of automotive technology, maintenance, and repair.</p>
-          <p>Use the navigation menu to explore different topics related to automobiles.</p>
-          <p><strong>Main sections include:</strong></p>
-          <ul>
-            <li>History of Automobiles</li>
-            <li>Automobile Fundamentals</li>
-            <li>Types of Vehicles</li>
-          </ul>
-          EOF
+          # Find all IDs in navigation-config.js 
+          echo "Ensuring all navigation items have content..."
           
-          # Ensure all navigation items have content files by checking and creating if missing
-          for id in automotive-information basic-maintenance braking-systems automobile-fundamentals major-vehicle-components history-of-automobiles vehicle-maintenance types-of-vehicles electrical-systems emergency-repairs engine-systems electric-vehicles; do
+          # Use grep to extract IDs from the navigation config
+          nav_ids=$(grep -o '"id": "[^"]*"' ./site/js/navigation-config.js | sed 's/"id": "\([^"]*\)"/\1/')
+          
+          # Process each ID
+          for id in $nav_ids; do
             if [ ! -f "./site/content/$id.html" ]; then
               echo "Creating placeholder for $id"
               
+              # Convert ID to title
               title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
               
+              # Create placeholder content file
               cat > "./site/content/$id.html" << EOF
           <h1>${title}</h1>
-          <p>Information about ${title} is currently being developed.</p>
-          <p>Please check back later for updated content.</p>
+          <p>Information about ${title}.</p>
+          <p>Please use the navigation menu to explore subtopics.</p>
           EOF
             fi
           done
