@@ -40,7 +40,7 @@ jobs:
           echo "Parsing DITAMAP structure from dita-source/automotive.ditamap"
 
           # Create an XSLT file to transform DITAMAP to JSON navigation structure
-          cat > extract-nav.xsl << 'EOF'
+          cat > extract-nav.xsl << XSLTEOF
           <?xml version="1.0" encoding="UTF-8"?>
           <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
             <xsl:output method="text"/>
@@ -95,7 +95,7 @@ jobs:
               }<xsl:if test="following-sibling::topicref">,</xsl:if>
             </xsl:template>
           </xsl:stylesheet>
-          EOF
+          XSLTEOF
 
           # Apply XSLT to extract navigation from DITAMAP
           xsltproc extract-nav.xsl dita-source/automotive.ditamap > ./navigation-structure.json
@@ -544,7 +544,7 @@ jobs:
           mkdir -p ./site/js ./site/css
 
           # Convert JSON to JavaScript navigation config
-          cat > ./site/js/navigation-config.js << 'EOF'
+          cat > ./site/js/navigation-config.js << EOF
           // Auto-generated navigation structure from DITAMAP
           const navigationConfig =
           EOF
@@ -558,7 +558,7 @@ jobs:
       # Step 8: Create SPA CSS with improved styling (based on Oxygen WebHelp)
       - name: Create SPA CSS
         run: |
-          cat > ./site/css/style.css << 'EOF'
+          cat > ./site/css/style.css << EOF
           /* General styles based on Oxygen WebHelp theme */
           * {
             margin: 0;
@@ -931,7 +931,7 @@ jobs:
       # Step 9: Debug SPA Application
       - name: Create SPA Application with Debug
         run: |
-          cat > ./site/js/app.js << 'EOF'
+          cat > ./site/js/app.js << EOF
           // SPA Application with dynamic navigation and search from DITAMAP
           // With enhanced debugging and error handling
 
@@ -1538,7 +1538,7 @@ jobs:
       # Step 11: Create 404.html for SPA routing
       - name: Create 404 Page
         run: |
-          cat > ./site/404.html << 'EOF'
+          cat > ./site/404.html << EOF
           <!DOCTYPE html>
           <html lang="en">
           <head>
