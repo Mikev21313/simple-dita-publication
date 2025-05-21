@@ -212,14 +212,44 @@ jobs:
           echo "Files in images directory:"
           ls -la ./site/images/ || echo "No files in images directory"
 
-      # Step 6: Process HTML files
+      # Step 6: Process HTML files and ensure content exists
       - name: Process HTML Content
         run: |
           # Create content directory for SPA fragments
           mkdir -p ./site/content
           mkdir -p ./site/js
 
+          # Check for DITAMAP files
+          echo "Checking for DITAMAP files..."
+          find ./dita-source -name "*.ditamap" | sort
+          find ./ -name "*.ditamap" | sort
+
+          echo "Creating default content for welcome page"
+          cat > "./site/content/welcome.html" << EOF
+          <div class="welcome-page">
+            <h1>Documentation Portal</h1>
+            <p>Welcome to the documentation portal. Select a topic from the navigation menu to begin.</p>
+            
+            <div class="info-panel">
+              <h2>Getting Started</h2>
+              <p>This documentation has been generated from DITA content. It contains information about various topics organized in the left navigation menu.</p>
+            </div>
+            
+            <div class="info-panel">
+              <h2>Navigation</h2>
+              <p>Use the navigation tree on the left to browse through topics. You can also use the search box to find specific content.</p>
+            </div>
+          </div>
+          EOF
+
+          # Echo current dir and files for debugging
+          echo "Current directory: $PWD"
+          echo "Files in dita-source directory (if exists):"
+          ls -la ./dita-source || echo "dita-source directory not found"
+
           # Process each HTML file to extract content
+          echo "Looking for HTML files to process..."
+          html_count=0
           find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
             # Skip processing if this is the index.html we'll create later
             if [[ "$file" == "./site/index.html" ]]; then
@@ -230,6 +260,7 @@ jobs:
             id="${filename%.html}"
             hyphenated_id="${id//_/-}"
             echo "Processing $filename (ID: $id, Hyphenated ID: $hyphenated_id)"
+            html_count=$((html_count+1))
 
             # Extract content from file
             content=$(sed -n '/<body/,/<\/body>/p' "$file" |
@@ -267,38 +298,244 @@ jobs:
             fi
           done
 
-          # Create a content ID mapping file (this block is repeated, but essential for the search)
-          echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
-          echo "const contentIdMap = {" >> ./site/js/content-id-map.js
+          # If no HTML files were processed, create sample content
+          if [ "$html_count" -eq 0 ]; then
+            echo "No HTML files found to process. Creating sample content..."
+            
+            # Create sample content files
+            cat > "./site/content/getting-started.html" << EOF
+            <h1>Getting Started</h1>
+            <p>This is a sample getting started page for the documentation.</p>
+            <p>In a real DITA conversion, this would contain content from your DITA source files.</p>
+            <h2>Navigation</h2>
+            <p>Use the navigation menu on the left to browse through the documentation.</p>
+            <h2>Search</h2>
+            <p>You can also use the search bar to find specific content.</p>
+            EOF
+            
+            cat > "./site/content/user-guide.html" << EOF
+            <h1>User Guide</h1>
+            <p>This is a sample user guide page for the documentation.</p>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Navigation</td>
+                  <td>The left sidebar contains a tree of all documentation topics.</td>
+                </tr>
+                <tr>
+                  <td>Search</td>
+                  <td>Use the search bar to find content across all documentation.</td>
+                </tr>
+                <tr>
+                  <td>Responsive Design</td>
+                  <td>The documentation works on desktop, tablet, and mobile devices.</td>
+                </tr>
+              </tbody>
+            </table>
+            EOF
+            
+            cat > "./site/content/reference.html" << EOF
+            <h1>API Reference</h1>
+            <p>This is a sample reference page for the documentation.</p>
+            <h2>Functions</h2>
+            <ul>
+              <li><strong>getDocument(id)</strong> - Retrieves a document by ID</li>
+              <li><strong>searchContent(query)</strong> - Searches across all content</li>
+              <li><strong>navigateTo(path)</strong> - Navigates to a specific path</li>
+            </ul>
+            <h2>Parameters</h2>
+            <p>Most functions accept the following parameters:</p>
+            <ul>
+              <li><strong>id</strong> - The unique identifier for a document</li>
+              <li><strong>query</strong> - A search query string</li>
+              <li><strong>path</strong> - A navigation path</li>
+            </ul>
+            EOF
+            
+            # Create a sample content for user-guide children
+            cat > "./site/content/installation.html" << EOF
+            <h1>Installation Guide</h1>
+            <p>This is a sample installation guide for the product.</p>
+            <h2>System Requirements</h2>
+            <ul>
+              <li>Operating System: Windows 10, macOS, or Linux</li>
+              <li>Memory: 4GB RAM minimum, 8GB recommended</li>
+              <li>Disk Space: 500MB available</li>
+            </ul>
+            <h2>Installation Steps</h2>
+            <ol>
+              <li>Download the installer from the website</li>
+              <li>Run the installer and follow the prompts</li>
+              <li>Configure the application settings</li>
+              <li>Verify the installation by running the application</li>
+            </ol>
+            EOF
+            
+            cat > "./site/content/configuration.html" << EOF
+            <h1>Configuration Guide</h1>
+            <p>This is a sample configuration guide for the product.</p>
+            <h2>Basic Configuration</h2>
+            <p>The following settings should be configured for most installations:</p>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default Value</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Port</td>
+                  <td>8080</td>
+                  <td>The port number used for HTTP connections</td>
+                </tr>
+                <tr>
+                  <td>Logging Level</td>
+                  <td>INFO</td>
+                  <td>The minimum logging level (DEBUG, INFO, WARN, ERROR)</td>
+                </tr>
+                <tr>
+                  <td>Cache Size</td>
+                  <td>1024</td>
+                  <td>The maximum number of items to store in the cache</td>
+                </tr>
+              </tbody>
+            </table>
+            EOF
 
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
-            filename=$(basename "$file" .html)
-            id="${filename//_/-}" # Hyphenated ID for routing
-            original_filename="$filename" # Keep original filename for lookup
-            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-            raw_content=$(cat "$file" | tr '\n' ' ' | sed 's/<[^>]*>//g' | sed 's/&nbsp;/ /g' | sed 's/  */ /g' | tr -d '\n\r') # Extract text for search
+            # Create a sample navigation config
+            echo "Creating sample navigation config..."
+            cat > ./site/js/navigation-config.js << EOF
+            // Auto-generated navigation structure
+            const navigationConfig = [
+              {
+                "id": "welcome",
+                "title": "Welcome",
+                "filename": "welcome",
+                "href": "welcome.html"
+              },
+              {
+                "id": "getting-started",
+                "title": "Getting Started",
+                "filename": "getting-started",
+                "href": "getting-started.html"
+              },
+              {
+                "id": "user-guide",
+                "title": "User Guide",
+                "filename": "user-guide",
+                "href": "user-guide.html",
+                "children": [
+                  {
+                    "id": "installation",
+                    "title": "Installation",
+                    "filename": "installation",
+                    "href": "installation.html"
+                  },
+                  {
+                    "id": "configuration",
+                    "title": "Configuration",
+                    "filename": "configuration",
+                    "href": "configuration.html"
+                  }
+                ]
+              },
+              {
+                "id": "reference",
+                "title": "API Reference",
+                "filename": "reference",
+                "href": "reference.html"
+              }
+            ];
+            EOF
+            
+            # Create content map
+            echo "Creating sample content ID map..."
+            cat > ./site/js/content-id-map.js << EOF
+            // Auto-generated content ID mapping
+            const contentIdMap = {
+              "welcome": { 
+                "title": "Welcome", 
+                "filename": "welcome", 
+                "content": "Welcome to the documentation portal. Select a topic from the navigation menu to begin. This documentation has been generated from DITA content. It contains information about various topics organized in the left navigation menu. Use the navigation tree on the left to browse through topics. You can also use the search box to find specific content." 
+              },
+              "getting-started": { 
+                "title": "Getting Started", 
+                "filename": "getting-started", 
+                "content": "This is a sample getting started page for the documentation. In a real DITA conversion, this would contain content from your DITA source files. Use the navigation menu on the left to browse through the documentation. You can also use the search bar to find specific content." 
+              },
+              "user-guide": { 
+                "title": "User Guide", 
+                "filename": "user-guide", 
+                "content": "This is a sample user guide page for the documentation. The left sidebar contains a tree of all documentation topics. Use the search bar to find content across all documentation. The documentation works on desktop, tablet, and mobile devices." 
+              },
+              "installation": { 
+                "title": "Installation Guide", 
+                "filename": "installation", 
+                "content": "This is a sample installation guide for the product. System Requirements: Operating System: Windows 10, macOS, or Linux. Memory: 4GB RAM minimum, 8GB recommended. Disk Space: 500MB available. Installation Steps: Download the installer from the website. Run the installer and follow the prompts. Configure the application settings. Verify the installation by running the application." 
+              },
+              "configuration": { 
+                "title": "Configuration Guide", 
+                "filename": "configuration", 
+                "content": "This is a sample configuration guide for the product. The following settings should be configured for most installations: Port: 8080. Logging Level: INFO. Cache Size: 1024." 
+              },
+              "reference": { 
+                "title": "API Reference", 
+                "filename": "reference", 
+                "content": "This is a sample reference page for the documentation. Functions: getDocument(id) - Retrieves a document by ID. searchContent(query) - Searches across all content. navigateTo(path) - Navigates to a specific path. Parameters: Most functions accept the following parameters: id - The unique identifier for a document. query - A search query string. path - A navigation path." 
+              },
+              "default": { 
+                "title": "Documentation", 
+                "filename": "", 
+                "content": "" 
+              }
+            };
+            EOF
+          else
+            # Create a content ID mapping file
+            echo "Creating content ID mapping from processed HTML files..."
+            echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
+            echo "const contentIdMap = {" >> ./site/js/content-id-map.js
 
-            # Skip if already processed (to avoid duplicates for hyphenated/underscored IDs)
-            if grep -q "\"$id\":" ./site/js/content-id-map.js; then
-              continue
-            fi
+            find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
+              filename=$(basename "$file" .html)
+              id="${filename//_/-}" # Hyphenated ID for routing
+              original_filename="$filename" # Keep original filename for lookup
+              title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
+              raw_content=$(cat "$file" | tr '\n' ' ' | sed 's/<[^>]*>//g' | sed 's/&nbsp;/ /g' | sed 's/  */ /g' | tr -d '\n\r') # Extract text for search
 
-            # If no title found, generate one from the ID
-            if [ -z "$title" ]; then
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-            fi
+              # Skip if already processed (to avoid duplicates for hyphenated/underscored IDs)
+              if grep -q "\"$id\":" ./site/js/content-id-map.js; then
+                continue
+              fi
 
-            # Escape quotes in title and content
-            title=$(echo "$title" | sed 's/"/\\"/g')
-            raw_content=$(echo "$raw_content" | sed 's/"/\\"/g')
+              # If no title found, generate one from the ID
+              if [ -z "$title" ]; then
+                title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+              fi
 
-            # Add to content map file with raw content for search
-            echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$original_filename\", \"content\": \"$raw_content\" }," >> ./site/js/content-id-map.js
-          done
+              # Escape quotes in title and content
+              title=$(echo "$title" | sed 's/"/\\"/g')
+              raw_content=$(echo "$raw_content" | sed 's/"/\\"/g')
 
-          # Close the mapping object
-          echo "  \"default\": { \"title\": \"Automotive Documentation\", \"filename\": \"\", \"content\": \"\" }" >> ./site/js/content-id-map.js
-          echo "};" >> ./site/js/content-id-map.js
+              # Add to content map file with raw content for search
+              echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$original_filename\", \"content\": \"$raw_content\" }," >> ./site/js/content-id-map.js
+            done
+
+            # Add welcome page to content map 
+            echo "  \"welcome\": { \"title\": \"Welcome\", \"filename\": \"welcome\", \"content\": \"Welcome to the documentation portal. Select a topic from the navigation menu to begin. This documentation has been generated from DITA content. It contains information about various topics organized in the left navigation menu.\" }," >> ./site/js/content-id-map.js
+
+            # Close the mapping object
+            echo "  \"default\": { \"title\": \"Documentation\", \"filename\": \"\", \"content\": \"\" }" >> ./site/js/content-id-map.js
+            echo "};" >> ./site/js/content-id-map.js
+          fi
 
 
       # Step 7: Generate Navigation Configuration
@@ -691,11 +928,12 @@ jobs:
           }
           EOF
 
-      # Step 9: Create SPA JavaScript Application (Updated for OxygenXML styling)
-      - name: Create SPA Application
+      # Step 9: Debug SPA Application
+      - name: Create SPA Application with Debug
         run: |
           cat > ./site/js/app.js << 'EOF'
           // SPA Application with dynamic navigation and search from DITAMAP
+          // With enhanced debugging and error handling
 
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -720,49 +958,90 @@ jobs:
           window.currentPage = null; // Make it available globally
           const basePath = getBasePath();
 
-          // Debug logging function
+          // Enhanced debug logging
           function debug(message, data) {
             console.log(`[DITA-SPA] ${message}`, data || '');
+            // Also show messages in page during initialization for visibility
+            if (document.getElementById('debug-log')) {
+              const logEl = document.getElementById('debug-log');
+              const entry = document.createElement('div');
+              entry.textContent = `${message} ${data ? JSON.stringify(data) : ''}`;
+              logEl.appendChild(entry);
+            }
           }
 
           // Initialize the application
           function initApp() {
             debug('Initializing app with base path:', basePath);
+            
+            try {
+              // Add debug logging area to page temporarily
+              contentEl.innerHTML += '<div id="debug-log" style="font-family: monospace; padding: 10px; background: #f5f5f5; border: 1px solid #ddd; margin-top: 20px; max-height: 200px; overflow: auto;"><strong>Debug Log:</strong></div>';
+              
+              // Check if navigation config exists
+              if (!window.navigationConfig) {
+                debug('ERROR: Navigation configuration is missing!');
+                showErrorContent('initialization', 'Navigation configuration could not be loaded. Please check the console for errors.');
+                return;
+              }
+              
+              debug('Navigation config found with items:', navigationConfig.length);
+              
+              // Render navigation
+              renderNavigation(navigationConfig);
+              debug('Navigation rendered successfully');
 
-            // Render navigation
-            renderNavigation(navigationConfig);
-
-            // Set up event listeners
-            window.addEventListener('popstate', handlePopState);
-            if (searchButton && searchInput) {
+              // Set up event listeners
+              window.addEventListener('popstate', handlePopState);
+              if (searchButton && searchInput) {
                 searchButton.addEventListener('click', performSearch);
                 searchInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        performSearch();
-                    }
+                  if (e.key === 'Enter') {
+                    performSearch();
+                  }
                 });
-            }
+                debug('Search event listeners attached');
+              }
 
-            // Add print functionality
-            document.querySelector('.wh_print_link button').addEventListener('click', (e) => {
-              e.preventDefault();
-              window.print();
-            });
+              // Add print functionality
+              const printBtn = document.querySelector('.wh_print_link button');
+              if (printBtn) {
+                printBtn.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  window.print();
+                });
+                debug('Print functionality attached');
+              }
 
-            // Check if we have a hash in the URL
-            const initialPageId = getPageIdFromUrl();
+              // Check if we have a hash in the URL
+              const initialPageId = getPageIdFromUrl();
+              debug('Initial page ID from URL:', initialPageId);
 
-            if (initialPageId) {
-              // If we have a page ID in the URL, load that page
-              navigateToPage(initialPageId, false);
-            } else {
-              // Otherwise, show a welcome screen
-              showWelcomeScreen();
+              if (initialPageId) {
+                // If we have a page ID in the URL, load that page
+                navigateToPage(initialPageId, false);
+              } else {
+                // Otherwise, show a welcome screen
+                showWelcomeScreen();
+              }
+              
+              // Remove debug log after 10 seconds
+              setTimeout(() => {
+                const debugLog = document.getElementById('debug-log');
+                if (debugLog) {
+                  debugLog.remove();
+                }
+              }, 10000);
+              
+            } catch (error) {
+              console.error('Error during initialization:', error);
+              showErrorContent('initialization', `Error initializing app: ${error.message}. Check the console for more details.`);
             }
           }
 
           // Function to show welcome screen
           function showWelcomeScreen() {
+            debug('Showing welcome screen');
             contentTitleEl.textContent = 'Documentation';
             document.title = 'Documentation';
 
@@ -770,14 +1049,24 @@ jobs:
               <div class="welcome-screen">
                 <h2>Welcome to Documentation</h2>
                 <p>Please select a topic from the navigation menu or use the search bar.</p>
+                <div id="nav-debug">
+                  <p>Navigation items loaded: <strong>${navigationConfig ? navigationConfig.length : 0}</strong></p>
+                </div>
               </div>
             `;
 
             document.body.classList.remove('loading');
+            debug('Welcome screen displayed');
           }
 
           // Render the navigation menu with hierarchy
           function renderNavigation(items, parentEl = navigationEl) {
+            if (!items || !Array.isArray(items) || items.length === 0) {
+              debug('WARNING: No navigation items to render');
+              return;
+            }
+            
+            debug(`Rendering ${items.length} navigation items`);
             const ul = document.createElement('ul');
             ul.setAttribute('role', 'menu');
 
@@ -801,9 +1090,9 @@ jobs:
 
               const a = document.createElement('a');
               a.setAttribute('role', 'menuitem');
-              a.textContent = item.title;
-              a.setAttribute('data-id', item.id);
-              a.href = `#${item.id}`;
+              a.textContent = item.title || 'Untitled';
+              a.setAttribute('data-id', item.id || '');
+              a.href = `#${item.id || ''}`;
 
               // Click handler for navigation items
               a.addEventListener('click', (e) => {
@@ -815,10 +1104,14 @@ jobs:
                 }
 
                 // Always navigate to the page
-                navigateToPage(item.id);
-                // Clear search results when navigating
-                if (searchResultsEl) searchResultsEl.innerHTML = '';
-                if (searchInput) searchInput.value = '';
+                if (item.id) {
+                  navigateToPage(item.id);
+                  // Clear search results when navigating
+                  if (searchResultsEl) searchResultsEl.innerHTML = '';
+                  if (searchInput) searchInput.value = '';
+                } else {
+                  debug('WARNING: Navigation item clicked with no ID');
+                }
               });
 
               li.appendChild(a);
@@ -836,6 +1129,7 @@ jobs:
 
           // Expand navigation path to the current page
           function expandNavigationTo(pageId) {
+            debug('Expanding navigation to:', pageId);
             // Helper to search for a page in the navigation tree
             function findPageInNavigation(items, id, path = []) {
               for (let i = 0; i < items.length; i++) {
@@ -859,13 +1153,18 @@ jobs:
 
             // Find the path to the page
             const path = findPageInNavigation(navigationConfig, pageId);
-            if (!path) return;
+            if (!path) {
+              debug('WARNING: Could not find navigation path for:', pageId);
+              return;
+            }
 
             // Expand all parent items in the path
             for (let i = 0; i < path.length - 1; i++) {
               const item = path[i];
-              const li = document.querySelector(`.sidebar li a[data-id="${item.id}"]`).parentElement;
-              li.classList.add('expanded');
+              const li = document.querySelector(`.sidebar li a[data-id="${item.id}"]`)?.parentElement;
+              if (li) {
+                li.classList.add('expanded');
+              }
             }
           }
 
@@ -873,72 +1172,81 @@ jobs:
           function navigateToPage(pageId, pushState = true) {
             debug('Navigating to page:', pageId);
 
-            // Update active state in navigation
-            updateActiveNavItem(pageId);
-
-            // Expand navigation to show the current page
-            expandNavigationTo(pageId);
-
-            // Update the URL
-            if (pushState) {
-              history.pushState({ pageId }, '', `#${pageId}`);
-            }
-
             // Show loading indicator
             document.body.classList.add('loading');
 
-            // Update current page
-            window.currentPage = pageId;
+            try {
+              // Update active state in navigation
+              updateActiveNavItem(pageId);
 
-            // Get filename from ID (using contentIdMap if available)
-            let contentFileName = pageId;
-            if (window.contentIdMap && contentIdMap[pageId] && contentIdMap[pageId].filename) {
-              contentFileName = contentIdMap[pageId].filename;
+              // Expand navigation to show the current page
+              expandNavigationTo(pageId);
+
+              // Update the URL
+              if (pushState) {
+                history.pushState({ pageId }, '', `#${pageId}`);
+              }
+
+              // Update current page
+              window.currentPage = pageId;
+
+              // Get filename from ID (using contentIdMap if available)
+              let contentFileName = pageId;
+              if (window.contentIdMap && contentIdMap[pageId] && contentIdMap[pageId].filename) {
+                contentFileName = contentIdMap[pageId].filename;
+                debug('Found content filename from map:', contentFileName);
+              }
+
+              // Try to load content
+              loadContent(pageId)
+                .then(content => {
+                  // Update title
+                  const title = getPageTitle(pageId);
+                  contentTitleEl.textContent = title;
+                  document.title = title;
+
+                  // Update content
+                  contentEl.innerHTML = content;
+
+                  // Add OxygenXML classes to tables if present
+                  enhanceTables();
+
+                  // Hide loading indicator
+                  document.body.classList.remove('loading');
+                  debug('Content loaded successfully');
+                })
+                .catch(error => {
+                  debug('Error loading content with ID, trying original filename:', contentFileName);
+                  // Try with original filename if different from ID
+                  if (contentFileName !== pageId) {
+                    loadContent(contentFileName)
+                      .then(content => {
+                        contentTitleEl.textContent = getPageTitle(pageId);
+                        document.title = getPageTitle(pageId);
+                        contentEl.innerHTML = content;
+                        enhanceTables();
+                        document.body.classList.remove('loading');
+                        debug('Content loaded from original filename');
+                      })
+                      .catch(altError => {
+                        debug('ERROR: Both content loads failed:', altError);
+                        showErrorContent(pageId, 'Content could not be loaded. The file may not exist.');
+                      });
+                  } else {
+                    debug('ERROR: Content load failed:', error);
+                    showErrorContent(pageId, 'Content could not be loaded. The file may not exist.');
+                  }
+                });
+            } catch (error) {
+              debug('ERROR: Navigation error:', error);
+              showErrorContent(pageId, `Error during navigation: ${error.message}`);
             }
-
-            // Try both hyphenated and underscore versions
-            loadContent(pageId)
-              .then(content => {
-                // Update title
-                const title = getPageTitle(pageId);
-                contentTitleEl.textContent = title;
-                document.title = title;
-
-                // Update content
-                contentEl.innerHTML = content;
-
-                // Add OxygenXML classes to tables if present
-                enhanceTables();
-
-                // Hide loading indicator
-                document.body.classList.remove('loading');
-                debug('Content loaded successfully');
-              })
-              .catch(error => {
-                debug('Error loading with ID, trying original filename:', contentFileName);
-                // Try with original filename if different from ID
-                if (contentFileName !== pageId) {
-                  loadContent(contentFileName)
-                    .then(content => {
-                      contentTitleEl.textContent = getPageTitle(pageId);
-                      document.title = getPageTitle(pageId);
-                      contentEl.innerHTML = content;
-                      enhanceTables();
-                      document.body.classList.remove('loading');
-                      debug('Content loaded from original filename');
-                    })
-                    .catch(altError => {
-                      showErrorContent(pageId);
-                    });
-                } else {
-                  showErrorContent(pageId);
-                }
-              });
           }
 
           // Enhance tables with OxygenXML-like styling
           function enhanceTables() {
             const tables = document.querySelectorAll('#content table');
+            debug(`Enhancing ${tables.length} tables found in content`);
             tables.forEach(table => {
               // Add OxygenXML-like classes
               if (!table.className.includes('table')) {
@@ -956,16 +1264,23 @@ jobs:
           }
 
           // Show error content when page cannot be loaded
-          function showErrorContent(pageId) {
-            console.error('Failed to load content:', pageId);
+          function showErrorContent(pageId, message = null) {
+            console.error('Error showing content for:', pageId);
+            document.body.classList.remove('loading');
             contentEl.innerHTML = `
               <div class="error">
                 <h2>Content Not Found</h2>
-                <p>The requested content "${pageId}" could not be loaded.</p>
+                <p>${message || `The requested content "${pageId}" could not be loaded.`}</p>
                 <p>Please select another topic from the navigation menu.</p>
+                <div class="technical-details">
+                  <p><strong>Technical Details:</strong></p>
+                  <p>Base Path: ${basePath}</p>
+                  <p>Current Page: ${pageId}</p>
+                  <p>Content Map Available: ${window.contentIdMap ? 'Yes' : 'No'}</p>
+                  <p>Navigation Config Available: ${window.navigationConfig ? 'Yes' : 'No'}</p>
+                </div>
               </div>
             `;
-            document.body.classList.remove('loading');
           }
 
           // Load content for a page
@@ -1000,14 +1315,20 @@ jobs:
                 }
                 parent = parent.parentElement;
               }
+            } else {
+              debug('WARNING: No navigation item found for:', pageId);
             }
           }
 
           // Handle popstate event (browser back/forward)
           function handlePopState(event) {
-            const pageId = event.state?.pageId || getPageIdFromUrl() || navigationConfig[0].id;
+            const pageId = event.state?.pageId || getPageIdFromUrl() || (navigationConfig[0] && navigationConfig[0].id);
             debug('Popstate event, loading page:', pageId);
-            navigateToPage(pageId, false);
+            if (pageId) {
+              navigateToPage(pageId, false);
+            } else {
+              showWelcomeScreen();
+            }
           }
 
           // Get page ID from URL hash
@@ -1058,6 +1379,11 @@ jobs:
               }
 
               debug('Performing search for:', query);
+
+              if (!window.contentIdMap) {
+                searchResultsEl.innerHTML = '<li><p>Search index not available. Content map is missing.</p></li>';
+                return;
+              }
 
               const results = [];
               for (const id in contentIdMap) {
@@ -1130,7 +1456,22 @@ jobs:
           window.navigateToPage = navigateToPage;
 
           // Initialize the app when DOM is ready
-          document.addEventListener('DOMContentLoaded', initApp);
+          window.addEventListener('DOMContentLoaded', initApp);
+          
+          // Add fallback for loading timeout
+          window.addEventListener('load', function() {
+            // If still in loading state after 5 seconds, something might be wrong
+            setTimeout(() => {
+              if (document.body.classList.contains('loading')) {
+                debug('WARNING: Still in loading state after 5 seconds');
+                document.body.classList.remove('loading');
+                
+                if (!window.navigationLoaded) {
+                  showErrorContent('timeout', 'Navigation failed to load. Please check the console for errors.');
+                }
+              }
+            }, 5000);
+          });
           EOF
 
       # Step 10: Create index.html (Updated for Search Bar)
