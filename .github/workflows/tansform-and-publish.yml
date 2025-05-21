@@ -318,11 +318,11 @@ jobs:
 
           echo "Navigation configuration generated from DITAMAP structure"
 
-      # Step 8: Create SPA CSS with improved styling
+      # Step 8: Create SPA CSS with improved styling (based on Oxygen WebHelp)
       - name: Create SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
-          /* General styles */
+          /* General styles based on Oxygen WebHelp theme */
           * {
             margin: 0;
             padding: 0;
@@ -330,52 +330,53 @@ jobs:
           }
 
           body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* Modern font */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
             display: flex;
             height: 100vh;
             width: 100%;
             overflow: hidden;
-            color: #333; /* Darker text for readability */
-            background-color: #f0f8ff; /* Light background */
+            color: #333;
+            background-color: #f8f8f8;
           }
 
-          /* Sidebar */
+          /* Sidebar styling */
           .sidebar {
-            width: 280px; /* Slightly wider sidebar */
-            background-color: #e0f2f7; /* Aquamarine light */
-            padding: 15px; /* Reduced padding to give more space for content */
+            width: 280px;
+            background-color: #e0f7f7; /* Light cyan background */
+            padding: 15px;
             height: 100vh;
             overflow-y: auto;
-            border-right: 1px solid #a7d9e7; /* Aquamarine border */
+            border-right: 1px solid #c0e0e0;
             display: flex;
             flex-direction: column;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.05); /* Subtle shadow */
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
           }
 
           .main-content {
             flex: 1;
-            padding: 30px; /* More padding */
+            padding: 30px;
             height: 100vh;
             overflow-y: auto;
-            background-color: #ffffff; /* White content area */
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.02); /* Inner shadow */
+            background-color: #ffffff;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.02);
           }
 
           .sidebar h2 {
+            font-weight: 500;
             margin-top: 0;
-            margin-bottom: 20px; /* More space */
-            color: #00796b; /* Dark aquamarine for headings */
-            border-bottom: 2px solid #4db6ac; /* More prominent border */
-            padding-bottom: 15px;
-            font-size: 1.6em; /* Larger heading */
+            margin-bottom: 15px;
+            color: #00747a; /* Teal color for headings */
+            border-bottom: 2px solid #80cbc4;
+            padding-bottom: 10px;
+            font-size: 1.4em;
           }
 
           /* Navigation styling */
           .sidebar-nav {
             flex: 1;
             overflow-y: auto;
-            margin-top: 20px; /* Space for search */
+            margin-top: 15px;
           }
 
           .sidebar ul {
@@ -385,33 +386,33 @@ jobs:
           }
 
           .sidebar ul ul {
-            padding-left: 25px; /* Deeper indentation */
+            padding-left: 20px;
             margin-top: 5px;
             margin-bottom: 0;
           }
 
           .sidebar li {
-            margin-bottom: 8px; /* More space between items */
+            margin-bottom: 6px;
             position: relative;
           }
 
           /* Toggle arrow styling */
           .sidebar .toggle-arrow {
             display: inline-block;
-            width: 20px; /* Larger target */
-            height: 20px;
+            width: 18px;
+            height: 18px;
             position: absolute;
             left: 0;
             top: 4px;
             cursor: pointer;
             z-index: 10;
-            color: #00796b; /* Aquamarine color for arrow */
+            color: #00747a;
           }
 
           .sidebar .toggle-arrow:before {
             content: "▶";
             display: inline-block;
-            font-size: 12px; /* Slightly larger arrow */
+            font-size: 10px;
             transition: transform 0.2s;
           }
 
@@ -428,65 +429,68 @@ jobs:
           }
 
           .sidebar a {
-            color: #00796b; /* Aquamarine text */
+            color: #00747a;
             text-decoration: none;
             display: block;
-            padding: 8px 5px 8px 25px; /* More padding, adjust left for arrow */
+            padding: 6px 5px 6px 22px;
             border-radius: 4px;
             transition: background-color 0.2s, color 0.2s;
             cursor: pointer;
+            font-size: 0.95em;
           }
 
           .sidebar a:hover {
-            background-color: #b2ebf2; /* Lighter aquamarine on hover */
-            color: #004d40; /* Darker text on hover */
+            background-color: #e1f5fe;
+            color: #006064;
           }
 
           .sidebar a.active {
-            background-color: #80deea; /* Darker aquamarine for active */
+            background-color: #80deea;
             font-weight: bold;
-            color: #fff; /* White text for active */
-            box-shadow: inset 3px 0 0 #00bcd4; /* Left border highlight */
+            color: #006064;
+            box-shadow: inset 3px 0 0 #00acc1;
           }
 
           /* Search Bar Styling */
           .search-container {
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             display: flex;
             gap: 5px;
             width: 100%;
+            position: relative;
           }
 
           .search-container input[type="text"] {
             flex-grow: 1;
-            min-width: 0; /* Prevent flex item from overflowing */
+            min-width: 0;
             padding: 8px 10px;
-            border: 1px solid #a7d9e7; /* Aquamarine border */
+            border: 1px solid #b0e0e6;
             border-radius: 5px;
             font-size: 0.9em;
             outline: none;
-            transition: border-color 0.3s;
+            transition: border-color 0.3s, box-shadow 0.3s;
           }
 
           .search-container input[type="text"]:focus {
-            border-color: #00bcd4; /* Brighter aquamarine on focus */
+            border-color: #4dd0e1;
             box-shadow: 0 0 5px rgba(0, 188, 212, 0.3);
           }
 
           .search-container button {
             padding: 8px 10px;
-            background-color: #00bcd4; /* Aquamarine button */
+            background-color: #00acc1;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s;
-            white-space: nowrap; /* Prevent button text from wrapping */
-            min-width: 60px; /* Ensure button has minimum width */
+            white-space: nowrap;
+            min-width: 60px;
+            font-weight: normal;
           }
 
           .search-container button:hover {
-            background-color: #0097a7; /* Darker aquamarine on hover */
+            background-color: #0097a7;
           }
 
           /* Search Results Styling */
@@ -494,16 +498,16 @@ jobs:
             list-style-type: none;
             padding: 0;
             margin-top: 15px;
-            border-top: 1px solid #eee;
+            border-top: 1px solid #e0e0e0;
             padding-top: 15px;
-            max-height: 300px; /* Limit height */
-            overflow-y: auto; /* Scroll if too many results */
+            max-height: 300px;
+            overflow-y: auto;
           }
 
           .search-results li {
             margin-bottom: 10px;
             padding: 8px 0;
-            border-bottom: 1px dashed #eee;
+            border-bottom: 1px dashed #e0e0e0;
           }
 
           .search-results li:last-child {
@@ -511,7 +515,7 @@ jobs:
           }
 
           .search-results a {
-            color: #00796b;
+            color: #0097a7;
             text-decoration: none;
             font-weight: bold;
           }
@@ -523,69 +527,89 @@ jobs:
           }
 
           .highlight {
-            background-color: #fff9c4; /* Light yellow highlight */
+            background-color: #fff9c4;
             font-weight: bold;
           }
 
-
           /* Content styling */
           .main-content h1, .main-content h2, .main-content h3, .main-content h4 {
+            font-weight: 500;
             margin-top: 1.5em;
             margin-bottom: 0.8em;
-            color: #004d40; /* Darker aquamarine for content headings */
+            color: #00838f;
           }
-          .main-content h1 { font-size: 2.2em; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
-          .main-content h2 { font-size: 1.8em; }
-          .main-content h3 { font-size: 1.4em; }
+          .main-content h1 {
+            font-size: 2em;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 10px;
+            margin-top: 0;
+          }
+          .main-content h2 { font-size: 1.5em; }
+          .main-content h3 { font-size: 1.3em; }
           .main-content h4 { font-size: 1.1em; }
-
 
           .main-content p {
             margin-bottom: 1em;
+            line-height: 1.6;
           }
 
           .main-content img {
             max-width: 100%;
             height: auto;
-            display: block; /* Center images if needed */
+            display: block;
             margin: 1em auto;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
           }
 
+          /* Table styling */
           .main-content table {
             width: 100%;
             border-collapse: collapse;
-            margin: 1em 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin: 1.5em 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            font-size: 0.95em;
           }
+          
           .main-content th, .main-content td {
-            border: 1px solid #b2ebf2; /* Aquamarine border for tables */
+            border: 1px solid #b2dfdb;
             padding: 10px;
             text-align: left;
           }
+          
           .main-content th {
-            background-color: #e0f2f7; /* Lighter aquamarine for headers */
+            background-color: #e0f2f1;
             font-weight: bold;
             color: #00796b;
           }
+          
           .main-content tr:nth-child(even) {
-            background-color: #f7fcfe; /* Very light aquamarine for alternating rows */
+            background-color: #f5f9f9;
           }
+          
+          .main-content tr:hover {
+            background-color: #e1f5fe;
+          }
+          
+          .table-container {
+            overflow-x: auto;
+            margin-bottom: 1.5em;
+          }
+
           .main-content ul, .main-content ol {
             margin-left: 2em;
             margin-bottom: 1em;
           }
+          
           .main-content li {
             margin-bottom: 0.5em;
           }
-
 
           /* Welcome screen styling */
           .welcome-screen {
             text-align: center;
             padding: 40px 20px;
-            color: #004d40;
+            color: #00838f;
           }
 
           .welcome-screen h2 {
@@ -608,16 +632,41 @@ jobs:
 
           /* Error state */
           .error {
-            background-color: #ffe0b2; /* Light orange for errors */
-            border-left: 4px solid #ff5722; /* Darker orange border */
+            background-color: #ffebee;
+            border-left: 4px solid #f44336;
             padding: 15px;
             margin-bottom: 20px;
             color: #333;
           }
 
           .error h2 {
-            color: #ff5722;
+            color: #d32f2f;
             margin-top: 0;
+          }
+
+          /* Header styling similar to Oxygen WebHelp */
+          .navbar {
+            background-color: #00838f;
+            color: white;
+            padding: 10px 0;
+            margin-bottom: 20px;
+          }
+
+          .navbar-default {
+            border: none;
+          }
+
+          /* Print button */
+          .wh_print_link {
+            display: inline-block;
+            margin-left: 15px;
+          }
+
+          .wh_print_link button {
+            background: transparent;
+            border: none;
+            color: #00838f;
+            cursor: pointer;
           }
 
           /* Responsive design */
@@ -632,7 +681,7 @@ jobs:
               height: auto;
               max-height: 40vh;
               border-right: none;
-              border-bottom: 1px solid #a7d9e7;
+              border-bottom: 1px solid #b2ebf2;
             }
 
             .main-content {
@@ -642,7 +691,7 @@ jobs:
           }
           EOF
 
-      # Step 9: Create SPA JavaScript Application (Updated for Search)
+      # Step 9: Create SPA JavaScript Application (Updated for OxygenXML styling)
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
@@ -694,6 +743,12 @@ jobs:
                 });
             }
 
+            // Add print functionality
+            document.querySelector('.wh_print_link button').addEventListener('click', (e) => {
+              e.preventDefault();
+              window.print();
+            });
+
             // Check if we have a hash in the URL
             const initialPageId = getPageIdFromUrl();
 
@@ -709,11 +764,11 @@ jobs:
           // Function to show welcome screen
           function showWelcomeScreen() {
             contentTitleEl.textContent = 'Documentation';
-            document.title = 'Automotive Documentation';
+            document.title = 'Documentation';
 
             contentEl.innerHTML = `
               <div class="welcome-screen">
-                <h2>Welcome to Automotive Documentation</h2>
+                <h2>Welcome to Documentation</h2>
                 <p>Please select a topic from the navigation menu or use the search bar.</p>
               </div>
             `;
@@ -724,9 +779,11 @@ jobs:
           // Render the navigation menu with hierarchy
           function renderNavigation(items, parentEl = navigationEl) {
             const ul = document.createElement('ul');
+            ul.setAttribute('role', 'menu');
 
             items.forEach(item => {
               const li = document.createElement('li');
+              li.setAttribute('role', 'presentation');
 
               // Add class if item has children
               if (item.children && item.children.length > 0) {
@@ -743,6 +800,7 @@ jobs:
               }
 
               const a = document.createElement('a');
+              a.setAttribute('role', 'menuitem');
               a.textContent = item.title;
               a.setAttribute('data-id', item.id);
               a.href = `#${item.id}`;
@@ -849,6 +907,9 @@ jobs:
                 // Update content
                 contentEl.innerHTML = content;
 
+                // Add OxygenXML classes to tables if present
+                enhanceTables();
+
                 // Hide loading indicator
                 document.body.classList.remove('loading');
                 debug('Content loaded successfully');
@@ -862,6 +923,7 @@ jobs:
                       contentTitleEl.textContent = getPageTitle(pageId);
                       document.title = getPageTitle(pageId);
                       contentEl.innerHTML = content;
+                      enhanceTables();
                       document.body.classList.remove('loading');
                       debug('Content loaded from original filename');
                     })
@@ -872,6 +934,25 @@ jobs:
                   showErrorContent(pageId);
                 }
               });
+          }
+
+          // Enhance tables with OxygenXML-like styling
+          function enhanceTables() {
+            const tables = document.querySelectorAll('#content table');
+            tables.forEach(table => {
+              // Add OxygenXML-like classes
+              if (!table.className.includes('table')) {
+                table.classList.add('table');
+              }
+              
+              // Wrap tables in container for responsive design
+              if (!table.parentElement.className.includes('table-container')) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'table-container';
+                table.parentNode.insertBefore(wrapper, table);
+                wrapper.appendChild(table);
+              }
+            });
           }
 
           // Show error content when page cannot be loaded
