@@ -493,37 +493,44 @@ jobs:
             background-color: #0097a7;
           }
 
-          /* Search Results Styling */
+          /* Search Results Styling - UPDATED */
           .search-results {
             list-style-type: none;
             padding: 0;
             margin-top: 15px;
+            margin-bottom: 15px;
             border-top: 1px solid #e0e0e0;
-            padding-top: 15px;
+            border-bottom: 1px solid #e0e0e0;
+            padding-top: 10px;
+            padding-bottom: 10px;
             max-height: 300px;
             overflow-y: auto;
+            width: 100%;
+            background-color: #f5f9f9;
           }
 
           .search-results li {
             margin-bottom: 10px;
-            padding: 8px 0;
+            padding: 8px;
             border-bottom: 1px dashed #e0e0e0;
           }
 
           .search-results li:last-child {
             border-bottom: none;
+            margin-bottom: 0;
           }
 
           .search-results a {
             color: #0097a7;
             text-decoration: none;
             font-weight: bold;
+            display: block;
+            padding: 4px 0;
           }
 
-          .search-results p {
-            font-size: 0.9em;
-            color: #555;
-            margin-top: 5px;
+          .search-results a:hover {
+            background-color: #e1f5fe;
+            border-radius: 4px;
           }
 
           .highlight {
@@ -691,7 +698,7 @@ jobs:
           }
           EOF
 
-      # Step 9: Create SPA JavaScript Application (Updated for OxygenXML styling)
+      # Step 9: Create SPA JavaScript Application (Updated for Search Fixes)
       - name: Create SPA Application
         run: |
           cat > ./site/js/app.js << 'EOF'
@@ -872,6 +879,13 @@ jobs:
           // Navigate to a specific page
           function navigateToPage(pageId, pushState = true) {
             debug('Navigating to page:', pageId);
+            
+            // Validate pageId
+            if (!pageId) {
+              console.error('Invalid pageId - cannot navigate to undefined page');
+              showErrorContent('undefined');
+              return;
+            }
 
             // Update active state in navigation
             updateActiveNavItem(pageId);
@@ -894,6 +908,9 @@ jobs:
             let contentFileName = pageId;
             if (window.contentIdMap && contentIdMap[pageId] && contentIdMap[pageId].filename) {
               contentFileName = contentIdMap[pageId].filename;
+              debug('Using filename from contentIdMap:', contentFileName);
+            } else {
+              debug('No contentIdMap entry found for:', pageId);
             }
 
             // Try both hyphenated and underscore versions
@@ -912,7 +929,7 @@ jobs:
 
                 // Hide loading indicator
                 document.body.classList.remove('loading');
-                debug('Content loaded successfully');
+                debug('Content loaded successfully for:', pageId);
               })
               .catch(error => {
                 debug('Error loading with ID, trying original filename:', contentFileName);
@@ -925,10 +942,28 @@ jobs:
                       contentEl.innerHTML = content;
                       enhanceTables();
                       document.body.classList.remove('loading');
-                      debug('Content loaded from original filename');
+                      debug('Content loaded from original filename:', contentFileName);
                     })
                     .catch(altError => {
-                      showErrorContent(pageId);
+                      // Try with underscore version if pageId contains hyphens
+                      if (pageId.includes('-')) {
+                        const underscoreId = pageId.replace(/-/g, '_');
+                        debug('Trying with underscore version:', underscoreId);
+                        loadContent(underscoreId)
+                          .then(content => {
+                            contentTitleEl.textContent = getPageTitle(pageId);
+                            document.title = getPageTitle(pageId);
+                            contentEl.innerHTML = content;
+                            enhanceTables();
+                            document.body.classList.remove('loading');
+                            debug('Content loaded with underscore version');
+                          })
+                          .catch(finalError => {
+                            showErrorContent(pageId);
+                          });
+                      } else {
+                        showErrorContent(pageId);
+                      }
                     });
                 } else {
                   showErrorContent(pageId);
@@ -973,12 +1008,16 @@ jobs:
             const contentPath = `${basePath}/content/${pageId}.html`;
             debug('Fetching from URL:', contentPath);
 
-            const response = await fetch(contentPath);
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
+            try {
+              const response = await fetch(contentPath);
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status} for ${contentPath}`);
+              }
+              return await response.text();
+            } catch (error) {
+              debug('Content fetch error:', error.message);
+              throw error;
             }
-
-            return await response.text();
           }
 
           // Update active state in navigation
@@ -1045,85 +1084,107 @@ jobs:
             ).join(' ');
           }
 
-          // --- Search Functionality ---
+          // --- Search Functionality --- UPDATED
           function performSearch() {
-              const query = searchInput.value.toLowerCase().trim();
-              searchResultsEl.innerHTML = ''; // Clear previous results
+            const query = searchInput.value.toLowerCase().trim();
+            searchResultsEl.innerHTML = ''; // Clear previous results
 
-              if (query.length < 2) { // Require at least 2 characters for search
-                  if (query.length > 0) {
-                      searchResultsEl.innerHTML = '<li><p>Please enter at least 2 characters to search.</p></li>';
+            if (query.length < 2) { // Require at least 2 characters for search
+              if (query.length > 0) {
+                searchResultsEl.innerHTML = '<li><p>Please enter at least 2 characters to search.</p></li>';
+              }
+              return;
+            }
+
+            debug('Performing search for:', query);
+
+            const results = [];
+            for (const id in contentIdMap) {
+              if (contentIdMap.hasOwnProperty(id) && id !== 'default') {
+                const item = contentIdMap[id];
+                const title = item.title.toLowerCase();
+                const content = item.content ? item.content.toLowerCase() : '';
+
+                let snippet = '';
+                let matchCount = 0;
+
+                // Check for title match
+                if (title.includes(query)) {
+                  matchCount += 10; // Higher weight for title match
+                  snippet = `Found in title: "${highlightMatch(item.title, query)}"`;
+                }
+
+                // Check for content match
+                const contentMatches = content.split(query).length - 1;
+                if (contentMatches > 0) {
+                  matchCount += contentMatches; // Add weight for each content match
+                  const matchIndex = content.indexOf(query);
+                  const start = Math.max(0, matchIndex - 50);
+                  const end = Math.min(content.length, matchIndex + query.length + 50);
+                  const context = item.content.substring(start, end);
+                  snippet += (snippet ? '<br>' : '') + `...${highlightMatch(context, query)}...`;
+                }
+
+                if (matchCount > 0) {
+                  results.push({ id: id, title: item.title, snippet: snippet, score: matchCount });
+                }
+              }
+            }
+
+            // Sort results by score (most relevant first)
+            results.sort((a, b) => b.score - a.score);
+
+            if (results.length === 0) {
+              searchResultsEl.innerHTML = '<li><p>No results found for your query.</p></li>';
+            } else {
+              results.forEach(result => {
+                const li = document.createElement('li');
+                const link = document.createElement('a');
+                link.href = `#${result.id}`;
+                link.textContent = result.title;
+                link.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  debug('Search result clicked for ID:', result.id);
+                  
+                  // Verify content exists before navigating
+                  if (!result.id || !contentIdMap[result.id]) {
+                    debug('Invalid content ID in search result:', result.id);
+                    alert('Error: Content not found. Please try another search result.');
+                    return;
                   }
-                  return;
-              }
-
-              debug('Performing search for:', query);
-
-              const results = [];
-              for (const id in contentIdMap) {
-                  if (contentIdMap.hasOwnProperty(id) && id !== 'default') {
-                      const item = contentIdMap[id];
-                      const title = item.title.toLowerCase();
-                      const content = item.content ? item.content.toLowerCase() : '';
-
-                      let snippet = '';
-                      let matchCount = 0;
-
-                      // Check for title match
-                      if (title.includes(query)) {
-                          matchCount += 10; // Higher weight for title match
-                          snippet = `Found in title: "${highlightMatch(item.title, query)}"`;
+                  
+                  // Double check content file existence
+                  fetch(`${basePath}/content/${result.id}.html`)
+                    .then(response => {
+                      if (!response.ok) {
+                        throw new Error('Content file not found');
                       }
-
-                      // Check for content match
-                      const contentMatches = content.split(query).length - 1;
-                      if (contentMatches > 0) {
-                          matchCount += contentMatches; // Add weight for each content match
-                          const matchIndex = content.indexOf(query);
-                          const start = Math.max(0, matchIndex - 50);
-                          const end = Math.min(content.length, matchIndex + query.length + 50);
-                          const context = item.content.substring(start, end);
-                          snippet += (snippet ? '<br>' : '') + `...${highlightMatch(context, query)}...`;
-                      }
-
-                      if (matchCount > 0) {
-                          results.push({ id: item.id, title: item.title, snippet: snippet, score: matchCount });
-                      }
-                  }
-              }
-
-              // Sort results by score (most relevant first)
-              results.sort((a, b) => b.score - a.score);
-
-              if (results.length === 0) {
-                  searchResultsEl.innerHTML = '<li><p>No results found for your query.</p></li>';
-              } else {
-                  results.forEach(result => {
-                      const li = document.createElement('li');
-                      const link = document.createElement('a');
-                      link.href = `#${result.id}`;
-                      link.textContent = result.title;
-                      link.addEventListener('click', (e) => {
-                          e.preventDefault();
-                          navigateToPage(result.id);
-                          // Clear search results after navigating
-                          searchResultsEl.innerHTML = '';
-                          searchInput.value = '';
-                      });
-                      li.appendChild(link);
-                      if (result.snippet) {
-                          const p = document.createElement('p');
-                          p.innerHTML = result.snippet;
-                          li.appendChild(p);
-                      }
-                      searchResultsEl.appendChild(li);
-                  });
-              }
+                      // If content exists, navigate to the page
+                      navigateToPage(result.id);
+                      // Clear search results after navigating
+                      searchResultsEl.innerHTML = '';
+                      searchInput.value = '';
+                    })
+                    .catch(error => {
+                      debug('Content not available:', error);
+                      alert('Error: The selected content could not be loaded. Please try another search result.');
+                    });
+                });
+                
+                li.appendChild(link);
+                if (result.snippet) {
+                  const p = document.createElement('p');
+                  p.innerHTML = result.snippet;
+                  li.appendChild(p);
+                }
+                searchResultsEl.appendChild(li);
+              });
+            }
           }
 
           function highlightMatch(text, query) {
-              const regex = new RegExp(`(${query})`, 'gi');
-              return text.replace(regex, '<span class="highlight">$1</span>');
+            const regex = new RegExp(`(${query})`, 'gi');
+            return text.replace(regex, '<span class="highlight">$1</span>');
           }
 
           // Make navigateToPage available globally
@@ -1133,7 +1194,7 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create index.html (Updated for Search Bar)
+      # Step 10: Create index.html (Updated for Search Bar and Results Position)
       - name: Create Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
@@ -1165,15 +1226,16 @@ jobs:
             <div class="sidebar">
               <div class="sidebar-header">
                 <h2>Navigation</h2>
-          <!-- Update search container HTML for better space utilization -->
+                <!-- Updated search container HTML -->
                 <div class="search-container">
-                    <input type="text" id="searchInput" placeholder="Search...">
-                    <button id="searchButton">Search</button>
+                  <input type="text" id="searchInput" placeholder="Search...">
+                  <button id="searchButton">Search</button>
                 </div>
+                <!-- Moved search results directly under search container -->
+                <ul id="searchResults" class="search-results"></ul>
               </div>
               <div class="sidebar-nav">
                 <div id="navigation"></div>
-                <ul id="searchResults" class="search-results"></ul>
               </div>
             </div>
 
