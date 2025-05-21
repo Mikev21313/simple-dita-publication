@@ -344,7 +344,7 @@ jobs:
           .sidebar {
             width: 280px; /* Slightly wider sidebar */
             background-color: #e0f2f7; /* Aquamarine light */
-            padding: 20px;
+            padding: 15px; /* Reduced padding to give more space for content */
             height: 100vh;
             overflow-y: auto;
             border-right: 1px solid #a7d9e7; /* Aquamarine border */
@@ -453,15 +453,17 @@ jobs:
           .search-container {
             margin-bottom: 20px;
             display: flex;
-            gap: 10px;
+            gap: 5px;
+            width: 100%;
           }
 
           .search-container input[type="text"] {
             flex-grow: 1;
-            padding: 10px 15px;
+            min-width: 0; /* Prevent flex item from overflowing */
+            padding: 8px 10px;
             border: 1px solid #a7d9e7; /* Aquamarine border */
             border-radius: 5px;
-            font-size: 1em;
+            font-size: 0.9em;
             outline: none;
             transition: border-color 0.3s;
           }
@@ -472,13 +474,15 @@ jobs:
           }
 
           .search-container button {
-            padding: 10px 15px;
+            padding: 8px 10px;
             background-color: #00bcd4; /* Aquamarine button */
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s;
+            white-space: nowrap; /* Prevent button text from wrapping */
+            min-width: 60px; /* Ensure button has minimum width */
           }
 
           .search-container button:hover {
@@ -1080,8 +1084,9 @@ jobs:
             <div class="sidebar">
               <div class="sidebar-header">
                 <h2>Navigation</h2>
+          <!-- Update search container HTML for better space utilization -->
                 <div class="search-container">
-                    <input type="text" id="searchInput" placeholder="Search documentation...">
+                    <input type="text" id="searchInput" placeholder="Search...">
                     <button id="searchButton">Search</button>
                 </div>
               </div>
