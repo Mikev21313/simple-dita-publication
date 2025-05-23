@@ -1281,6 +1281,9 @@ jobs:
             // Create comment input dialog (simplified)
             createCommentDialog();
             
+            // Create snapshot window
+            createSnapshotWindow();
+            
             // Update review button states
             updateReviewButtons();
           }
@@ -1338,6 +1341,35 @@ jobs:
             
             // Close dialog when clicking overlay
             overlay.addEventListener('click', closeCommentDialog);
+          }
+
+          // Create Snapshot Window
+          function createSnapshotWindow() {
+            const snapshotWindow = document.createElement('div');
+            snapshotWindow.className = 'snapshot-window';
+            snapshotWindow.id = 'snapshotWindow';
+            snapshotWindow.innerHTML = `
+              <div class="snapshot-content">
+                <div class="snapshot-toolbar">
+                  <h3>Review Snapshot</h3>
+                  <div class="snapshot-actions">
+                    <button class="snapshot-btn" onclick="printSnapshot()">🖨️ Print</button>
+                    <button class="snapshot-btn" onclick="downloadSnapshot()">💾 Download HTML</button>
+                    <button class="snapshot-btn" onclick="closeSnapshotWindow()">✕ Close</button>
+                  </div>
+                </div>
+                <div class="snapshot-viewer" id="snapshotViewer"></div>
+              </div>
+            `;
+            
+            document.body.appendChild(snapshotWindow);
+            
+            // Close on background click
+            snapshotWindow.addEventListener('click', (e) => {
+              if (e.target === snapshotWindow) {
+                closeSnapshotWindow();
+              }
+            });
           }
 
           // Function to show welcome screen
@@ -1571,13 +1603,19 @@ jobs:
           }
 
           function clearReviewHighlights() {
-            // Remove all comment highlights from the current view
-            const highlights = document.querySelectorAll('[data-comment-id]');
-            highlights.forEach(highlight => {
-              const parent = highlight.parentNode;
+            // Remove all comment highlights and image markers from the current view
+            const elements = document.querySelectorAll('[data-comment-id]');
+            elements.forEach(element => {
+              const parent = element.parentNode;
               if (parent) {
-                parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
-                parent.removeChild(highlight);
+                if (element.classList.contains('image-comment-marker')) {
+                  // Remove image markers
+                  parent.removeChild(element);
+                } else {
+                  // Remove text highlights
+                  parent.insertBefore(document.createTextNode(element.textContent), element);
+                  parent.removeChild(element);
+                }
               }
             });
             
@@ -1659,7 +1697,7 @@ jobs:
                 <button class="review-toolbar-btn" onclick="toggleCommentPanel()">
                   Comments (${getCommentsForPage(window.currentPage).length})
                 </button>
-                <button class="review-toolbar-btn" onclick="saveReviewSnapshot()">Save Snapshot</button>
+                <button class="review-toolbar-btn" onclick="saveReviewSnapshot()">Print Snapshot</button>
               </div>
             `;
             
@@ -2078,24 +2116,261 @@ jobs:
           }
 
           function saveReviewSnapshot() {
-            const snapshot = {
-              pageId: window.currentPage,
-              pageTitle: getPageTitle(window.currentPage),
-              content: contentEl.innerHTML,
-              comments: getCommentsForPage(window.currentPage),
-              timestamp: new Date().toISOString()
-            };
+            if (!window.currentPage) {
+              alert('No page selected for snapshot.');
+              return;
+            }
             
-            const dataStr = JSON.stringify(snapshot, null, 2);
-            const dataBlob = new Blob([dataStr], { type: 'application/json' });
-            const url = URL.createObjectURL(dataBlob);
+            const comments = getCommentsForPage(window.currentPage);
+            const pageTitle = getPageTitle(window.currentPage);
             
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `review-snapshot-${window.currentPage}-${new Date().toISOString().split('T')[0]}.json`;
-            link.click();
+            // Generate print-optimized HTML with parallel annotations
+            const snapshotHTML = generateSnapshotHTML(pageTitle, comments);
             
-            URL.revokeObjectURL(url);
+            // Display in snapshot window
+            const snapshotViewer = document.getElementById('snapshotViewer');
+            const snapshotWindow = document.getElementById('snapshotWindow');
+            
+            if (snapshotViewer && snapshotWindow) {
+              snapshotViewer.innerHTML = snapshotHTML;
+              snapshotWindow.classList.add('show');
+            }
+          }
+
+          function generateSnapshotHTML(pageTitle, comments) {
+            // Get clean content without review highlights
+            const contentClone = contentEl.cloneNode(true);
+            
+            // Remove all review highlights from clone
+            const highlights = contentClone.querySelectorAll('[data-comment-id]');
+            highlights.forEach(highlight => {
+              if (highlight.classList.contains('image-comment-marker')) {
+                highlight.remove();
+              } else {
+                const parent = highlight.parentNode;
+                if (parent) {
+                  parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+                  parent.removeChild(highlight);
+                }
+              }
+            });
+
+            // Add text markers for comments in the content
+            let annotationCounter = 1;
+            const annotationMap = {};
+
+            comments.forEach(comment => {
+              if (comment.selectionType === 'text') {
+                // Find and mark text in content
+                const walker = document.createTreeWalker(
+                  contentClone,
+                  NodeFilter.SHOW_TEXT,
+                  null,
+                  false
+                );
+
+                let node;
+                while (node = walker.nextNode()) {
+                  if (node.textContent.includes(comment.selectedText)) {
+                    const parent = node.parentNode;
+                    const text = node.textContent;
+                    const index = text.indexOf(comment.selectedText);
+                    
+                    if (index !== -1) {
+                      const beforeText = text.substring(0, index);
+                      const selectedText = comment.selectedText;
+                      const afterText = text.substring(index + selectedText.length);
+                      
+                      const marker = document.createElement('span');
+                      marker.className = 'text-marker';
+                      marker.innerHTML = `${selectedText}<sup>[${annotationCounter}]</sup>`;
+                      
+                      annotationMap[annotationCounter] = comment;
+                      annotationCounter++;
+                      
+                      parent.removeChild(node);
+                      if (beforeText) parent.appendChild(document.createTextNode(beforeText));
+                      parent.appendChild(marker);
+                      if (afterText) parent.appendChild(document.createTextNode(afterText));
+                      
+                      break;
+                    }
+                  }
+                }
+              } else if (comment.selectionType === 'image') {
+                // Add image annotation markers
+                const images = contentClone.querySelectorAll('img');
+                images.forEach(img => {
+                  if (img.src.includes(comment.imageSrc.split('/').pop())) {
+                    const imageIndicator = document.createElement('div');
+                    imageIndicator.className = 'image-marker-indicator';
+                    imageIndicator.innerHTML = `📍 <strong>Image Comment [${annotationCounter}]:</strong> "${comment.imageAlt}"`;
+                    
+                    annotationMap[annotationCounter] = comment;
+                    annotationCounter++;
+                    
+                    img.parentNode.insertBefore(imageIndicator, img.nextSibling);
+                  }
+                });
+              }
+            });
+
+            // Generate annotations sidebar
+            const annotationsHTML = Object.keys(annotationMap).map(num => {
+              const comment = annotationMap[num];
+              return `
+                <div class="annotation-item">
+                  <div>
+                    <span class="annotation-marker ${comment.type}">[${num}]</span>
+                    <strong>${comment.type.toUpperCase()}</strong>
+                  </div>
+                  <div style="margin: 5px 0; font-weight: bold;">
+                    "${comment.selectedText}"
+                  </div>
+                  <div>${comment.text}</div>
+                  <div style="margin-top: 5px; font-size: 10px; color: #666;">
+                    ${new Date(comment.timestamp).toLocaleString()}
+                    ${comment.resolved ? ' • ✓ Resolved' : ''}
+                  </div>
+                </div>
+              `;
+            }).join('');
+
+            // Generate summary statistics
+            const totalComments = comments.length;
+            const resolvedComments = comments.filter(c => c.resolved).length;
+            const textComments = comments.filter(c => c.selectionType === 'text').length;
+            const imageComments = comments.filter(c => c.selectionType === 'image').length;
+
+            return `
+              <div class="print-snapshot">
+                <div class="snapshot-header">
+                  <div class="snapshot-title">${pageTitle}</div>
+                  <div class="snapshot-meta">
+                    Review Snapshot • Generated ${new Date().toLocaleString()} • 
+                    ${totalComments} comments (${resolvedComments} resolved)
+                  </div>
+                </div>
+                
+                <div class="content-with-annotations">
+                  <div class="main-article">
+                    ${contentClone.innerHTML}
+                  </div>
+                  
+                  <div class="comment-annotations">
+                    <h4 style="margin-top: 0; color: #2c5aa0;">Review Comments</h4>
+                    ${annotationsHTML || '<p style="font-style: italic; color: #666;">No comments</p>'}
+                  </div>
+                </div>
+                
+                <div class="comment-summary">
+                  <div class="summary-title">Review Summary</div>
+                  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; font-size: 12px;">
+                    <div><strong>Total Comments:</strong><br>${totalComments}</div>
+                    <div><strong>Text Comments:</strong><br>${textComments}</div>
+                    <div><strong>Image Comments:</strong><br>${imageComments}</div>
+                    <div><strong>Resolved:</strong><br>${resolvedComments}</div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
+
+          function printSnapshot() {
+            const snapshotViewer = document.getElementById('snapshotViewer');
+            if (snapshotViewer) {
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <title>Review Snapshot - ${getPageTitle(window.currentPage)}</title>
+                  <style>
+                    /* Inline print styles */
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { font-family: 'Times New Roman', serif; line-height: 1.6; color: #000; }
+                    .print-snapshot { padding: 20px; }
+                    .snapshot-header { border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
+                    .snapshot-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+                    .snapshot-meta { font-size: 12px; color: #666; font-style: italic; }
+                    .content-with-annotations { display: grid; grid-template-columns: 1fr 300px; gap: 30px; align-items: start; }
+                    .main-article { font-size: 14px; line-height: 1.6; }
+                    .comment-annotations { font-size: 11px; background: #f9f9f9; padding: 15px; border-left: 3px solid #2196f3; }
+                    .annotation-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0; }
+                    .annotation-item:last-child { border-bottom: none; margin-bottom: 0; }
+                    .annotation-marker { display: inline-block; background: #2196f3; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; margin-right: 5px; }
+                    .annotation-marker.suggestion { background: #ff9800; }
+                    .text-marker { background: #ffeb3b; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
+                    .image-marker-indicator { background: #e3f2fd; border: 1px solid #2196f3; padding: 5px; margin: 10px 0; border-radius: 4px; font-size: 12px; }
+                    .comment-summary { margin-top: 30px; border-top: 2px solid #333; padding-top: 15px; }
+                    .summary-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; }
+                    @media print {
+                      .print-snapshot { padding: 15px; font-size: 12px; }
+                      .content-with-annotations { grid-template-columns: 1fr 250px; gap: 20px; }
+                      .comment-annotations { font-size: 10px; padding: 10px; }
+                    }
+                  </style>
+                </head>
+                <body>
+                  ${snapshotViewer.innerHTML}
+                </body>
+                </html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }
+          }
+
+          function downloadSnapshot() {
+            const snapshotViewer = document.getElementById('snapshotViewer');
+            if (snapshotViewer) {
+              const htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <title>Review Snapshot - ${getPageTitle(window.currentPage)}</title>
+                  <meta charset="UTF-8">
+                  <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { font-family: 'Times New Roman', serif; line-height: 1.6; color: #000; background: white; }
+                    .print-snapshot { padding: 20px; }
+                    .snapshot-header { border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
+                    .snapshot-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+                    .snapshot-meta { font-size: 12px; color: #666; font-style: italic; }
+                    .content-with-annotations { display: grid; grid-template-columns: 1fr 300px; gap: 30px; align-items: start; }
+                    .main-article { font-size: 14px; line-height: 1.6; }
+                    .comment-annotations { font-size: 11px; background: #f9f9f9; padding: 15px; border-left: 3px solid #2196f3; }
+                    .annotation-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0; }
+                    .annotation-item:last-child { border-bottom: none; margin-bottom: 0; }
+                    .annotation-marker { display: inline-block; background: #2196f3; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; margin-right: 5px; }
+                    .annotation-marker.suggestion { background: #ff9800; }
+                    .text-marker { background: #ffeb3b; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
+                    .image-marker-indicator { background: #e3f2fd; border: 1px solid #2196f3; padding: 5px; margin: 10px 0; border-radius: 4px; font-size: 12px; }
+                    .comment-summary { margin-top: 30px; border-top: 2px solid #333; padding-top: 15px; }
+                    .summary-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; }
+                  </style>
+                </head>
+                <body>
+                  ${snapshotViewer.innerHTML}
+                </body>
+                </html>
+              `;
+              
+              const blob = new Blob([htmlContent], { type: 'text/html' });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `review-snapshot-${window.currentPage}-${new Date().toISOString().split('T')[0]}.html`;
+              link.click();
+              URL.revokeObjectURL(url);
+            }
+          }
+
+          function closeSnapshotWindow() {
+            const snapshotWindow = document.getElementById('snapshotWindow');
+            if (snapshotWindow) {
+              snapshotWindow.classList.remove('show');
+            }
           }
 
           function exportReviewData() {
@@ -2164,6 +2439,10 @@ jobs:
           window.saveComment = saveComment;
           window.showTooltip = showTooltip;
           window.hideTooltip = hideTooltip;
+          window.scrollToComment = scrollToComment;
+          window.printSnapshot = printSnapshot;
+          window.downloadSnapshot = downloadSnapshot;
+          window.closeSnapshotWindow = closeSnapshotWindow;
 
           // Enhance tables with OxygenXML-like styling
           function enhanceTables() {
