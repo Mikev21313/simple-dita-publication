@@ -1281,9 +1281,6 @@ jobs:
             // Create comment input dialog (simplified)
             createCommentDialog();
             
-            // Create snapshot window
-            createSnapshotWindow();
-            
             // Create image modal
             createImageModal();
             
@@ -1528,7 +1525,7 @@ jobs:
               <div class="welcome-screen">
                 <h2>Welcome to Documentation</h2>
                 <p>Please select a topic from the navigation menu or use the search bar.</p>
-                <p><strong>Review Mode:</strong> Click "Start Review" to enable collaborative commenting and suggestions.</p>
+                <p><strong>Review Mode:</strong> Click "Review Mode" to enable collaborative commenting, image uploads, and print snapshots.</p>
               </div>
             `;
 
@@ -1790,10 +1787,17 @@ jobs:
               reviewToggleBtn.classList.toggle('active', window.reviewMode);
             }
             
+            // Only show review control buttons when in review mode
             const reviewControls = document.querySelectorAll('.review-btn:not(#reviewToggle)');
             reviewControls.forEach(btn => {
               btn.style.display = window.reviewMode ? 'block' : 'none';
             });
+            
+            // Update export options visibility
+            const exportOptions = document.querySelector('.export-options');
+            if (exportOptions) {
+              exportOptions.style.display = window.reviewMode ? 'block' : 'none';
+            }
           }
 
           function initializeReviewForContent() {
@@ -1831,6 +1835,8 @@ jobs:
           }
 
           function addReviewToolbar() {
+            if (!window.reviewMode) return; // Only show toolbar in review mode
+            
             const existingToolbar = document.querySelector('.review-toolbar');
             if (existingToolbar) {
               existingToolbar.remove();
@@ -2677,7 +2683,7 @@ jobs:
             const commentsWithImages = comments.filter(c => c.uploadedImages && c.uploadedImages.length > 0).length;
             const totalUploadedImages = comments.reduce((sum, c) => sum + (c.uploadedImages ? c.uploadedImages.length : 0), 0);
 
-            return `
+                            return `
               <div class="print-snapshot">
                 <div class="snapshot-header">
                   <div class="snapshot-title">${pageTitle}</div>
@@ -2713,103 +2719,6 @@ jobs:
                 </div>
               </div>
             `;
-          }
-
-          function printSnapshot() {
-            const snapshotViewer = document.getElementById('snapshotViewer');
-            if (snapshotViewer) {
-              const printWindow = window.open('', '_blank');
-              printWindow.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <title>Review Snapshot - ${getPageTitle(window.currentPage)}</title>
-                  <style>
-                    /* Inline print styles */
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    body { font-family: 'Times New Roman', serif; line-height: 1.6; color: #000; }
-                    .print-snapshot { padding: 20px; }
-                    .snapshot-header { border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
-                    .snapshot-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-                    .snapshot-meta { font-size: 12px; color: #666; font-style: italic; }
-                    .content-with-annotations { display: grid; grid-template-columns: 1fr 300px; gap: 30px; align-items: start; }
-                    .main-article { font-size: 14px; line-height: 1.6; }
-                    .comment-annotations { font-size: 11px; background: #f9f9f9; padding: 15px; border-left: 3px solid #2196f3; }
-                    .annotation-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0; }
-                    .annotation-item:last-child { border-bottom: none; margin-bottom: 0; }
-                    .annotation-marker { display: inline-block; background: #2196f3; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; margin-right: 5px; }
-                    .annotation-marker.suggestion { background: #ff9800; }
-                    .text-marker { background: #ffeb3b; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
-                    .image-marker-indicator { background: #e3f2fd; border: 1px solid #2196f3; padding: 5px; margin: 10px 0; border-radius: 4px; font-size: 12px; }
-                    .comment-summary { margin-top: 30px; border-top: 2px solid #333; padding-top: 15px; }
-                    .summary-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; }
-                    @media print {
-                      .print-snapshot { padding: 15px; font-size: 12px; }
-                      .content-with-annotations { grid-template-columns: 1fr 250px; gap: 20px; }
-                      .comment-annotations { font-size: 10px; padding: 10px; }
-                    }
-                  </style>
-                </head>
-                <body>
-                  ${snapshotViewer.innerHTML}
-                </body>
-                </html>
-              `);
-              printWindow.document.close();
-              printWindow.print();
-            }
-          }
-
-          function downloadSnapshot() {
-            const snapshotViewer = document.getElementById('snapshotViewer');
-            if (snapshotViewer) {
-              const htmlContent = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <title>Review Snapshot - ${getPageTitle(window.currentPage)}</title>
-                  <meta charset="UTF-8">
-                  <style>
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    body { font-family: 'Times New Roman', serif; line-height: 1.6; color: #000; background: white; }
-                    .print-snapshot { padding: 20px; }
-                    .snapshot-header { border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
-                    .snapshot-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-                    .snapshot-meta { font-size: 12px; color: #666; font-style: italic; }
-                    .content-with-annotations { display: grid; grid-template-columns: 1fr 300px; gap: 30px; align-items: start; }
-                    .main-article { font-size: 14px; line-height: 1.6; }
-                    .comment-annotations { font-size: 11px; background: #f9f9f9; padding: 15px; border-left: 3px solid #2196f3; }
-                    .annotation-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0; }
-                    .annotation-item:last-child { border-bottom: none; margin-bottom: 0; }
-                    .annotation-marker { display: inline-block; background: #2196f3; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; margin-right: 5px; }
-                    .annotation-marker.suggestion { background: #ff9800; }
-                    .text-marker { background: #ffeb3b; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
-                    .image-marker-indicator { background: #e3f2fd; border: 1px solid #2196f3; padding: 5px; margin: 10px 0; border-radius: 4px; font-size: 12px; }
-                    .comment-summary { margin-top: 30px; border-top: 2px solid #333; padding-top: 15px; }
-                    .summary-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; }
-                  </style>
-                </head>
-                <body>
-                  ${snapshotViewer.innerHTML}
-                </body>
-                </html>
-              `;
-              
-              const blob = new Blob([htmlContent], { type: 'text/html' });
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = `review-snapshot-${window.currentPage}-${new Date().toISOString().split('T')[0]}.html`;
-              link.click();
-              URL.revokeObjectURL(url);
-            }
-          }
-
-          function closeSnapshotWindow() {
-            const snapshotWindow = document.getElementById('snapshotWindow');
-            if (snapshotWindow) {
-              snapshotWindow.classList.remove('show');
-            }
           }
 
           function exportReviewData() {
@@ -2879,9 +2788,6 @@ jobs:
           window.showTooltip = showTooltip;
           window.hideTooltip = hideTooltip;
           window.scrollToComment = scrollToComment;
-          window.printSnapshot = printSnapshot;
-          window.downloadSnapshot = downloadSnapshot;
-          window.closeSnapshotWindow = closeSnapshotWindow;
           window.removeImageFromComment = removeImageFromComment;
           window.showImageModal = showImageModal;
           window.closeImageModal = closeImageModal;
