@@ -1284,6 +1284,9 @@ jobs:
             // Create snapshot window
             createSnapshotWindow();
             
+            // Create image modal
+            createImageModal();
+            
             // Update review button states
             updateReviewButtons();
           }
@@ -1330,6 +1333,20 @@ jobs:
               <div style="margin: 15px 0;">
                 <textarea id="commentText" placeholder="Enter your comment or suggestion..."></textarea>
               </div>
+              <div class="image-upload-section" id="imageUploadSection">
+                <input type="file" id="imageUpload" accept="image/*" multiple>
+                <div id="uploadDropZone">
+                  <p>📸 Add Reference Images</p>
+                  <button type="button" class="upload-btn" onclick="document.getElementById('imageUpload').click()">
+                    Choose Images
+                  </button>
+                  <p style="font-size: 0.8em; color: #666; margin-top: 8px;">
+                    Drag & drop images here or click to browse<br>
+                    <em>Useful for suggesting image placements or providing visual references</em>
+                  </p>
+                </div>
+                <div id="imagePreview" class="image-preview"></div>
+              </div>
               <div class="dialog-actions">
                 <button class="dialog-btn secondary" onclick="closeCommentDialog()">Cancel</button>
                 <button class="dialog-btn primary" onclick="saveComment()">Save</button>
@@ -1341,6 +1358,9 @@ jobs:
             
             // Close dialog when clicking overlay
             overlay.addEventListener('click', closeCommentDialog);
+            
+            // Set up image upload functionality
+            setupImageUpload();
           }
 
           // Create Snapshot Window
@@ -1370,6 +1390,133 @@ jobs:
                 closeSnapshotWindow();
               }
             });
+          }
+
+          // Create Image Modal for Full View
+          function createImageModal() {
+            const imageModal = document.createElement('div');
+            imageModal.className = 'image-modal';
+            imageModal.id = 'imageModal';
+            imageModal.innerHTML = `
+              <button class="close-btn" onclick="closeImageModal()">✕</button>
+              <img id="modalImage" src="" alt="Full size image">
+            `;
+            
+            document.body.appendChild(imageModal);
+            
+            // Close on background click
+            imageModal.addEventListener('click', (e) => {
+              if (e.target === imageModal) {
+                closeImageModal();
+              }
+            });
+          }
+
+          // Setup Image Upload Functionality
+          function setupImageUpload() {
+            const imageUpload = document.getElementById('imageUpload');
+            const dropZone = document.getElementById('uploadDropZone');
+            const imagePreview = document.getElementById('imagePreview');
+            const uploadSection = document.getElementById('imageUploadSection');
+            
+            // Store uploaded images for current comment
+            window.currentCommentImages = [];
+            
+            // File input change handler
+            imageUpload.addEventListener('change', handleImageFiles);
+            
+            // Drag and drop handlers
+            dropZone.addEventListener('dragover', (e) => {
+              e.preventDefault();
+              uploadSection.classList.add('dragover');
+            });
+            
+            dropZone.addEventListener('dragleave', (e) => {
+              e.preventDefault();
+              uploadSection.classList.remove('dragover');
+            });
+            
+            dropZone.addEventListener('drop', (e) => {
+              e.preventDefault();
+              uploadSection.classList.remove('dragover');
+              
+              const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+              if (files.length > 0) {
+                processImageFiles(files);
+              }
+            });
+          }
+
+          function handleImageFiles(event) {
+            const files = Array.from(event.target.files);
+            processImageFiles(files);
+          }
+
+          function processImageFiles(files) {
+            files.forEach(file => {
+              if (file.type.startsWith('image/') && file.size < 5 * 1024 * 1024) { // 5MB limit
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                  const imageData = {
+                    id: generateImageId(),
+                    data: e.target.result,
+                    name: file.name,
+                    size: file.size,
+                    type: file.type
+                  };
+                  
+                  window.currentCommentImages.push(imageData);
+                  updateImagePreview();
+                };
+                reader.readAsDataURL(file);
+              } else if (file.size >= 5 * 1024 * 1024) {
+                alert(`Image "${file.name}" is too large. Please use images smaller than 5MB.`);
+              }
+            });
+          }
+
+          function generateImageId() {
+            return 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          }
+
+          function updateImagePreview() {
+            const imagePreview = document.getElementById('imagePreview');
+            
+            if (window.currentCommentImages.length === 0) {
+              imagePreview.innerHTML = '';
+              return;
+            }
+            
+            imagePreview.innerHTML = window.currentCommentImages.map(img => `
+              <div style="display: flex; align-items: center; margin: 8px 0; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <img src="${img.data}" alt="${img.name}" class="preview-image">
+                <div style="margin-left: 10px; flex: 1;">
+                  <div class="image-info">
+                    <strong>${img.name}</strong><br>
+                    ${(img.size / 1024).toFixed(1)} KB
+                  </div>
+                </div>
+                <button class="remove-image" onclick="removeImageFromComment('${img.id}')">Remove</button>
+              </div>
+            `).join('');
+          }
+
+          function removeImageFromComment(imageId) {
+            window.currentCommentImages = window.currentCommentImages.filter(img => img.id !== imageId);
+            updateImagePreview();
+          }
+
+          function showImageModal(imageSrc) {
+            const modal = document.getElementById('imageModal');
+            const modalImage = document.getElementById('modalImage');
+            
+            modalImage.src = imageSrc;
+            modal.classList.add('show');
+          }
+
+          function closeImageModal() {
+            const modal = document.getElementById('imageModal');
+            modal.classList.remove('show');
           }
 
           // Function to show welcome screen
@@ -1774,6 +1921,17 @@ jobs:
             document.querySelector('input[name="commentType"]:checked').checked = false;
             document.querySelector('input[name="commentType"][value="comment"]').checked = true;
             
+            // Clear uploaded images
+            window.currentCommentImages = [];
+            const imagePreview = document.getElementById('imagePreview');
+            if (imagePreview) {
+              imagePreview.innerHTML = '';
+            }
+            const imageUpload = document.getElementById('imageUpload');
+            if (imageUpload) {
+              imageUpload.value = '';
+            }
+            
             // Clear selection
             window.getSelection().removeAllRanges();
             window.currentSelection = null;
@@ -1788,8 +1946,8 @@ jobs:
             const commentText = document.getElementById('commentText').value.trim();
             const commentType = document.querySelector('input[name="commentType"]:checked').value;
             
-            if (!commentText) {
-              alert('Please enter a comment.');
+            if (!commentText && (!window.currentCommentImages || window.currentCommentImages.length === 0)) {
+              alert('Please enter a comment or add at least one image.');
               return;
             }
             
@@ -1801,7 +1959,8 @@ jobs:
               text: commentText,
               timestamp: new Date().toISOString(),
               resolved: false,
-              selectionType: window.currentSelection.type
+              selectionType: window.currentSelection.type,
+              uploadedImages: window.currentCommentImages ? [...window.currentCommentImages] : []
             };
             
             if (window.currentSelection.type === 'text') {
@@ -1842,7 +2001,7 @@ jobs:
             
             closeCommentDialog();
             
-            debug('Comment saved:', comment);
+            debug('Comment saved with images:', comment);
           }
 
           function highlightTextInDocument(selection, comment) {
@@ -1961,22 +2120,36 @@ jobs:
               return;
             }
             
-            commentList.innerHTML = comments.map(comment => `
-              <div class="comment-item ${comment.type}" data-comment-id="${comment.id}">
-                <div class="comment-header">
-                  <span class="comment-type ${comment.type}">${comment.type}</span>
-                  <span>${new Date(comment.timestamp).toLocaleString()}</span>
+            commentList.innerHTML = comments.map(comment => {
+              // Generate uploaded images HTML
+              const imagesHTML = comment.uploadedImages && comment.uploadedImages.length > 0 
+                ? comment.uploadedImages.map(img => `
+                    <div class="comment-image-container">
+                      <img src="${img.data}" alt="${img.name}" class="comment-image-preview" onclick="showImageModal('${img.data}')">
+                      <div class="image-caption">${img.name} (${(img.size / 1024).toFixed(1)} KB)</div>
+                    </div>
+                  `).join('')
+                : '';
+              
+              return `
+                <div class="comment-item ${comment.type}" data-comment-id="${comment.id}">
+                  <div class="comment-header">
+                    <span class="comment-type ${comment.type}">${comment.type}</span>
+                    <span>${new Date(comment.timestamp).toLocaleString()}</span>
+                  </div>
+                  <div style="font-weight: bold; margin-bottom: 5px; font-size: 0.9em; color: #555; cursor: pointer;" onclick="scrollToComment('${comment.id}')">
+                    "${comment.selectedText}" ${comment.selectionType === 'image' ? '🖼️' : ''}
+                    ${comment.uploadedImages && comment.uploadedImages.length > 0 ? `📎 ${comment.uploadedImages.length} image(s)` : ''}
+                  </div>
+                  <div class="comment-content">${comment.text}</div>
+                  ${imagesHTML}
+                  <div class="comment-actions">
+                    ${!comment.resolved ? `<button class="comment-btn resolve" onclick="resolveComment('${comment.id}')">Resolve</button>` : '<span style="color: #4caf50; font-size: 0.8em;">✓ Resolved</span>'}
+                    <button class="comment-btn delete" onclick="deleteComment('${comment.id}')">Delete</button>
+                  </div>
                 </div>
-                <div style="font-weight: bold; margin-bottom: 5px; font-size: 0.9em; color: #555; cursor: pointer;" onclick="scrollToComment('${comment.id}')">
-                  "${comment.selectedText}" ${comment.selectionType === 'image' ? '🖼️' : ''}
-                </div>
-                <div class="comment-content">${comment.text}</div>
-                <div class="comment-actions">
-                  ${!comment.resolved ? `<button class="comment-btn resolve" onclick="resolveComment('${comment.id}')">Resolve</button>` : '<span style="color: #4caf50; font-size: 0.8em;">✓ Resolved</span>'}
-                  <button class="comment-btn delete" onclick="deleteComment('${comment.id}')">Delete</button>
-                </div>
-              </div>
-            `).join('');
+              `;
+            }).join('');
           }
 
           function scrollToComment(commentId) {
@@ -2121,20 +2294,264 @@ jobs:
               return;
             }
             
+            if (!window.reviewMode) {
+              alert('Print snapshot is only available in review mode.');
+              return;
+            }
+            
             const comments = getCommentsForPage(window.currentPage);
             const pageTitle = getPageTitle(window.currentPage);
             
             // Generate print-optimized HTML with parallel annotations
             const snapshotHTML = generateSnapshotHTML(pageTitle, comments);
             
-            // Display in snapshot window
-            const snapshotViewer = document.getElementById('snapshotViewer');
-            const snapshotWindow = document.getElementById('snapshotWindow');
+            // Open in new window instead of modal
+            openSnapshotInNewWindow(snapshotHTML, pageTitle);
+          }
+
+          function openSnapshotInNewWindow(snapshotHTML, pageTitle) {
+            const printWindow = window.open('', '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
             
-            if (snapshotViewer && snapshotWindow) {
-              snapshotViewer.innerHTML = snapshotHTML;
-              snapshotWindow.classList.add('show');
-            }
+            const fullHTML = `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <title>Review Snapshot - ${pageTitle}</title>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                  /* Complete print-optimized styles */
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body { 
+                    font-family: 'Times New Roman', serif; 
+                    line-height: 1.6; 
+                    color: #000; 
+                    background: white;
+                    padding: 20px;
+                  }
+                  
+                  .print-snapshot { padding: 0; }
+                  .snapshot-header { border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
+                  .snapshot-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+                  .snapshot-meta { font-size: 12px; color: #666; font-style: italic; }
+                  
+                  .content-with-annotations { 
+                    display: grid; 
+                    grid-template-columns: 1fr 300px; 
+                    gap: 30px; 
+                    align-items: start; 
+                  }
+                  
+                  .main-article { 
+                    font-size: 14px; 
+                    line-height: 1.6; 
+                  }
+                  
+                  .main-article h1, .main-article h2, .main-article h3, .main-article h4 {
+                    color: #333;
+                    margin: 1.5em 0 0.8em 0;
+                  }
+                  
+                  .main-article h1 { font-size: 1.8em; }
+                  .main-article h2 { font-size: 1.5em; }
+                  .main-article h3 { font-size: 1.3em; }
+                  
+                  .main-article p { margin-bottom: 1em; }
+                  .main-article ul, .main-article ol { margin-left: 2em; margin-bottom: 1em; }
+                  .main-article li { margin-bottom: 0.5em; }
+                  
+                  .main-article img {
+                    max-width: 100%;
+                    height: auto;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    margin: 1em 0;
+                  }
+                  
+                  .main-article table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 1em 0;
+                    border: 1px solid #ddd;
+                  }
+                  
+                  .main-article th, .main-article td {
+                    border: 1px solid #ddd;
+                    padding: 8px;
+                    text-align: left;
+                  }
+                  
+                  .main-article th {
+                    background-color: #f5f5f5;
+                    font-weight: bold;
+                  }
+                  
+                  .comment-annotations { 
+                    font-size: 11px; 
+                    background: #f9f9f9; 
+                    padding: 15px; 
+                    border-left: 3px solid #2196f3;
+                    height: fit-content;
+                  }
+                  
+                  .annotation-item { 
+                    margin-bottom: 15px; 
+                    padding-bottom: 10px; 
+                    border-bottom: 1px solid #e0e0e0; 
+                  }
+                  
+                  .annotation-item:last-child { 
+                    border-bottom: none; 
+                    margin-bottom: 0; 
+                  }
+                  
+                  .annotation-marker { 
+                    display: inline-block; 
+                    background: #2196f3; 
+                    color: white; 
+                    padding: 2px 6px; 
+                    border-radius: 3px; 
+                    font-size: 10px; 
+                    font-weight: bold; 
+                    margin-right: 5px; 
+                  }
+                  
+                  .annotation-marker.suggestion { 
+                    background: #ff9800; 
+                  }
+                  
+                  .text-marker { 
+                    background: #ffeb3b; 
+                    padding: 1px 3px; 
+                    border-radius: 2px; 
+                    font-weight: bold; 
+                  }
+                  
+                  .comment-image-print {
+                    max-width: 200px;
+                    max-height: 150px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    margin: 10px 0;
+                    display: block;
+                  }
+                  
+                  .image-marker-indicator { 
+                    background: #e3f2fd; 
+                    border: 1px solid #2196f3; 
+                    padding: 5px; 
+                    margin: 10px 0; 
+                    border-radius: 4px; 
+                    font-size: 12px; 
+                  }
+                  
+                  .comment-summary { 
+                    margin-top: 30px; 
+                    border-top: 2px solid #333; 
+                    padding-top: 15px; 
+                  }
+                  
+                  .summary-title { 
+                    font-size: 16px; 
+                    font-weight: bold; 
+                    margin-bottom: 15px; 
+                  }
+                  
+                  .window-toolbar {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    background: #2c5aa0;
+                    color: white;
+                    padding: 10px 20px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    z-index: 1000;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                  }
+                  
+                  .window-toolbar h3 {
+                    margin: 0;
+                    color: white;
+                    font-size: 1.1em;
+                  }
+                  
+                  .toolbar-actions {
+                    display: flex;
+                    gap: 10px;
+                  }
+                  
+                  .toolbar-btn {
+                    background: rgba(255,255,255,0.2);
+                    border: 1px solid rgba(255,255,255,0.3);
+                    color: white;
+                    padding: 6px 12px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 0.9em;
+                    transition: all 0.2s;
+                  }
+                  
+                  .toolbar-btn:hover {
+                    background: rgba(255,255,255,0.3);
+                  }
+                  
+                  .content-wrapper {
+                    margin-top: 60px;
+                    padding: 20px 0;
+                  }
+                  
+                  @media print {
+                    .window-toolbar { display: none; }
+                    .content-wrapper { margin-top: 0; padding: 0; }
+                    body { padding: 15px; font-size: 12px; }
+                    .content-with-annotations { grid-template-columns: 1fr 250px; gap: 20px; }
+                    .comment-annotations { font-size: 10px; padding: 10px; }
+                  }
+                </style>
+              </head>
+              <body>
+                <div class="window-toolbar">
+                  <h3>Review Snapshot - ${pageTitle}</h3>
+                  <div class="toolbar-actions">
+                    <button class="toolbar-btn" onclick="window.print()">🖨️ Print</button>
+                    <button class="toolbar-btn" onclick="downloadCurrentSnapshot()">💾 Save HTML</button>
+                    <button class="toolbar-btn" onclick="window.close()">✕ Close</button>
+                  </div>
+                </div>
+                <div class="content-wrapper">
+                  ${snapshotHTML}
+                </div>
+                
+                <script>
+                  function downloadCurrentSnapshot() {
+                    const htmlContent = document.documentElement.outerHTML;
+                    const blob = new Blob([htmlContent], { type: 'text/html' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = 'review-snapshot-${window.currentPage}-' + new Date().toISOString().split('T')[0] + '.html';
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  }
+                  
+                  // Print shortcut
+                  document.addEventListener('keydown', function(e) {
+                    if (e.ctrlKey && e.key === 'p') {
+                      e.preventDefault();
+                      window.print();
+                    }
+                  });
+                </script>
+              </body>
+              </html>
+            `;
+            
+            printWindow.document.write(fullHTML);
+            printWindow.document.close();
+            printWindow.focus();
           }
 
           function generateSnapshotHTML(pageTitle, comments) {
@@ -2218,6 +2635,17 @@ jobs:
             // Generate annotations sidebar
             const annotationsHTML = Object.keys(annotationMap).map(num => {
               const comment = annotationMap[num];
+              
+              // Generate images for this annotation
+              const commentImagesHTML = comment.uploadedImages && comment.uploadedImages.length > 0
+                ? comment.uploadedImages.map(img => `
+                    <div style="margin: 8px 0;">
+                      <img src="${img.data}" alt="${img.name}" class="comment-image-print">
+                      <div style="font-size: 9px; color: #666; margin-top: 2px;">${img.name}</div>
+                    </div>
+                  `).join('')
+                : '';
+              
               return `
                 <div class="annotation-item">
                   <div>
@@ -2228,9 +2656,14 @@ jobs:
                     "${comment.selectedText}"
                   </div>
                   <div>${comment.text}</div>
+                  ${commentImagesHTML}
+                  ${comment.uploadedImages && comment.uploadedImages.length > 0 && comment.type === 'suggestion' 
+                    ? '<div style="font-size: 10px; color: #ff9800; font-weight: bold; margin-top: 5px;">📍 Suggested image placement/reference</div>' 
+                    : ''}
                   <div style="margin-top: 5px; font-size: 10px; color: #666;">
                     ${new Date(comment.timestamp).toLocaleString()}
                     ${comment.resolved ? ' • ✓ Resolved' : ''}
+                    ${comment.uploadedImages && comment.uploadedImages.length > 0 ? ` • ${comment.uploadedImages.length} image(s)` : ''}
                   </div>
                 </div>
               `;
@@ -2241,6 +2674,8 @@ jobs:
             const resolvedComments = comments.filter(c => c.resolved).length;
             const textComments = comments.filter(c => c.selectionType === 'text').length;
             const imageComments = comments.filter(c => c.selectionType === 'image').length;
+            const commentsWithImages = comments.filter(c => c.uploadedImages && c.uploadedImages.length > 0).length;
+            const totalUploadedImages = comments.reduce((sum, c) => sum + (c.uploadedImages ? c.uploadedImages.length : 0), 0);
 
             return `
               <div class="print-snapshot">
@@ -2265,11 +2700,15 @@ jobs:
                 
                 <div class="comment-summary">
                   <div class="summary-title">Review Summary</div>
-                  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; font-size: 12px;">
+                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; font-size: 12px; margin-bottom: 15px;">
                     <div><strong>Total Comments:</strong><br>${totalComments}</div>
                     <div><strong>Text Comments:</strong><br>${textComments}</div>
                     <div><strong>Image Comments:</strong><br>${imageComments}</div>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; font-size: 12px;">
                     <div><strong>Resolved:</strong><br>${resolvedComments}</div>
+                    <div><strong>With Images:</strong><br>${commentsWithImages}</div>
+                    <div><strong>Uploaded Images:</strong><br>${totalUploadedImages}</div>
                   </div>
                 </div>
               </div>
@@ -2443,6 +2882,9 @@ jobs:
           window.printSnapshot = printSnapshot;
           window.downloadSnapshot = downloadSnapshot;
           window.closeSnapshotWindow = closeSnapshotWindow;
+          window.removeImageFromComment = removeImageFromComment;
+          window.showImageModal = showImageModal;
+          window.closeImageModal = closeImageModal;
 
           // Enhance tables with OxygenXML-like styling
           function enhanceTables() {
