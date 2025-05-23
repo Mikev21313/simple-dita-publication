@@ -600,14 +600,29 @@ jobs:
           body:not(.review-mode) [data-comment-id],
           body:not(.review-mode) .review-comment-highlight,
           body:not(.review-mode) .review-suggestion-highlight,
-          body:not(.review-mode) .image-comment-marker {
+          body:not(.review-mode) .image-comment-marker,
+          body:not(.review-mode) .comment-tooltip {
             display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
           }
 
           /* Ensure clean main content in normal mode */
           body:not(.review-mode) .main-content {
             background-color: #ffffff;
             padding-right: 30px;
+          }
+
+          /* Remove any potential review artifacts from normal mode */
+          body:not(.review-mode) *[class*="review-"],
+          body:not(.review-mode) *[class*="comment-"],
+          body:not(.review-mode) *[class*="annotation-"] {
+            display: none !important;
+          }
+
+          /* Override any review mode styling in normal mode */
+          body:not(.review-mode) {
+            background: #f8f8f8 !important;
           }
 
           /* Print button integration into main interface */
@@ -639,6 +654,103 @@ jobs:
           /* Review mode print integration */
           .review-mode .main-print-button {
             top: 70px; /* Move down when review toolbar is present */
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+          }
+
+          .review-mode .main-print-button:hover {
+            background: linear-gradient(135deg, #f57c00, #ef6c00);
+          }
+
+          /* Comment Panel Integration */
+          .comment-panel {
+            position: static !important;
+            width: 100%;
+            max-width: none;
+            right: auto;
+            top: auto;
+            transform: none;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin: 20px 0;
+            padding: 20px;
+            box-shadow: none;
+          }
+
+          .review-mode .comment-panel {
+            display: block;
+          }
+
+          .comment-panel h3 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 8px;
+          }
+
+          /* Remove floating comment panel toggle */
+          .comment-panel-toggle {
+            display: none !important;
+          }
+
+          /* Ensure comment panel is integrated into main content flow */
+          .review-mode .main-content {
+            background-color: #fffbf0;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+          }
+
+          .review-mode .content-area {
+            order: 1;
+          }
+
+          .review-mode .comment-panel {
+            order: 2;
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+          }
+
+          /* Clean review toolbar styling */
+          .review-mode .review-toolbar {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          }
+
+          .review-mode .review-toolbar h3 {
+            color: #856404;
+            margin: 0;
+            font-size: 1.1em;
+          }
+
+          /* Hide any floating review artifacts */
+          .floating-review-controls,
+          .review-overlay-buttons,
+          .review-mode .review-toolbar-btn,
+          .review-mode .review-toolbar-actions {
+            display: none !important;
+            visibility: hidden !important;
+          }
+
+          /* Remove fixed positioned review elements */
+          .review-mode [style*="position: fixed"]:not(.main-print-button),
+          .review-mode [style*="position:fixed"]:not(.main-print-button) {
+            position: static !important;
+          }
+
+          /* Clean up any absolute positioned review artifacts */
+          .review-mode .review-controls-overlay,
+          .review-mode .floating-controls {
+            display: none !important;
           }
 
           .review-toolbar {
@@ -1266,7 +1378,11 @@ jobs:
           function initApp() {
             debug('Initializing app with base path:', basePath);
 
-            // Initialize review system first
+            // Ensure we start in normal mode (not review mode)
+            window.reviewMode = false;
+            document.body.classList.remove('review-mode', 'show-comments');
+
+            // Initialize review system 
             initReviewSystem();
 
             // Render navigation
@@ -1297,15 +1413,11 @@ jobs:
               clearReviewBtn.addEventListener('click', clearReviewData);
             }
 
-            // Add print functionality
-            document.querySelector('.wh_print_link button').addEventListener('click', (e) => {
-              e.preventDefault();
-              window.print();
-            });
-
-            // Ensure we start in normal mode (not review mode)
-            window.reviewMode = false;
-            document.body.classList.remove('review-mode', 'show-comments');
+            // Integrated print button functionality
+            const mainPrintButton = document.getElementById('mainPrintButton');
+            if (mainPrintButton) {
+              mainPrintButton.addEventListener('click', handleMainPrint);
+            }
 
             // Check if we have a hash in the URL
             const initialPageId = getPageIdFromUrl();
@@ -1314,6 +1426,17 @@ jobs:
               navigateToPage(initialPageId, false);
             } else {
               showWelcomeScreen();
+            }
+          }
+
+          // Handle main print button - different behavior based on mode
+          function handleMainPrint() {
+            if (window.reviewMode) {
+              // In review mode, generate review snapshot
+              saveReviewSnapshot();
+            } else {
+              // In normal mode, regular print
+              window.print();
             }
           }
 
@@ -1858,16 +1981,21 @@ jobs:
               exportOptions.style.display = window.reviewMode ? 'block' : 'none';
             }
             
-            // Hide comment panel if exiting review mode
-            if (!window.reviewMode) {
-              document.body.classList.remove('show-comments');
-            }
-            
-            // Remove review toolbar if exiting review mode
-            if (!window.reviewMode) {
-              const existingToolbar = document.querySelector('.review-toolbar');
-              if (existingToolbar) {
-                existingToolbar.remove();
+            // Update main print button text and style based on mode
+            const mainPrintButton = document.getElementById('mainPrintButton');
+            if (mainPrintButton) {
+              const buttonText = mainPrintButton.querySelector('span');
+              if (buttonText) {
+                buttonText.textContent = window.reviewMode ? 'Review Snapshot' : 'Print';
+              }
+              
+              // Update button styling
+              if (window.reviewMode) {
+                mainPrintButton.style.background = 'linear-gradient(135deg, #ff9800, #f57c00)';
+                mainPrintButton.title = 'Generate review snapshot with comments in new window';
+              } else {
+                mainPrintButton.style.background = 'linear-gradient(135deg, #00acc1, #0097a7)';
+                mainPrintButton.title = 'Print current page';
               }
             }
           }
@@ -1917,16 +2045,16 @@ jobs:
             const toolbar = document.createElement('div');
             toolbar.className = 'review-toolbar';
             toolbar.innerHTML = `
-              <h3>Review Mode: ${getPageTitle(window.currentPage)}</h3>
-              <div class="review-toolbar-actions">
-                <button class="review-toolbar-btn" onclick="toggleCommentPanel()">
-                  Comments (${getCommentsForPage(window.currentPage).length})
-                </button>
-                <button class="review-toolbar-btn" onclick="saveReviewSnapshot()">Print Snapshot</button>
-              </div>
+              <h3>📝 Review Mode Active: ${getPageTitle(window.currentPage)}</h3>
             `;
             
             contentEl.insertBefore(toolbar, contentEl.firstChild);
+            
+            // Show comment panel by default in review mode
+            if (window.currentPage) {
+              updateCommentPanel();
+              document.body.classList.add('show-comments');
+            }
           }
 
           function handleTextSelection(event) {
@@ -2869,6 +2997,7 @@ jobs:
           window.removeImageFromComment = removeImageFromComment;
           window.showImageModal = showImageModal;
           window.closeImageModal = closeImageModal;
+          window.handleMainPrint = handleMainPrint;
 
           // Enhance tables with OxygenXML-like styling
           function enhanceTables() {
@@ -3156,10 +3285,10 @@ jobs:
               </div>
             </div>
 
-            <!-- Print functionality -->
-            <div class="wh_print_link" style="position: fixed; top: 10px; right: 10px; z-index: 999;">
-              <button>🖨️ Print</button>
-            </div>
+            <!-- Print functionality integrated into main UI -->
+            <button class="main-print-button" id="mainPrintButton">
+              🖨️ <span>Print</span>
+            </button>
 
             <script src="js/navigation-config.js"></script>
             <script src="js/content-id-map.js"></script>
