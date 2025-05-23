@@ -1,4 +1,4 @@
-name: DITA to SPA Transformation with Integrated Print Snapshot Review System
+name: DITA to SPA Transformation with Comments Side Cart Review System
 
 on:
   push:
@@ -318,11 +318,11 @@ jobs:
 
           echo "Navigation configuration generated from DITAMAP structure"
 
-      # Step 8: Create SPA CSS with integrated print snapshot system (MODIFIED)
-      - name: Create Enhanced SPA CSS with Integrated Print Snapshot System
+      # Step 8: Create SPA CSS with Comments Side Cart (MODIFIED)
+      - name: Create Enhanced SPA CSS with Comments Side Cart
         run: |
           cat > ./site/css/style.css << 'EOF'
-          /* General styles based on Oxygen WebHelp theme with Integrated Print Review System */
+          /* General styles based on Oxygen WebHelp theme with Comments Side Cart */
           * {
             margin: 0;
             padding: 0;
@@ -338,6 +338,7 @@ jobs:
             overflow: hidden;
             color: #333;
             background-color: #f8f8f8;
+            position: relative;
           }
 
           /* Sidebar styling */
@@ -351,6 +352,7 @@ jobs:
             display: flex;
             flex-direction: column;
             box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+            z-index: 100;
           }
 
           .main-content {
@@ -361,8 +363,368 @@ jobs:
             background-color: #ffffff;
             box-shadow: inset 0 0 10px rgba(0,0,0,0.02);
             position: relative;
+            transition: margin-right 0.3s ease;
           }
 
+          /* Comments Side Cart Styles */
+          .comments-side-cart {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 380px;
+            height: 100vh;
+            background: #ffffff;
+            border-left: 2px solid #2c5aa0;
+            box-shadow: -3px 0 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            transition: right 0.3s ease;
+          }
+
+          .comments-side-cart.open {
+            right: 0;
+          }
+
+          .comments-side-cart.open ~ .main-content {
+            margin-right: 380px;
+          }
+
+          .cart-header {
+            background: linear-gradient(135deg, #2c5aa0, #1e3a8a);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #1e3a8a;
+          }
+
+          .cart-header h3 {
+            margin: 0;
+            font-size: 1.1em;
+          }
+
+          .cart-close-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background 0.2s;
+          }
+
+          .cart-close-btn:hover {
+            background: rgba(255,255,255,0.3);
+          }
+
+          .cart-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+          }
+
+          .cart-stats {
+            background: #f5f9ff;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e0e8f0;
+            font-size: 0.9em;
+          }
+
+          .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            text-align: center;
+          }
+
+          .stat-item {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #e0e8f0;
+          }
+
+          .stat-number {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #2c5aa0;
+            display: block;
+          }
+
+          .stat-label {
+            color: #666;
+            font-size: 0.85em;
+          }
+
+          .comments-list {
+            padding: 0;
+          }
+
+          .comment-item {
+            border-bottom: 1px solid #e0e8f0;
+            padding: 20px;
+            transition: background 0.2s;
+            position: relative;
+          }
+
+          .comment-item:hover {
+            background: #f8fafc;
+          }
+
+          .comment-item:last-child {
+            border-bottom: none;
+          }
+
+          .comment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+          }
+
+          .comment-type-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            font-weight: bold;
+            text-transform: uppercase;
+          }
+
+          .comment-type-badge.comment {
+            background: #e3f2fd;
+            color: #1976d2;
+          }
+
+          .comment-type-badge.suggestion {
+            background: #fff3e0;
+            color: #f57c00;
+          }
+
+          .comment-timestamp {
+            font-size: 0.8em;
+            color: #666;
+          }
+
+          .comment-selected-text {
+            background: #fff9c4;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            margin: 8px 0;
+            border-left: 3px solid #ffc107;
+            font-style: italic;
+          }
+
+          .comment-text {
+            margin: 10px 0;
+            line-height: 1.5;
+            font-size: 0.9em;
+          }
+
+          .comment-images {
+            margin: 12px 0;
+          }
+
+          .comment-images-header {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+          }
+
+          .image-preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 8px;
+          }
+
+          .image-preview-item {
+            position: relative;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            overflow: hidden;
+            transition: all 0.2s;
+          }
+
+          .image-preview-item:hover {
+            border-color: #2196f3;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+          }
+
+          .comment-image-thumb {
+            width: 100%;
+            height: 80px;
+            object-fit: cover;
+            cursor: pointer;
+            transition: transform 0.2s;
+          }
+
+          .comment-image-thumb:hover {
+            transform: scale(1.05);
+          }
+
+          .image-actions {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.7));
+            padding: 6px 4px 4px;
+            display: flex;
+            gap: 2px;
+            opacity: 0;
+            transition: opacity 0.2s;
+          }
+
+          .image-preview-item:hover .image-actions {
+            opacity: 1;
+          }
+
+          .image-action-btn {
+            background: rgba(255,255,255,0.9);
+            border: none;
+            padding: 4px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: bold;
+            transition: all 0.2s;
+          }
+
+          .image-action-btn:hover {
+            background: white;
+            transform: scale(1.05);
+          }
+
+          .image-action-btn.download {
+            color: #4caf50;
+          }
+
+          .image-action-btn.view {
+            color: #2196f3;
+          }
+
+          .image-filename {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            right: 2px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 9px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            opacity: 0;
+            transition: opacity 0.2s;
+          }
+
+          .image-preview-item:hover .image-filename {
+            opacity: 1;
+          }
+
+          .comment-resolve-btn {
+            background: linear-gradient(135deg, #4caf50, #388e3c);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            margin-top: 10px;
+            transition: all 0.2s;
+          }
+
+          .comment-resolve-btn:hover {
+            background: linear-gradient(135deg, #388e3c, #2e7d32);
+            transform: translateY(-1px);
+          }
+
+          .comment-resolve-btn.resolved {
+            background: linear-gradient(135deg, #9e9e9e, #757575);
+            cursor: not-allowed;
+          }
+
+          .comment-item.resolved {
+            opacity: 0.6;
+          }
+
+          .comment-item.resolved .comment-selected-text {
+            background: #f5f5f5;
+            border-left-color: #bbb;
+          }
+
+          /* Image Hover Preview */
+          .image-hover-preview {
+            position: fixed;
+            z-index: 2000;
+            background: white;
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            padding: 8px;
+            pointer-events: none;
+            opacity: 0;
+            transform: scale(0.8);
+            transition: all 0.2s ease;
+            max-width: 300px;
+            max-height: 300px;
+          }
+
+          .image-hover-preview.show {
+            opacity: 1;
+            transform: scale(1);
+          }
+
+          .image-hover-preview img {
+            max-width: 100%;
+            max-height: 280px;
+            object-fit: contain;
+            border-radius: 4px;
+          }
+
+          .image-hover-preview .preview-filename {
+            font-size: 11px;
+            color: #666;
+            text-align: center;
+            margin-top: 6px;
+            font-weight: bold;
+          }
+
+          /* No Comments State */
+          .no-comments {
+            padding: 40px 20px;
+            text-align: center;
+            color: #666;
+          }
+
+          .no-comments-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+            opacity: 0.5;
+          }
+
+          .no-comments h4 {
+            margin-bottom: 10px;
+            color: #333;
+          }
+
+          .no-comments p {
+            font-size: 0.9em;
+            line-height: 1.4;
+          }
+
+          /* Sidebar styling */
           .sidebar h2 {
             font-weight: 500;
             margin-top: 0;
@@ -973,221 +1335,6 @@ jobs:
             background: rgba(255,255,255,0.4);
           }
 
-          /* Print Snapshot Window (NEW) */
-          .print-snapshot-window {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
-            z-index: 4000;
-            display: none;
-          }
-
-          .print-snapshot-window.show {
-            display: block;
-          }
-
-          .snapshot-content {
-            width: 95%;
-            height: 95%;
-            max-width: 1400px;
-            background: white;
-            margin: 2.5% auto;
-            border-radius: 8px;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-          }
-
-          .snapshot-toolbar {
-            background: #2c5aa0;
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          }
-
-          .snapshot-toolbar h3 {
-            margin: 0;
-            font-size: 1.2em;
-          }
-
-          .snapshot-actions {
-            display: flex;
-            gap: 10px;
-          }
-
-          .snapshot-btn {
-            background: rgba(255,255,255,0.2);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.3);
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9em;
-            transition: all 0.2s;
-          }
-
-          .snapshot-btn:hover {
-            background: rgba(255,255,255,0.3);
-          }
-
-          .snapshot-viewer {
-            flex: 1;
-            overflow-y: auto;
-            padding: 0;
-          }
-
-          /* Print Snapshot Content Styles */
-          .print-snapshot {
-            font-family: 'Times New Roman', serif;
-            line-height: 1.6;
-            color: #000;
-            background: white;
-            padding: 30px;
-          }
-
-          .snapshot-header {
-            border-bottom: 2px solid #333;
-            padding-bottom: 15px;
-            margin-bottom: 30px;
-          }
-
-          .snapshot-title {
-            font-size: 28px;
-            font-weight: bold;
-            margin-bottom: 8px;
-          }
-
-          .snapshot-meta {
-            font-size: 14px;
-            color: #666;
-            font-style: italic;
-          }
-
-          .content-with-annotations {
-            display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 30px;
-            align-items: start;
-          }
-
-          .main-article {
-            font-size: 14px;
-            line-height: 1.7;
-          }
-
-          .comment-annotations {
-            font-size: 12px;
-            background: #f9f9f9;
-            padding: 20px;
-            border-left: 4px solid #2196f3;
-            border-radius: 4px;
-            position: sticky;
-            top: 20px;
-            max-height: calc(100vh - 100px);
-            overflow-y: auto;
-          }
-
-          .comment-annotations h4 {
-            margin-top: 0;
-            color: #2c5aa0;
-            font-size: 16px;
-            margin-bottom: 15px;
-          }
-
-          .annotation-item {
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid #e0e0e0;
-          }
-
-          .annotation-item:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-          }
-
-          .annotation-marker {
-            display: inline-block;
-            background: #2196f3;
-            color: white;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-            margin-right: 8px;
-          }
-
-          .annotation-marker.suggestion {
-            background: #ff9800;
-          }
-
-          .text-marker {
-            background: #ffeb3b;
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-weight: bold;
-          }
-
-          .image-marker-indicator {
-            background: #e3f2fd;
-            border: 1px solid #2196f3;
-            padding: 8px;
-            margin: 12px 0;
-            border-radius: 4px;
-            font-size: 13px;
-          }
-
-          .comment-summary {
-            margin-top: 40px;
-            border-top: 2px solid #333;
-            padding-top: 20px;
-          }
-
-          .summary-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 15px;
-          }
-
-          /* Reference Images in Comments */
-          .comment-image-container {
-            margin: 10px 0;
-            text-align: center;
-          }
-
-          .comment-image-preview {
-            max-width: 120px;
-            max-height: 120px;
-            object-fit: cover;
-            border: 2px solid #ddd;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-
-          .comment-image-preview:hover {
-            border-color: #2196f3;
-            transform: scale(1.05);
-          }
-
-          .comment-image-print {
-            max-width: 150px;
-            max-height: 150px;
-            object-fit: contain;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-          }
-
-          .image-caption {
-            font-size: 10px;
-            color: #666;
-            margin-top: 4px;
-          }
-
           /* Content styling */
           .main-content h1, .main-content h2, .main-content h3, .main-content h4 {
             font-weight: 500;
@@ -1371,51 +1518,22 @@ jobs:
               min-height: 60vh;
             }
 
-            .content-with-annotations {
-              grid-template-columns: 1fr;
-              gap: 20px;
+            .comments-side-cart {
+              width: 100%;
+              right: -100%;
             }
 
-            .comment-annotations {
-              position: static;
-              max-height: none;
-            }
-          }
-
-          /* Print specific styles */
-          @media print {
-            .print-snapshot {
-              padding: 15px;
-              font-size: 12px;
-            }
-            
-            .content-with-annotations {
-              grid-template-columns: 1fr 280px;
-              gap: 20px;
-            }
-            
-            .comment-annotations {
-              font-size: 10px;
-              padding: 15px;
-            }
-            
-            .annotation-item {
-              margin-bottom: 15px;
-              padding-bottom: 10px;
-            }
-            
-            .comment-image-print {
-              max-width: 100px;
-              max-height: 100px;
+            .comments-side-cart.open ~ .main-content {
+              margin-right: 0;
             }
           }
           EOF
 
-      # Step 9: Create Enhanced SPA JavaScript with Integrated Print Snapshot (MODIFIED)
-      - name: Create Enhanced SPA Application with Integrated Print Snapshot
+      # Step 9: Create Enhanced SPA JavaScript with Comments Side Cart (MODIFIED)
+      - name: Create Enhanced SPA Application with Comments Side Cart
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // Enhanced SPA Application with integrated print snapshot review system
+          // Enhanced SPA Application with comments side cart review system
 
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -1518,14 +1636,237 @@ jobs:
             // Create comment input dialog
             createCommentDialog();
             
-            // Create print snapshot window
-            createPrintSnapshotWindow();
+            // Create comments side cart
+            createCommentsSideCart();
             
             // Create image modal
             createImageModal();
             
+            // Create image hover preview
+            createImageHoverPreview();
+            
             // Update review button states
             updateReviewButtons();
+          }
+
+          // Create Comments Side Cart (NEW)
+          function createCommentsSideCart() {
+            const sideCart = document.createElement('div');
+            sideCart.className = 'comments-side-cart';
+            sideCart.id = 'commentsSideCart';
+            sideCart.innerHTML = `
+              <div class="cart-header">
+                <h3>Comments & Suggestions</h3>
+                <button class="cart-close-btn" onclick="closeCommentsSideCart()">✕</button>
+              </div>
+              <div class="cart-content">
+                <div class="cart-stats" id="cartStats">
+                  <div class="stats-grid">
+                    <div class="stat-item">
+                      <span class="stat-number" id="totalComments">0</span>
+                      <span class="stat-label">Total</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="stat-number" id="unresolvedComments">0</span>
+                      <span class="stat-label">Active</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="stat-number" id="resolvedComments">0</span>
+                      <span class="stat-label">Resolved</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="comments-list" id="commentsList">
+                  <div class="no-comments">
+                    <div class="no-comments-icon">💬</div>
+                    <h4>No Comments Yet</h4>
+                    <p>Select text or click images to add comments and suggestions in review mode.</p>
+                  </div>
+                </div>
+              </div>
+            `;
+            
+            document.body.appendChild(sideCart);
+          }
+
+          // Create Image Hover Preview (NEW)
+          function createImageHoverPreview() {
+            const preview = document.createElement('div');
+            preview.className = 'image-hover-preview';
+            preview.id = 'imageHoverPreview';
+            preview.innerHTML = `
+              <img src="" alt="Preview">
+              <div class="preview-filename"></div>
+            `;
+            
+            document.body.appendChild(preview);
+          }
+
+          // Open Comments Side Cart (NEW)
+          function openCommentsSideCart() {
+            const sideCart = document.getElementById('commentsSideCart');
+            if (sideCart) {
+              sideCart.classList.add('open');
+              updateCommentsSideCart();
+            }
+          }
+
+          // Close Comments Side Cart (NEW)
+          function closeCommentsSideCart() {
+            const sideCart = document.getElementById('commentsSideCart');
+            if (sideCart) {
+              sideCart.classList.remove('open');
+            }
+          }
+
+          // Update Comments Side Cart Content (NEW)
+          function updateCommentsSideCart() {
+            if (!window.currentPage) return;
+            
+            const comments = getCommentsForPage(window.currentPage);
+            const resolvedCount = comments.filter(c => c.resolved).length;
+            const unresolvedCount = comments.length - resolvedCount;
+            
+            // Update statistics
+            document.getElementById('totalComments').textContent = comments.length;
+            document.getElementById('unresolvedComments').textContent = unresolvedCount;
+            document.getElementById('resolvedComments').textContent = resolvedCount;
+            
+            // Update comments list
+            const commentsList = document.getElementById('commentsList');
+            
+            if (comments.length === 0) {
+              commentsList.innerHTML = `
+                <div class="no-comments">
+                  <div class="no-comments-icon">💬</div>
+                  <h4>No Comments Yet</h4>
+                  <p>Select text or click images to add comments and suggestions in review mode.</p>
+                </div>
+              `;
+              return;
+            }
+            
+            // Sort comments by timestamp (newest first)
+            const sortedComments = comments.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            commentsList.innerHTML = sortedComments.map(comment => `
+              <div class="comment-item ${comment.resolved ? 'resolved' : ''}" data-comment-id="${comment.id}">
+                <div class="comment-header">
+                  <span class="comment-type-badge ${comment.type}">${comment.type}</span>
+                  <span class="comment-timestamp">${new Date(comment.timestamp).toLocaleDateString()} ${new Date(comment.timestamp).toLocaleTimeString()}</span>
+                </div>
+                
+                <div class="comment-selected-text">
+                  "${comment.selectedText}"
+                  ${comment.selectionType === 'image' ? ' (Image)' : ''}
+                </div>
+                
+                ${comment.text ? `<div class="comment-text">${comment.text}</div>` : ''}
+                
+                ${comment.uploadedImages && comment.uploadedImages.length > 0 ? `
+                  <div class="comment-images">
+                    <div class="comment-images-header">
+                      📎 ${comment.uploadedImages.length} image${comment.uploadedImages.length > 1 ? 's' : ''}
+                    </div>
+                    <div class="image-preview-grid">
+                      ${comment.uploadedImages.map(img => `
+                        <div class="image-preview-item">
+                          <div class="image-filename">${img.name}</div>
+                          <img src="${img.data}" alt="${img.name}" class="comment-image-thumb" 
+                               onmouseenter="showImageHoverPreview(event, '${img.data}', '${img.name}')"
+                               onmouseleave="hideImageHoverPreview()"
+                               onclick="showImageModal('${img.data}')">
+                          <div class="image-actions">
+                            <button class="image-action-btn view" onclick="showImageModal('${img.data}')" title="View full size">👁</button>
+                            <button class="image-action-btn download" onclick="downloadCommentImage('${img.data}', '${img.name}')" title="Download">💾</button>
+                          </div>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                ` : ''}
+                
+                <button class="comment-resolve-btn ${comment.resolved ? 'resolved' : ''}" 
+                        onclick="toggleCommentResolved('${comment.id}')"
+                        ${comment.resolved ? 'disabled' : ''}>
+                  ${comment.resolved ? '✓ Resolved' : 'Mark Resolved'}
+                </button>
+              </div>
+            `).join('');
+          }
+
+          // Show Image Hover Preview (NEW)
+          function showImageHoverPreview(event, imageSrc, filename) {
+            const preview = document.getElementById('imageHoverPreview');
+            if (!preview) return;
+            
+            const img = preview.querySelector('img');
+            const filenameEl = preview.querySelector('.preview-filename');
+            
+            img.src = imageSrc;
+            filenameEl.textContent = filename;
+            
+            // Position preview near cursor
+            const rect = event.target.getBoundingClientRect();
+            preview.style.left = (rect.right + 10) + 'px';
+            preview.style.top = (rect.top) + 'px';
+            
+            // Adjust if would go off screen
+            const previewRect = preview.getBoundingClientRect();
+            if (previewRect.right > window.innerWidth - 20) {
+              preview.style.left = (rect.left - previewRect.width - 10) + 'px';
+            }
+            if (previewRect.bottom > window.innerHeight - 20) {
+              preview.style.top = (window.innerHeight - previewRect.height - 20) + 'px';
+            }
+            
+            preview.classList.add('show');
+          }
+
+          // Hide Image Hover Preview (NEW)
+          function hideImageHoverPreview() {
+            const preview = document.getElementById('imageHoverPreview');
+            if (preview) {
+              preview.classList.remove('show');
+            }
+          }
+
+          // Download Comment Image (NEW)
+          function downloadCommentImage(imageSrc, filename) {
+            const link = document.createElement('a');
+            link.href = imageSrc;
+            link.download = filename || 'comment-image.png';
+            link.click();
+          }
+
+          // Toggle Comment Resolved Status (NEW)
+          function toggleCommentResolved(commentId) {
+            if (!window.currentPage) return;
+            
+            const pageData = window.reviewData[window.currentPage];
+            if (!pageData) return;
+            
+            const comment = pageData.comments.find(c => c.id === commentId);
+            if (!comment) return;
+            
+            comment.resolved = !comment.resolved;
+            comment.resolvedTimestamp = comment.resolved ? new Date().toISOString() : null;
+            
+            // Save to localStorage
+            localStorage.setItem('reviewData', JSON.stringify(window.reviewData));
+            
+            // Update UI
+            updateCommentsSideCart();
+            
+            // Update highlights in main content
+            if (window.reviewMode) {
+              loadReviewDataForPage(window.currentPage);
+            }
+            
+            // Update toolbar
+            if (window.reviewMode) {
+              addReviewToolbar();
+            }
           }
 
           // Create Hover Tooltip
@@ -1586,35 +1927,6 @@ jobs:
             
             // Set up image upload functionality
             setupImageUpload();
-          }
-
-          // Create Print Snapshot Window (NEW)
-          function createPrintSnapshotWindow() {
-            const snapshotWindow = document.createElement('div');
-            snapshotWindow.className = 'print-snapshot-window';
-            snapshotWindow.id = 'printSnapshotWindow';
-            snapshotWindow.innerHTML = `
-              <div class="snapshot-content">
-                <div class="snapshot-toolbar">
-                  <h3>Review Snapshot with Comments</h3>
-                  <div class="snapshot-actions">
-                    <button class="snapshot-btn" onclick="printSnapshot()">🖨️ Print</button>
-                    <button class="snapshot-btn" onclick="downloadSnapshot()">💾 Download HTML</button>
-                    <button class="snapshot-btn" onclick="closePrintSnapshotWindow()">✕ Close</button>
-                  </div>
-                </div>
-                <div class="snapshot-viewer" id="snapshotViewer"></div>
-              </div>
-            `;
-            
-            document.body.appendChild(snapshotWindow);
-            
-            // Close on background click
-            snapshotWindow.addEventListener('click', (e) => {
-              if (e.target === snapshotWindow) {
-                closePrintSnapshotWindow();
-              }
-            });
           }
 
           // Create Image Modal for Full View
@@ -1754,7 +2066,7 @@ jobs:
                 <h2>Welcome to Documentation</h2>
                 <p>Please select a topic from the navigation menu or use the search bar.</p>
                 <p><strong>Review Mode:</strong> Click "Review Mode" to enable collaborative commenting and suggestions.</p>
-                <p><strong>Print Snapshot:</strong> In review mode, the print button will generate a parallel view with all comments for easy printing.</p>
+                <p><strong>Comments Side Cart:</strong> View all comments and suggestions in an organized panel with image previews and download options.</p>
               </div>
             `;
 
@@ -1955,6 +2267,8 @@ jobs:
               document.body.classList.remove('review-mode');
               // Clear any visible highlights from main view
               clearReviewHighlights();
+              // Close side cart if open
+              closeCommentsSideCart();
               debug('Review mode deactivated');
             }
             
@@ -1992,7 +2306,7 @@ jobs:
               toggleReviewMode();
             }
             
-            alert(`Review session started for "${getPageTitle(window.currentPage)}". You can now:\n\n• Select text to add comments or suggestions\n• Click on images to add annotations\n• Use the print button to generate a snapshot with all comments\n• Export your review data when finished`);
+            alert(`Review session started for "${getPageTitle(window.currentPage)}". You can now:\n\n• Select text to add comments or suggestions\n• Click on images to add annotations\n• View all comments in the side cart with image previews\n• Download images attached to comments\n• Export your review data when finished`);
           }
 
           function updateReviewButtons() {
@@ -2062,12 +2376,9 @@ jobs:
             contentEl.insertBefore(toolbar, contentEl.firstChild);
           }
 
+          // Modified showCommentsCount to open side cart instead of alert (MODIFIED)
           function showCommentsCount() {
-            const comments = getCommentsForPage(window.currentPage);
-            const resolvedCount = comments.filter(c => c.resolved).length;
-            const unresolvedCount = comments.length - resolvedCount;
-            
-            alert(`Comments for this page:\n\nTotal: ${comments.length}\nResolved: ${resolvedCount}\nUnresolved: ${unresolvedCount}\n\nUse "Print Snapshot" to see all comments in detail.`);
+            openCommentsSideCart();
           }
 
           function handleTextSelection(event) {
@@ -2213,6 +2524,12 @@ jobs:
             
             // Update toolbar
             addReviewToolbar();
+            
+            // Update side cart if open
+            const sideCart = document.getElementById('commentsSideCart');
+            if (sideCart && sideCart.classList.contains('open')) {
+              updateCommentsSideCart();
+            }
             
             closeCommentDialog();
             
@@ -2424,7 +2741,7 @@ jobs:
             return textNodes;
           }
 
-          // Print Snapshot Functions (NEW)
+          // Print Snapshot Functions (kept for compatibility)
           function openPrintSnapshotWindow() {
             if (!window.currentPage) {
               alert('No page selected for snapshot.');
@@ -2434,317 +2751,12 @@ jobs:
             const comments = getCommentsForPage(window.currentPage);
             const pageTitle = getPageTitle(window.currentPage);
             
-            // Generate print-optimized HTML with parallel annotations
-            const snapshotHTML = generateSnapshotHTML(pageTitle, comments);
+            // For now, just open the comments side cart
+            // This can be enhanced later with a full print view
+            openCommentsSideCart();
             
-            // Display in snapshot window
-            const snapshotViewer = document.getElementById('snapshotViewer');
-            const snapshotWindow = document.getElementById('printSnapshotWindow');
-            
-            if (snapshotViewer && snapshotWindow) {
-              snapshotViewer.innerHTML = snapshotHTML;
-              snapshotWindow.classList.add('show');
-            }
-          }
-
-          function closePrintSnapshotWindow() {
-            const snapshotWindow = document.getElementById('printSnapshotWindow');
-            if (snapshotWindow) {
-              snapshotWindow.classList.remove('show');
-            }
-          }
-
-          function generateSnapshotHTML(pageTitle, comments) {
-            // Get clean content without review highlights
-            const contentClone = contentEl.cloneNode(true);
-            
-            // Remove review toolbar
-            const toolbar = contentClone.querySelector('.review-toolbar');
-            if (toolbar) {
-              toolbar.remove();
-            }
-            
-            // Remove all review highlights from clone
-            const highlights = contentClone.querySelectorAll('[data-comment-id]');
-            highlights.forEach(highlight => {
-              if (highlight.classList.contains('image-comment-marker')) {
-                highlight.remove();
-              } else {
-                const parent = highlight.parentNode;
-                if (parent) {
-                  parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
-                  parent.removeChild(highlight);
-                }
-              }
-            });
-
-            // Add text markers for comments in the content
-            let annotationCounter = 1;
-            const annotationMap = {};
-
-            comments.forEach(comment => {
-              if (comment.selectionType === 'text') {
-                // Find and mark text in content
-                const walker = document.createTreeWalker(
-                  contentClone,
-                  NodeFilter.SHOW_TEXT,
-                  null,
-                  false
-                );
-
-                let node;
-                while (node = walker.nextNode()) {
-                  if (node.textContent.includes(comment.selectedText)) {
-                    const parent = node.parentNode;
-                    const text = node.textContent;
-                    const index = text.indexOf(comment.selectedText);
-                    
-                    if (index !== -1 && !annotationMap[comment.id]) {
-                      const beforeText = text.substring(0, index);
-                      const selectedText = comment.selectedText;
-                      const afterText = text.substring(index + selectedText.length);
-                      
-                      const marker = document.createElement('span');
-                      marker.className = 'text-marker';
-                      marker.innerHTML = `${selectedText}<sup>[${annotationCounter}]</sup>`;
-                      
-                      annotationMap[annotationCounter] = comment;
-                      annotationCounter++;
-                      
-                      parent.removeChild(node);
-                      if (beforeText) parent.appendChild(document.createTextNode(beforeText));
-                      parent.appendChild(marker);
-                      if (afterText) parent.appendChild(document.createTextNode(afterText));
-                      
-                      break;
-                    }
-                  }
-                }
-              } else if (comment.selectionType === 'image') {
-                // Add image annotation markers
-                const images = contentClone.querySelectorAll('img');
-                images.forEach(img => {
-                  if (img.src.includes(comment.imageSrc.split('/').pop()) && !annotationMap[comment.id]) {
-                    const imageIndicator = document.createElement('div');
-                    imageIndicator.className = 'image-marker-indicator';
-                    imageIndicator.innerHTML = `📍 <strong>Image Comment [${annotationCounter}]:</strong> "${comment.imageAlt}"`;
-                    
-                    annotationMap[annotationCounter] = comment;
-                    annotationCounter++;
-                    
-                    img.parentNode.insertBefore(imageIndicator, img.nextSibling);
-                  }
-                });
-              }
-            });
-
-            // Generate annotations sidebar
-            const annotationsHTML = Object.keys(annotationMap).map(num => {
-              const comment = annotationMap[num];
-              
-              // Generate images for this annotation
-              const commentImagesHTML = comment.uploadedImages && comment.uploadedImages.length > 0
-                ? comment.uploadedImages.map(img => `
-                    <div style="margin: 8px 0; text-align: center;">
-                      <img src="${img.data}" alt="${img.name}" class="comment-image-print" onclick="showImageModal('${img.data}')">
-                      <div style="font-size: 9px; color: #666; margin-top: 2px;">${img.name} (${(img.size/1024).toFixed(1)}KB)</div>
-                    </div>
-                  `).join('')
-                : '';
-              
-              return `
-                <div class="annotation-item">
-                  <div>
-                    <span class="annotation-marker ${comment.type}">[${num}]</span>
-                    <strong>${comment.type.toUpperCase()}</strong>
-                  </div>
-                  <div style="margin: 5px 0; font-weight: bold; font-size: 11px;">
-                    "${comment.selectedText}"
-                  </div>
-                  <div style="margin: 5px 0;">${comment.text}</div>
-                  ${commentImagesHTML}
-                  ${comment.uploadedImages && comment.uploadedImages.length > 0 && comment.type === 'suggestion' 
-                    ? '<div style="font-size: 10px; color: #ff9800; font-weight: bold; margin-top: 5px;">📍 Suggested image placement/reference</div>' 
-                    : ''}
-                  <div style="margin-top: 8px; font-size: 10px; color: #666;">
-                    ${new Date(comment.timestamp).toLocaleString()}
-                    ${comment.resolved ? ' • ✓ Resolved' : ''}
-                    ${comment.uploadedImages && comment.uploadedImages.length > 0 ? ` • ${comment.uploadedImages.length} image(s)` : ''}
-                  </div>
-                </div>
-              `;
-            }).join('');
-
-            // Generate summary statistics
-            const totalComments = comments.length;
-            const resolvedComments = comments.filter(c => c.resolved).length;
-            const textComments = comments.filter(c => c.selectionType === 'text').length;
-            const imageComments = comments.filter(c => c.selectionType === 'image').length;
-            const commentsWithImages = comments.filter(c => c.uploadedImages && c.uploadedImages.length > 0).length;
-            const totalUploadedImages = comments.reduce((sum, c) => sum + (c.uploadedImages ? c.uploadedImages.length : 0), 0);
-
-            return `
-              <div class="print-snapshot">
-                <div class="snapshot-header">
-                  <div class="snapshot-title">${pageTitle}</div>
-                  <div class="snapshot-meta">
-                    Review Snapshot • Generated ${new Date().toLocaleString()} • 
-                    ${totalComments} comments (${resolvedComments} resolved)
-                  </div>
-                </div>
-                
-                <div class="content-with-annotations">
-                  <div class="main-article">
-                    ${contentClone.innerHTML}
-                  </div>
-                  
-                  <div class="comment-annotations">
-                    <h4 style="margin-top: 0; color: #2c5aa0;">Review Comments</h4>
-                    ${annotationsHTML || '<p style="font-style: italic; color: #666;">No comments</p>'}
-                  </div>
-                </div>
-                
-                <div class="comment-summary">
-                  <div class="summary-title">Review Summary</div>
-                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; font-size: 12px; margin-bottom: 15px;">
-                    <div><strong>Total Comments:</strong><br>${totalComments}</div>
-                    <div><strong>Text Comments:</strong><br>${textComments}</div>
-                    <div><strong>Image Comments:</strong><br>${imageComments}</div>
-                  </div>
-                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; font-size: 12px;">
-                    <div><strong>Resolved:</strong><br>${resolvedComments}</div>
-                    <div><strong>With Images:</strong><br>${commentsWithImages}</div>
-                    <div><strong>Uploaded Images:</strong><br>${totalUploadedImages}</div>
-                  </div>
-                </div>
-              </div>
-            `;
-          }
-
-          function printSnapshot() {
-            const snapshotViewer = document.getElementById('snapshotViewer');
-            if (snapshotViewer) {
-              const printWindow = window.open('', '_blank');
-              printWindow.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <title>Review Snapshot - ${getPageTitle(window.currentPage)}</title>
-                  <style>
-                    /* Print-optimized styles */
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    body { font-family: 'Times New Roman', serif; line-height: 1.6; color: #000; background: white; }
-                    .print-snapshot { padding: 20px; }
-                    .snapshot-header { border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
-                    .snapshot-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-                    .snapshot-meta { font-size: 12px; color: #666; font-style: italic; }
-                    .content-with-annotations { display: grid; grid-template-columns: 1fr 300px; gap: 30px; align-items: start; }
-                    .main-article { font-size: 14px; line-height: 1.6; }
-                    .comment-annotations { font-size: 11px; background: #f9f9f9; padding: 15px; border-left: 3px solid #2196f3; }
-                    .annotation-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0; }
-                    .annotation-item:last-child { border-bottom: none; margin-bottom: 0; }
-                    .annotation-marker { display: inline-block; background: #2196f3; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; margin-right: 5px; }
-                    .annotation-marker.suggestion { background: #ff9800; }
-                    .text-marker { background: #ffeb3b; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
-                    .image-marker-indicator { background: #e3f2fd; border: 1px solid #2196f3; padding: 5px; margin: 10px 0; border-radius: 4px; font-size: 12px; }
-                    .comment-summary { margin-top: 30px; border-top: 2px solid #333; padding-top: 15px; }
-                    .summary-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; }
-                    .comment-image-print { max-width: 80px; max-height: 80px; object-fit: contain; border: 1px solid #ddd; }
-                    img { max-width: 100%; height: auto; }
-                    @media print {
-                      .print-snapshot { padding: 15px; font-size: 12px; }
-                      .content-with-annotations { grid-template-columns: 1fr 250px; gap: 20px; }
-                      .comment-annotations { font-size: 10px; padding: 10px; }
-                      .comment-image-print { max-width: 60px; max-height: 60px; }
-                    }
-                  </style>
-                </head>
-                <body>
-                  ${snapshotViewer.innerHTML}
-                </body>
-                </html>
-              `);
-              printWindow.document.close();
-              printWindow.print();
-            }
-          }
-
-          function downloadSnapshot() {
-            const snapshotViewer = document.getElementById('snapshotViewer');
-            if (snapshotViewer) {
-              const htmlContent = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <title>Review Snapshot - ${getPageTitle(window.currentPage)}</title>
-                  <meta charset="UTF-8">
-                  <style>
-                    /* Complete styles for standalone HTML */
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    body { font-family: 'Times New Roman', serif; line-height: 1.6; color: #000; background: white; }
-                    .print-snapshot { padding: 20px; }
-                    .snapshot-header { border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
-                    .snapshot-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-                    .snapshot-meta { font-size: 12px; color: #666; font-style: italic; }
-                    .content-with-annotations { display: grid; grid-template-columns: 1fr 320px; gap: 30px; align-items: start; }
-                    .main-article { font-size: 14px; line-height: 1.6; }
-                    .comment-annotations { font-size: 11px; background: #f9f9f9; padding: 15px; border-left: 3px solid #2196f3; }
-                    .annotation-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0; }
-                    .annotation-item:last-child { border-bottom: none; margin-bottom: 0; }
-                    .annotation-marker { display: inline-block; background: #2196f3; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; margin-right: 5px; }
-                    .annotation-marker.suggestion { background: #ff9800; }
-                    .text-marker { background: #ffeb3b; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
-                    .image-marker-indicator { background: #e3f2fd; border: 1px solid #2196f3; padding: 5px; margin: 10px 0; border-radius: 4px; font-size: 12px; }
-                    .comment-summary { margin-top: 30px; border-top: 2px solid #333; padding-top: 15px; }
-                    .summary-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; }
-                    .comment-image-print { max-width: 100px; max-height: 100px; object-fit: contain; border: 1px solid #ddd; cursor: pointer; }
-                    .comment-image-print:hover { border-color: #2196f3; }
-                    img { max-width: 100%; height: auto; }
-                    
-                    /* Image Modal Styles */
-                    .image-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.9); z-index: 3000; display: none; align-items: center; justify-content: center; }
-                    .image-modal.show { display: flex; }
-                    .image-modal img { max-width: 90%; max-height: 90%; object-fit: contain; border-radius: 8px; }
-                    .image-modal .close-btn { position: absolute; top: 20px; right: 30px; background: rgba(255,255,255,0.2); color: white; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; font-size: 20px; font-weight: bold; }
-                    .image-modal .close-btn:hover { background: rgba(255,255,255,0.4); }
-                  </style>
-                  <script>
-                    function showImageModal(imageSrc) {
-                      const modal = document.getElementById('imageModal') || createImageModal();
-                      const modalImage = modal.querySelector('img');
-                      modalImage.src = imageSrc;
-                      modal.classList.add('show');
-                    }
-                    
-                    function closeImageModal() {
-                      const modal = document.getElementById('imageModal');
-                      if (modal) modal.classList.remove('show');
-                    }
-                    
-                    function createImageModal() {
-                      const modal = document.createElement('div');
-                      modal.className = 'image-modal';
-                      modal.id = 'imageModal';
-                      modal.innerHTML = '<button class="close-btn" onclick="closeImageModal()">✕</button><img src="" alt="Full size image">';
-                      modal.addEventListener('click', (e) => { if (e.target === modal) closeImageModal(); });
-                      document.body.appendChild(modal);
-                      return modal;
-                    }
-                  </script>
-                </head>
-                <body>
-                  ${snapshotViewer.innerHTML}
-                </body>
-                </html>
-              `;
-              
-              const blob = new Blob([htmlContent], { type: 'text/html' });
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = `review-snapshot-${window.currentPage}-${new Date().toISOString().split('T')[0]}.html`;
-              link.click();
-              URL.revokeObjectURL(url);
+            if (comments.length === 0) {
+              alert('No comments to display. Add some comments first using review mode.');
             }
           }
 
@@ -2787,6 +2799,12 @@ jobs:
               addReviewToolbar();
             }
             
+            // Update side cart if open
+            const sideCart = document.getElementById('commentsSideCart');
+            if (sideCart && sideCart.classList.contains('open')) {
+              updateCommentsSideCart();
+            }
+            
             alert('All review data has been cleared.');
           }
 
@@ -2795,18 +2813,21 @@ jobs:
           window.startReviewSession = startReviewSession;
           window.exportReviewData = exportReviewData;
           window.clearReviewData = clearReviewData;
+          window.openCommentsSideCart = openCommentsSideCart;
+          window.closeCommentsSideCart = closeCommentsSideCart;
           window.openPrintSnapshotWindow = openPrintSnapshotWindow;
-          window.closePrintSnapshotWindow = closePrintSnapshotWindow;
           window.showCommentsCount = showCommentsCount;
           window.closeCommentDialog = closeCommentDialog;
           window.saveComment = saveComment;
           window.showTooltip = showTooltip;
           window.hideTooltip = hideTooltip;
-          window.printSnapshot = printSnapshot;
-          window.downloadSnapshot = downloadSnapshot;
           window.removeImageFromComment = removeImageFromComment;
           window.showImageModal = showImageModal;
           window.closeImageModal = closeImageModal;
+          window.showImageHoverPreview = showImageHoverPreview;
+          window.hideImageHoverPreview = hideImageHoverPreview;
+          window.downloadCommentImage = downloadCommentImage;
+          window.toggleCommentResolved = toggleCommentResolved;
 
           // Enhance tables with OxygenXML-like styling
           function enhanceTables() {
@@ -3016,8 +3037,53 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create Enhanced index.html (MODIFIED)
-      - name: Create Enhanced Index HTML with Integrated Print Snapshot
+      # Step 10: Create default content for container nodes
+      - name: Create Default Content
+        run: |
+          # Create content directory if it doesn't exist
+          mkdir -p ./site/content
+
+          # Extract container nodes from navigation
+          grep -o '"id": "[^"]*".*"children"' ./navigation-structure.json |
+          sed 's/"id": "\([^"]*\)".*/\1/' > container-nodes.txt
+
+          # Create default content for container nodes
+          while IFS= read -r id || [ -n "$id" ]; do
+            if [ ! -f "./site/content/$id.html" ]; then
+              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+
+              echo "Creating default content for container node: $id ($title)"
+              cat > "./site/content/$id.html" << EOF
+          <h1>${title}</h1>
+          <p>This section contains information about ${title}.</p>
+          <p>Use the navigation menu to explore topics within this section.</p>
+          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
+          <p><strong>Comments Side Cart:</strong> View all comments and suggestions in an organized panel with image previews and download options.</p>
+          EOF
+            fi
+          done < container-nodes.txt
+
+          # Create default containers if none found
+          if [ ! -s container-nodes.txt ]; then
+            echo "No container nodes found in navigation. Creating default containers."
+
+            # Create default containers
+            for id in automotive-information basic-maintenance major-vehicle-components; do
+              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+
+              echo "Creating default container: $id ($title)"
+              cat > "./site/content/$id.html" << EOF
+          <h1>${title}</h1>
+          <p>This section contains information about ${title}.</p>
+          <p>Use the navigation menu to explore topics within this section.</p>
+          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
+          <p><strong>Comments Side Cart:</strong> View all comments and suggestions in an organized panel with image previews and download options.</p>
+          EOF
+            done
+          fi
+
+      # Step 11: Create Enhanced index.html (MODIFIED)
+      - name: Create Enhanced Index HTML with Comments Side Cart
         run: |
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
@@ -3041,7 +3107,7 @@ jobs:
               }
             </script>
 
-            <title>Automotive Documentation - Enhanced with Integrated Print Snapshot Review</title>
+            <title>Automotive Documentation - Enhanced with Comments Side Cart Review</title>
             <link rel="stylesheet" href="css/style.css">
           </head>
           <body>
@@ -3089,14 +3155,14 @@ jobs:
               <div id="loading">Loading content...</div>
               <div id="content">
                 <div class="initial-loading">
-                  <p>Initializing enhanced documentation viewer with integrated print snapshot review system...</p>
+                  <p>Initializing enhanced documentation viewer with comments side cart review system...</p>
                 </div>
               </div>
             </div>
 
             <!-- Print functionality (modified behavior) -->
             <div class="wh_print_link" style="position: fixed; top: 10px; right: 10px; z-index: 999;">
-              <button title="Print page or generate review snapshot">🖨️ Print</button>
+              <button title="Print page or view comments">🖨️ Print</button>
             </div>
 
             <script src="js/navigation-config.js"></script>
@@ -3106,7 +3172,7 @@ jobs:
           </html>
           EOF
 
-      # Step 11: Create 404.html for SPA routing
+      # Step 12: Create 404.html for SPA routing
       - name: Create 404 Page
         run: |
           cat > ./site/404.html << 'EOF'
@@ -3144,51 +3210,6 @@ jobs:
           </body>
           </html>
           EOF
-
-      # Step 12: Create default content for container nodes
-      - name: Create Default Content
-        run: |
-          # Create content directory if it doesn't exist
-          mkdir -p ./site/content
-
-          # Extract container nodes from navigation
-          grep -o '"id": "[^"]*".*"children"' ./navigation-structure.json |
-          sed 's/"id": "\([^"]*\)".*/\1/' > container-nodes.txt
-
-          # Create default content for container nodes
-          while IFS= read -r id || [ -n "$id" ]; do
-            if [ ! -f "./site/content/$id.html" ]; then
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-
-              echo "Creating default content for container node: $id ($title)"
-              cat > "./site/content/$id.html" << EOF
-          <h1>${title}</h1>
-          <p>This section contains information about ${title}.</p>
-          <p>Use the navigation menu to explore topics within this section.</p>
-          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
-          <p><strong>Print Snapshot:</strong> In review mode, the print button generates a parallel view with all comments for easy review and printing.</p>
-          EOF
-            fi
-          done < container-nodes.txt
-
-          # Create default containers if none found
-          if [ ! -s container-nodes.txt ]; then
-            echo "No container nodes found in navigation. Creating default containers."
-
-            # Create default containers
-            for id in automotive-information basic-maintenance major-vehicle-components; do
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-
-              echo "Creating default container: $id ($title)"
-              cat > "./site/content/$id.html" << EOF
-          <h1>${title}</h1>
-          <p>This section contains information about ${title}.</p>
-          <p>Use the navigation menu to explore topics within this section.</p>
-          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
-          <p><strong>Print Snapshot:</strong> In review mode, the print button generates a parallel view with all comments for easy review and printing.</p>
-          EOF
-            done
-          fi
 
       # Step 13: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
