@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
+  <script>
+    // Set base path for GitHub Pages
+    if (location.hostname.includes('github.io')) {
+      const pathSegments = location.pathname.split('/');
+      if (pathSegments.length > 1) {
+        const basePath = '/' + pathSegments[1];
+        document.write('<base href="' + basePath + '/">');
+        console.log('Base path set to:', basePath);
+      }
+    }
+  </script>
+
+  <title>Automotive Documentation - Enhanced with Comments Side Cart Review</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h2>Navigation</h2>
+      <!-- Search container -->
+      <div class="search-container">
+        <input type="text" id="searchInput" placeholder="Search...">
+        <button id="searchButton">Search</button>
+      </div>
+      <!-- Search results -->
+      <ul id="searchResults" class="search-results"></ul>
+    </div>
+    
+    <!-- Review Controls Section -->
+    <div class="review-controls">
+      <h3>Review System</h3>
+      <div class="review-mode-toggle">
+        <button id="reviewToggle" class="review-btn">Review Mode</button>
+      </div>
+      <button id="startReview" class="review-btn secondary">Start Review</button>
+      <button id="clearReview" class="review-btn danger" style="margin-top: 10px;">Clear All</button>
+    </div>
+    
+    <div class="sidebar-nav">
+      <div id="navigation"></div>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <!-- Review Toolbar (hidden by default) -->
+    <div class="review-toolbar">
+      <h3>Review Mode Active</h3>
+      <div class="review-toolbar-actions">
+        <button class="review-toolbar-btn">Comments</button>
+        <button class="review-toolbar-btn">Print Snapshot</button>
+      </div>
+    </div>
+    
+    <h1 id="content-title">Loading...</h1>
+    <div id="loading">Loading content...</div>
+    <div id="content">
+      <div class="initial-loading">
+        <p>Initializing enhanced documentation viewer with comments side cart review system...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Print functionality (modified behavior) -->
+  <div class="wh_print_link" style="position: fixed; top: 10px; right: 10px; z-index: 999;">
+    <button title="Print page or view comments">🖨️ Print</button>
+  </div>
+
+  <script src="js/navigation-config.js"></script>
+  <script src="js/content-id-map.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
