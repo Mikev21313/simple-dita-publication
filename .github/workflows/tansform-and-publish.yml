@@ -678,7 +678,7 @@ jobs:
             background-color: #ffe0b2;
           }
 
-          /* Comment Panel */
+          /* Comment Panel - Only visible in review mode */
           .comment-panel {
             position: fixed;
             right: 0;
@@ -693,6 +693,11 @@ jobs:
             transition: transform 0.3s ease;
             z-index: 1000;
             box-shadow: -5px 0 15px rgba(0,0,0,0.1);
+            display: none; /* Hidden by default */
+          }
+
+          .review-mode .comment-panel {
+            display: block; /* Only show in review mode */
           }
 
           .review-mode.show-comments .comment-panel {
@@ -701,6 +706,90 @@ jobs:
 
           .review-mode.show-comments .main-content {
             padding-right: 370px;
+          }
+
+          /* Hover Tooltip for Comments */
+          .comment-tooltip {
+            position: absolute;
+            background: #2c5aa0;
+            color: white;
+            padding: 12px 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            max-width: 300px;
+            z-index: 2000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.2s ease;
+            word-wrap: break-word;
+          }
+
+          .comment-tooltip.show {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+          }
+
+          .comment-tooltip.suggestion {
+            background: #ff9800;
+          }
+
+          .comment-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 20px;
+            border: 6px solid transparent;
+            border-top-color: #2c5aa0;
+          }
+
+          .comment-tooltip.suggestion::after {
+            border-top-color: #ff9800;
+          }
+
+          .tooltip-header {
+            font-weight: bold;
+            margin-bottom: 6px;
+            font-size: 0.85em;
+            opacity: 0.9;
+          }
+
+          .tooltip-text {
+            line-height: 1.4;
+            margin-bottom: 8px;
+          }
+
+          .tooltip-meta {
+            font-size: 0.8em;
+            opacity: 0.8;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            padding-top: 6px;
+          }
+
+          /* Interactive tooltip buttons */
+          .tooltip-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+            pointer-events: auto;
+          }
+
+          .tooltip-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 0.75em;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+
+          .tooltip-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
           }
 
           .comment-panel h3 {
@@ -1173,14 +1262,17 @@ jobs:
             // Create comment panel
             createCommentPanel();
             
-            // Create comment dialog
+            // Create hover tooltip
+            createHoverTooltip();
+            
+            // Create comment input dialog (simplified)
             createCommentDialog();
             
             // Update review button states
             updateReviewButtons();
           }
 
-          // Create Comment Panel
+          // Create Comment Panel (only visible in review mode)
           function createCommentPanel() {
             const commentPanel = document.createElement('div');
             commentPanel.className = 'comment-panel';
@@ -1192,7 +1284,15 @@ jobs:
             document.body.appendChild(commentPanel);
           }
 
-          // Create Comment Dialog
+          // Create Hover Tooltip
+          function createHoverTooltip() {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'comment-tooltip';
+            tooltip.id = 'commentTooltip';
+            document.body.appendChild(tooltip);
+          }
+
+          // Create Simplified Comment Dialog
           function createCommentDialog() {
             const overlay = document.createElement('div');
             overlay.className = 'dialog-overlay';
@@ -1426,8 +1526,10 @@ jobs:
             window.reviewMode = !window.reviewMode;
             
             if (window.reviewMode) {
+              // Create snapshot of current content for review
+              createReviewSnapshot();
               document.body.classList.add('review-mode');
-              debug('Review mode activated');
+              debug('Review mode activated with content snapshot');
               
               if (window.currentPage) {
                 initializeReviewForContent();
@@ -1435,10 +1537,39 @@ jobs:
               }
             } else {
               document.body.classList.remove('review-mode', 'show-comments');
-              debug('Review mode deactivated');
+              // Clear any visible highlights from main view
+              clearReviewHighlights();
+              debug('Review mode deactivated - returned to clean publication view');
             }
             
             updateReviewButtons();
+          }
+
+          function createReviewSnapshot() {
+            // Store original content HTML for review mode
+            window.reviewSnapshot = {
+              pageId: window.currentPage,
+              content: contentEl.innerHTML,
+              timestamp: new Date().toISOString(),
+              title: getPageTitle(window.currentPage)
+            };
+            
+            debug('Created review snapshot for:', window.currentPage);
+          }
+
+          function clearReviewHighlights() {
+            // Remove all comment highlights from the current view
+            const highlights = document.querySelectorAll('[data-comment-id]');
+            highlights.forEach(highlight => {
+              const parent = highlight.parentNode;
+              if (parent) {
+                parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+                parent.removeChild(highlight);
+              }
+            });
+            
+            // Hide tooltip if visible
+            hideTooltip();
           }
 
           function startReviewSession() {
@@ -1610,10 +1741,10 @@ jobs:
             const span = document.createElement('span');
             span.className = comment.type === 'suggestion' ? 'review-suggestion-highlight' : 'review-comment-highlight';
             span.setAttribute('data-comment-id', comment.id);
-            span.title = `${comment.type}: ${comment.text}`;
             
-            // Add click handler to show comment details
-            span.addEventListener('click', () => showCommentDetails(comment.id));
+            // Add hover events for tooltip (only in review mode)
+            span.addEventListener('mouseenter', (e) => showTooltip(e, comment));
+            span.addEventListener('mouseleave', hideTooltip);
             
             try {
               selection.range.surroundContents(span);
@@ -1623,6 +1754,65 @@ jobs:
               selection.range.deleteContents();
               selection.range.insertNode(span);
             }
+          }
+
+          // Hover Tooltip Functions
+          function showTooltip(event, comment) {
+            if (!window.reviewMode) return;
+            
+            const tooltip = document.getElementById('commentTooltip');
+            if (!tooltip) return;
+            
+            // Set tooltip content
+            tooltip.className = `comment-tooltip ${comment.type} show`;
+            tooltip.innerHTML = `
+              <div class="tooltip-header">${comment.type.toUpperCase()}</div>
+              <div class="tooltip-text">${comment.text}</div>
+              <div class="tooltip-meta">
+                Selected: "${comment.selectedText}"<br>
+                ${new Date(comment.timestamp).toLocaleString()}
+                ${comment.resolved ? '<br>✓ Resolved' : ''}
+              </div>
+              <div class="tooltip-actions">
+                ${!comment.resolved ? `<button class="tooltip-btn" onclick="resolveComment('${comment.id}')">Resolve</button>` : ''}
+                <button class="tooltip-btn" onclick="deleteComment('${comment.id}')">Delete</button>
+              </div>
+            `;
+            
+            // Position tooltip
+            positionTooltip(tooltip, event.target);
+          }
+
+          function hideTooltip() {
+            const tooltip = document.getElementById('commentTooltip');
+            if (tooltip) {
+              tooltip.classList.remove('show');
+            }
+          }
+
+          function positionTooltip(tooltip, targetElement) {
+            const rect = targetElement.getBoundingClientRect();
+            const tooltipRect = tooltip.getBoundingClientRect();
+            
+            // Position above the highlighted text
+            let top = rect.top - tooltipRect.height - 10;
+            let left = rect.left;
+            
+            // Adjust if tooltip would go off screen
+            if (top < 10) {
+              top = rect.bottom + 10; // Position below instead
+            }
+            
+            if (left + tooltipRect.width > window.innerWidth - 20) {
+              left = window.innerWidth - tooltipRect.width - 20;
+            }
+            
+            if (left < 10) {
+              left = 10;
+            }
+            
+            tooltip.style.top = top + window.scrollY + 'px';
+            tooltip.style.left = left + 'px';
           }
 
           function generateCommentId() {
