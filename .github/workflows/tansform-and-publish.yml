@@ -103,55 +103,6 @@ jobs:
           # Fix any JSON syntax issues
           sed -i 's/\\n//g; s/\\t//g; s/\\"//g; s/\\//g; s/  / /g' ./navigation-structure.json
 
-          # Create a shell script to handle filename to id mapping
-          cat > ./generate-id-map.sh << 'EOF'
-          #!bin/bash
-
-          # Function to convert underscore filenames to hyphenated ids
-          function filename_to_id() {
-            local filename=$1
-            echo "${filename//_/-}"
-          }
-
-          # Function to generate a title from an ID
-          function id_to_title() {
-            local id=$1
-            # Replace hyphens with spaces and capitalize each word
-            echo "$id" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g'
-          }
-
-          # Ensure directory exists
-          mkdir -p ./site/js
-
-          # Generate ID to title mapping as JavaScript
-          echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
-          echo "const contentIdMap = {" >> ./site/js/content-id-map.js
-
-          # Process each HTML file in the site directory
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
-            filename=$(basename "$file" .html)
-            id=$(filename_to_id "$filename")
-            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-
-            # If no title found, generate one from the ID
-            if [ -z "$title" ]; then
-              title=$(id_to_title "$id")
-            fi
-
-            # Handle special characters for shell safety
-            title=$(echo "$title" | sed 's/"/\\"/g')
-
-            # Add to content map file directly
-            echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$filename\" }," >> ./site/js/content-id-map.js
-          done
-
-          # Close the mapping object
-          echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-id-map.js
-          echo "};" >> ./site/js/content-id-map.js
-          EOF
-
-          chmod +x ./generate-id-map.sh
-
           echo "DITAMAP parsing complete"
           cat ./navigation-structure.json
 
@@ -300,7 +251,6 @@ jobs:
           echo "  \"default\": { \"title\": \"Automotive Documentation\", \"filename\": \"\", \"content\": \"\" }" >> ./site/js/content-id-map.js
           echo "};" >> ./site/js/content-id-map.js
 
-
       # Step 7: Generate Navigation Configuration
       - name: Generate Navigation Configuration
         run: |
@@ -318,8 +268,8 @@ jobs:
 
           echo "Navigation configuration generated from DITAMAP structure"
 
-      # Step 8: Create SPA CSS with improved styling and review system (ENHANCED)
-      - name: Create Enhanced SPA CSS with Review System
+      # Step 8: Create FIXED SPA CSS with improved styling and review system
+      - name: Create FIXED SPA CSS with Review System
         run: |
           cat > ./site/css/style.css << 'EOF'
           /* General styles based on Oxygen WebHelp theme with Review System */
@@ -452,7 +402,7 @@ jobs:
             box-shadow: inset 3px 0 0 #00acc1;
           }
 
-          /* Review Controls Section */
+          /* FIXED: Review Controls Section - Always visible */
           .review-controls {
             border-top: 2px solid #80cbc4;
             padding-top: 15px;
@@ -460,19 +410,29 @@ jobs:
             display: flex;
             flex-direction: column;
             gap: 10px;
+            /* Ensure review controls are always visible */
+            visibility: visible !important;
+            opacity: 1 !important;
           }
 
           .review-controls h3 {
             color: #00747a;
             font-size: 1.1em;
             margin-bottom: 10px;
+            /* Ensure review title is always visible */
+            visibility: visible !important;
+            opacity: 1 !important;
           }
 
           .review-mode-toggle {
             display: flex;
             gap: 5px;
+            /* Ensure review toggle is always visible */
+            visibility: visible !important;
+            opacity: 1 !important;
           }
 
+          /* FIXED: Review buttons - Always visible main toggle */
           .review-btn {
             padding: 8px 12px;
             border: 1px solid #00acc1;
@@ -484,6 +444,10 @@ jobs:
             transition: all 0.3s;
             text-align: center;
             flex: 1;
+            /* Ensure main review button is always visible */
+            visibility: visible !important;
+            opacity: 1 !important;
+            display: block !important;
           }
 
           .review-btn:hover {
@@ -591,15 +555,15 @@ jobs:
             font-weight: bold;
           }
 
-          /* Review Mode Restrictions - Hide all review UI in normal mode */
+          /* FIXED: Review Mode Restrictions - Only hide review CONTENT, not controls */
           body:not(.review-mode) .review-toolbar,
           body:not(.review-mode) .comment-panel,
           body:not(.review-mode) .comment-dialog,
           body:not(.review-mode) .dialog-overlay,
           body:not(.review-mode) .image-modal,
           body:not(.review-mode) [data-comment-id],
-          body:not(.review-mode) .review-comment-highlight,
-          body:not(.review-mode) .review-suggestion-highlight,
+          body:not(.review-mode) .comment-highlight,
+          body:not(.review-mode) .suggestion-highlight,
           body:not(.review-mode) .image-comment-marker,
           body:not(.review-mode) .comment-tooltip {
             display: none !important;
@@ -607,22 +571,20 @@ jobs:
             opacity: 0 !important;
           }
 
+          /* FIXED: Ensure review controls are NEVER hidden */
+          .review-controls,
+          .review-controls h3,
+          .review-mode-toggle,
+          #reviewToggle {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+          }
+
           /* Ensure clean main content in normal mode */
           body:not(.review-mode) .main-content {
             background-color: #ffffff;
             padding-right: 30px;
-          }
-
-          /* Remove any potential review artifacts from normal mode */
-          body:not(.review-mode) *[class*="review-"],
-          body:not(.review-mode) *[class*="comment-"],
-          body:not(.review-mode) *[class*="annotation-"] {
-            display: none !important;
-          }
-
-          /* Override any review mode styling in normal mode */
-          body:not(.review-mode) {
-            background: #f8f8f8 !important;
           }
 
           /* Print button integration into main interface */
@@ -715,44 +677,6 @@ jobs:
           }
 
           /* Clean review toolbar styling */
-          .review-mode .review-toolbar {
-            background: rgba(255, 193, 7, 0.1);
-            border: 1px solid #ffc107;
-            border-radius: 6px;
-            padding: 12px 20px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-          }
-
-          .review-mode .review-toolbar h3 {
-            color: #856404;
-            margin: 0;
-            font-size: 1.1em;
-          }
-
-          /* Hide any floating review artifacts */
-          .floating-review-controls,
-          .review-overlay-buttons,
-          .review-mode .review-toolbar-btn,
-          .review-mode .review-toolbar-actions {
-            display: none !important;
-            visibility: hidden !important;
-          }
-
-          /* Remove fixed positioned review elements */
-          .review-mode [style*="position: fixed"]:not(.main-print-button),
-          .review-mode [style*="position:fixed"]:not(.main-print-button) {
-            position: static !important;
-          }
-
-          /* Clean up any absolute positioned review artifacts */
-          .review-mode .review-controls-overlay,
-          .review-mode .floating-controls {
-            display: none !important;
-          }
-
           .review-toolbar {
             background: linear-gradient(135deg, #2c5aa0, #1e3a8a);
             color: white;
@@ -807,7 +731,7 @@ jobs:
             position: relative;
           }
 
-          .review-comment-highlight {
+          .comment-highlight {
             background-color: #e1f5fe;
             border-left: 3px solid #2196f3;
             padding: 2px 4px;
@@ -817,11 +741,11 @@ jobs:
             cursor: pointer;
           }
 
-          .review-comment-highlight:hover {
+          .comment-highlight:hover {
             background-color: #bbdefb;
           }
 
-          .review-suggestion-highlight {
+          .suggestion-highlight {
             background-color: #fff3e0;
             border-left: 3px solid #ff9800;
             padding: 2px 4px;
@@ -831,7 +755,7 @@ jobs:
             cursor: pointer;
           }
 
-          .review-suggestion-highlight:hover {
+          .suggestion-highlight:hover {
             background-color: #ffe0b2;
           }
 
@@ -1131,6 +1055,31 @@ jobs:
             background: #e0e0e0;
           }
 
+          /* Export Options */
+          .export-options {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+          }
+
+          .export-btn {
+            background: linear-gradient(135deg, #4caf50, #388e3c);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            margin-bottom: 5px;
+            width: 100%;
+            transition: all 0.2s;
+          }
+
+          .export-btn:hover {
+            background: linear-gradient(135deg, #388e3c, #2e7d32);
+            transform: translateY(-1px);
+          }
+
           /* Content styling */
           .main-content h1, .main-content h2, .main-content h3, .main-content h4 {
             font-weight: 500;
@@ -1244,56 +1193,6 @@ jobs:
             margin-top: 0;
           }
 
-          /* Header styling similar to Oxygen WebHelp */
-          .navbar {
-            background-color: #00838f;
-            color: white;
-            padding: 10px 0;
-            margin-bottom: 20px;
-          }
-
-          .navbar-default {
-            border: none;
-          }
-
-          /* Print button */
-          .wh_print_link {
-            display: inline-block;
-            margin-left: 15px;
-          }
-
-          .wh_print_link button {
-            background: transparent;
-            border: none;
-            color: #00838f;
-            cursor: pointer;
-          }
-
-          /* Review Export Options */
-          .export-options {
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #ddd;
-          }
-
-          .export-btn {
-            background: linear-gradient(135deg, #4caf50, #388e3c);
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.85em;
-            margin-bottom: 5px;
-            width: 100%;
-            transition: all 0.2s;
-          }
-
-          .export-btn:hover {
-            background: linear-gradient(135deg, #388e3c, #2e7d32);
-            transform: translateY(-1px);
-          }
-
           /* Responsive design */
           @media (max-width: 768px) {
             body {
@@ -1332,25 +1231,20 @@ jobs:
           }
           EOF
 
-      # Step 9: Create Enhanced SPA JavaScript Application with Review System
-      - name: Create Enhanced SPA Application with Review System
+      # Step 9: Create ENHANCED SPA JavaScript Application with WORKING Review System
+      - name: Create ENHANCED SPA Application with WORKING Review System
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // Enhanced SPA Application with dynamic navigation, search, and review system
+          // Enhanced SPA Application with dynamic navigation, search, and working review system
 
-          // DOM Elements
-          const contentEl = document.getElementById('content');
-          const contentTitleEl = document.getElementById('content-title');
-          const navigationEl = document.getElementById('navigation');
-          const searchInput = document.getElementById('searchInput');
-          const searchButton = document.getElementById('searchButton');
-          const searchResultsEl = document.getElementById('searchResults');
+          // Debug logging function
+          function debug(message, data) {
+            console.log(`[DITA-SPA] ${message}`, data || '');
+          }
 
-          // Review System Elements
-          const reviewToggleBtn = document.getElementById('reviewToggle');
-          const startReviewBtn = document.getElementById('startReview');
-          const exportReviewBtn = document.getElementById('exportReview');
-          const clearReviewBtn = document.getElementById('clearReview');
+          // DOM Elements - with fallback checks
+          let contentEl, contentTitleEl, navigationEl, searchInput, searchButton, searchResultsEl;
+          let reviewToggleBtn, startReviewBtn, exportReviewBtn, clearReviewBtn;
 
           // Base path handling for GitHub Pages
           const getBasePath = () => {
@@ -1369,14 +1263,28 @@ jobs:
           window.reviewData = JSON.parse(localStorage.getItem('reviewData') || '{}');
           const basePath = getBasePath();
 
-          // Debug logging function
-          function debug(message, data) {
-            console.log(`[DITA-SPA] ${message}`, data || '');
-          }
-
           // Initialize the application
           function initApp() {
             debug('Initializing app with base path:', basePath);
+
+            // Get DOM elements with error checking
+            contentEl = document.getElementById('content');
+            contentTitleEl = document.getElementById('content-title');
+            navigationEl = document.getElementById('navigation');
+            searchInput = document.getElementById('searchInput');
+            searchButton = document.getElementById('searchButton');
+            searchResultsEl = document.getElementById('searchResults');
+
+            // Review system elements
+            reviewToggleBtn = document.getElementById('reviewToggle');
+            startReviewBtn = document.getElementById('startReview');
+            exportReviewBtn = document.getElementById('exportReview');
+            clearReviewBtn = document.getElementById('clearReview');
+
+            if (!contentEl || !contentTitleEl || !navigationEl) {
+              console.error('Critical DOM elements not found!');
+              return;
+            }
 
             // Ensure we start in normal mode (not review mode)
             window.reviewMode = false;
@@ -1386,29 +1294,40 @@ jobs:
             initReviewSystem();
 
             // Render navigation
-            renderNavigation(navigationConfig);
+            if (typeof navigationConfig !== 'undefined' && navigationConfig.length > 0) {
+              renderNavigation(navigationConfig);
+            } else {
+              console.warn('Navigation configuration not loaded');
+            }
 
             // Set up event listeners
             window.addEventListener('popstate', handlePopState);
+            
             if (searchButton && searchInput) {
-                searchButton.addEventListener('click', performSearch);
-                searchInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        performSearch();
-                    }
-                });
+              searchButton.addEventListener('click', performSearch);
+              searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                  performSearch();
+                }
+              });
             }
 
-            // Review system event listeners
+            // Review system event listeners - with checks
             if (reviewToggleBtn) {
               reviewToggleBtn.addEventListener('click', toggleReviewMode);
+              debug('Review toggle button found and event listener attached');
+            } else {
+              console.warn('Review toggle button not found');
             }
+
             if (startReviewBtn) {
               startReviewBtn.addEventListener('click', startReviewSession);
             }
+
             if (exportReviewBtn) {
               exportReviewBtn.addEventListener('click', exportReviewData);
             }
+
             if (clearReviewBtn) {
               clearReviewBtn.addEventListener('click', clearReviewData);
             }
@@ -1422,22 +1341,16 @@ jobs:
             // Check if we have a hash in the URL
             const initialPageId = getPageIdFromUrl();
 
-            if (initialPageId) {
+            if (initialPageId && typeof navigationConfig !== 'undefined') {
               navigateToPage(initialPageId, false);
             } else {
               showWelcomeScreen();
             }
-          }
 
-          // Handle main print button - different behavior based on mode
-          function handleMainPrint() {
-            if (window.reviewMode) {
-              // In review mode, generate review snapshot
-              saveReviewSnapshot();
-            } else {
-              // In normal mode, regular print
-              window.print();
-            }
+            // Update review button states
+            updateReviewButtons();
+            
+            debug('App initialization complete');
           }
 
           // Initialize Review System
@@ -1450,447 +1363,91 @@ jobs:
             // Create hover tooltip
             createHoverTooltip();
             
-            // Create comment input dialog (simplified)
+            // Create comment input dialog
             createCommentDialog();
-            
-            // Create image modal
-            createImageModal();
             
             // Update review button states
             updateReviewButtons();
+            
+            debug('Review system initialized');
           }
 
           // Create Comment Panel (only visible in review mode)
           function createCommentPanel() {
-            const commentPanel = document.createElement('div');
-            commentPanel.className = 'comment-panel';
-            commentPanel.id = 'commentPanel';
-            commentPanel.innerHTML = `
-              <h3>Review Comments</h3>
-              <div id="commentList"></div>
-            `;
-            document.body.appendChild(commentPanel);
+            let commentPanel = document.getElementById('commentPanel');
+            if (!commentPanel) {
+              commentPanel = document.createElement('div');
+              commentPanel.className = 'comment-panel';
+              commentPanel.id = 'commentPanel';
+              commentPanel.innerHTML = `
+                <h3>Review Comments</h3>
+                <div id="commentList"></div>
+              `;
+              document.body.appendChild(commentPanel);
+            }
           }
 
           // Create Hover Tooltip
           function createHoverTooltip() {
-            const tooltip = document.createElement('div');
-            tooltip.className = 'comment-tooltip';
-            tooltip.id = 'commentTooltip';
-            document.body.appendChild(tooltip);
+            let tooltip = document.getElementById('commentTooltip');
+            if (!tooltip) {
+              tooltip = document.createElement('div');
+              tooltip.className = 'comment-tooltip';
+              tooltip.id = 'commentTooltip';
+              document.body.appendChild(tooltip);
+            }
           }
 
-          // Create Simplified Comment Dialog
+          // Create Comment Dialog
           function createCommentDialog() {
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            overlay.id = 'dialogOverlay';
+            let overlay = document.getElementById('dialogOverlay');
+            let dialog = document.getElementById('commentDialog');
             
-            const dialog = document.createElement('div');
-            dialog.className = 'comment-dialog';
-            dialog.id = 'commentDialog';
-            dialog.innerHTML = `
-              <h3>Add Review Comment</h3>
-              <div>
-                <label>
-                  <input type="radio" name="commentType" value="comment" checked> Comment
-                </label>
-                <label style="margin-left: 15px;">
-                  <input type="radio" name="commentType" value="suggestion"> Suggestion
-                </label>
-              </div>
-              <div style="margin: 15px 0;">
-                <textarea id="commentText" placeholder="Enter your comment or suggestion..."></textarea>
-              </div>
-              <div class="image-upload-section" id="imageUploadSection">
-                <input type="file" id="imageUpload" accept="image/*" multiple>
-                <div id="uploadDropZone">
-                  <p>📸 Add Reference Images</p>
-                  <button type="button" class="upload-btn" onclick="document.getElementById('imageUpload').click()">
-                    Choose Images
-                  </button>
-                  <p style="font-size: 0.8em; color: #666; margin-top: 8px;">
-                    Drag & drop images here or click to browse<br>
-                    <em>Useful for suggesting image placements or providing visual references</em>
-                  </p>
-                </div>
-                <div id="imagePreview" class="image-preview"></div>
-              </div>
-              <div class="dialog-actions">
-                <button class="dialog-btn secondary" onclick="closeCommentDialog()">Cancel</button>
-                <button class="dialog-btn primary" onclick="saveComment()">Save</button>
-              </div>
-            `;
-            
-            document.body.appendChild(overlay);
-            document.body.appendChild(dialog);
-            
-            // Close dialog when clicking overlay
-            overlay.addEventListener('click', closeCommentDialog);
-            
-            // Set up image upload functionality
-            setupImageUpload();
-          }
-
-          // Create Snapshot Window
-          function createSnapshotWindow() {
-            const snapshotWindow = document.createElement('div');
-            snapshotWindow.className = 'snapshot-window';
-            snapshotWindow.id = 'snapshotWindow';
-            snapshotWindow.innerHTML = `
-              <div class="snapshot-content">
-                <div class="snapshot-toolbar">
-                  <h3>Review Snapshot</h3>
-                  <div class="snapshot-actions">
-                    <button class="snapshot-btn" onclick="printSnapshot()">🖨️ Print</button>
-                    <button class="snapshot-btn" onclick="downloadSnapshot()">💾 Download HTML</button>
-                    <button class="snapshot-btn" onclick="closeSnapshotWindow()">✕ Close</button>
-                  </div>
-                </div>
-                <div class="snapshot-viewer" id="snapshotViewer"></div>
-              </div>
-            `;
-            
-            document.body.appendChild(snapshotWindow);
-            
-            // Close on background click
-            snapshotWindow.addEventListener('click', (e) => {
-              if (e.target === snapshotWindow) {
-                closeSnapshotWindow();
-              }
-            });
-          }
-
-          // Create Image Modal for Full View
-          function createImageModal() {
-            const imageModal = document.createElement('div');
-            imageModal.className = 'image-modal';
-            imageModal.id = 'imageModal';
-            imageModal.innerHTML = `
-              <button class="close-btn" onclick="closeImageModal()">✕</button>
-              <img id="modalImage" src="" alt="Full size image">
-            `;
-            
-            document.body.appendChild(imageModal);
-            
-            // Close on background click
-            imageModal.addEventListener('click', (e) => {
-              if (e.target === imageModal) {
-                closeImageModal();
-              }
-            });
-          }
-
-          // Setup Image Upload Functionality
-          function setupImageUpload() {
-            const imageUpload = document.getElementById('imageUpload');
-            const dropZone = document.getElementById('uploadDropZone');
-            const imagePreview = document.getElementById('imagePreview');
-            const uploadSection = document.getElementById('imageUploadSection');
-            
-            // Store uploaded images for current comment
-            window.currentCommentImages = [];
-            
-            // File input change handler
-            imageUpload.addEventListener('change', handleImageFiles);
-            
-            // Drag and drop handlers
-            dropZone.addEventListener('dragover', (e) => {
-              e.preventDefault();
-              uploadSection.classList.add('dragover');
-            });
-            
-            dropZone.addEventListener('dragleave', (e) => {
-              e.preventDefault();
-              uploadSection.classList.remove('dragover');
-            });
-            
-            dropZone.addEventListener('drop', (e) => {
-              e.preventDefault();
-              uploadSection.classList.remove('dragover');
+            if (!overlay) {
+              overlay = document.createElement('div');
+              overlay.className = 'dialog-overlay';
+              overlay.id = 'dialogOverlay';
+              document.body.appendChild(overlay);
               
-              const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
-              if (files.length > 0) {
-                processImageFiles(files);
-              }
-            });
-          }
-
-          function handleImageFiles(event) {
-            const files = Array.from(event.target.files);
-            processImageFiles(files);
-          }
-
-          function processImageFiles(files) {
-            files.forEach(file => {
-              if (file.type.startsWith('image/') && file.size < 5 * 1024 * 1024) { // 5MB limit
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                  const imageData = {
-                    id: generateImageId(),
-                    data: e.target.result,
-                    name: file.name,
-                    size: file.size,
-                    type: file.type
-                  };
-                  
-                  window.currentCommentImages.push(imageData);
-                  updateImagePreview();
-                };
-                reader.readAsDataURL(file);
-              } else if (file.size >= 5 * 1024 * 1024) {
-                alert(`Image "${file.name}" is too large. Please use images smaller than 5MB.`);
-              }
-            });
-          }
-
-          function generateImageId() {
-            return 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-          }
-
-          function updateImagePreview() {
-            const imagePreview = document.getElementById('imagePreview');
-            
-            if (window.currentCommentImages.length === 0) {
-              imagePreview.innerHTML = '';
-              return;
+              // Close dialog when clicking overlay
+              overlay.addEventListener('click', closeCommentDialog);
             }
             
-            imagePreview.innerHTML = window.currentCommentImages.map(img => `
-              <div style="display: flex; align-items: center; margin: 8px 0; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <img src="${img.data}" alt="${img.name}" class="preview-image">
-                <div style="margin-left: 10px; flex: 1;">
-                  <div class="image-info">
-                    <strong>${img.name}</strong><br>
-                    ${(img.size / 1024).toFixed(1)} KB
-                  </div>
+            if (!dialog) {
+              dialog = document.createElement('div');
+              dialog.className = 'comment-dialog';
+              dialog.id = 'commentDialog';
+              dialog.innerHTML = `
+                <h3>Add Review Comment</h3>
+                <div>
+                  <label>
+                    <input type="radio" name="commentType" value="comment" checked> Comment
+                  </label>
+                  <label style="margin-left: 15px;">
+                    <input type="radio" name="commentType" value="suggestion"> Suggestion
+                  </label>
                 </div>
-                <button class="remove-image" onclick="removeImageFromComment('${img.id}')">Remove</button>
-              </div>
-            `).join('');
-          }
-
-          function removeImageFromComment(imageId) {
-            window.currentCommentImages = window.currentCommentImages.filter(img => img.id !== imageId);
-            updateImagePreview();
-          }
-
-          function showImageModal(imageSrc) {
-            const modal = document.getElementById('imageModal');
-            const modalImage = document.getElementById('modalImage');
-            
-            modalImage.src = imageSrc;
-            modal.classList.add('show');
-          }
-
-          function closeImageModal() {
-            const modal = document.getElementById('imageModal');
-            modal.classList.remove('show');
-          }
-
-          // Function to show welcome screen
-          function showWelcomeScreen() {
-            contentTitleEl.textContent = 'Documentation';
-            document.title = 'Documentation';
-
-            contentEl.innerHTML = `
-              <div class="welcome-screen">
-                <h2>Welcome to Documentation</h2>
-                <p>Please select a topic from the navigation menu or use the search bar.</p>
-                <p><strong>Review Mode:</strong> Click "Review Mode" to enable collaborative commenting, image uploads, and print snapshots.</p>
-              </div>
-            `;
-
-            document.body.classList.remove('loading');
-          }
-
-          // Render the navigation menu with hierarchy
-          function renderNavigation(items, parentEl = navigationEl) {
-            const ul = document.createElement('ul');
-            ul.setAttribute('role', 'menu');
-
-            items.forEach(item => {
-              const li = document.createElement('li');
-              li.setAttribute('role', 'presentation');
-
-              if (item.children && item.children.length > 0) {
-                li.classList.add('has-children');
-
-                const toggle = document.createElement('span');
-                toggle.className = 'toggle-arrow';
-                toggle.addEventListener('click', (e) => {
-                  e.stopPropagation();
-                  li.classList.toggle('expanded');
-                });
-                li.appendChild(toggle);
-              }
-
-              const a = document.createElement('a');
-              a.setAttribute('role', 'menuitem');
-              a.textContent = item.title;
-              a.setAttribute('data-id', item.id);
-              a.href = `#${item.id}`;
-
-              a.addEventListener('click', (e) => {
-                e.preventDefault();
-
-                if (item.children && item.children.length > 0) {
-                  li.classList.toggle('expanded');
-                }
-
-                navigateToPage(item.id);
-                if (searchResultsEl) searchResultsEl.innerHTML = '';
-                if (searchInput) searchInput.value = '';
-              });
-
-              li.appendChild(a);
-
-              if (item.children && item.children.length > 0) {
-                renderNavigation(item.children, li);
-              }
-
-              ul.appendChild(li);
-            });
-
-            parentEl.appendChild(ul);
-          }
-
-          // Expand navigation path to the current page
-          function expandNavigationTo(pageId) {
-            function findPageInNavigation(items, id, path = []) {
-              for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                const currentPath = [...path, item];
-
-                if (item.id === id) {
-                  return currentPath;
-                }
-
-                if (item.children && item.children.length > 0) {
-                  const result = findPageInNavigation(item.children, id, currentPath);
-                  if (result) {
-                    return result;
-                  }
-                }
-              }
-              return null;
-            }
-
-            const path = findPageInNavigation(navigationConfig, pageId);
-            if (!path) return;
-
-            for (let i = 0; i < path.length - 1; i++) {
-              const item = path[i];
-              const li = document.querySelector(`.sidebar li a[data-id="${item.id}"]`).parentElement;
-              li.classList.add('expanded');
+                <div style="margin: 15px 0;">
+                  <textarea id="commentText" placeholder="Enter your comment or suggestion..."></textarea>
+                </div>
+                <div class="dialog-actions">
+                  <button class="dialog-btn secondary" onclick="closeCommentDialog()">Cancel</button>
+                  <button class="dialog-btn primary" onclick="saveComment()">Save</button>
+                </div>
+              `;
+              document.body.appendChild(dialog);
             }
           }
 
-          // Navigate to a specific page
-          function navigateToPage(pageId, pushState = true) {
-            debug('Navigating to page:', pageId);
-            
-            if (!pageId) {
-              console.error('Invalid pageId - cannot navigate to undefined page');
-              showErrorContent('undefined');
-              return;
-            }
-
-            updateActiveNavItem(pageId);
-            expandNavigationTo(pageId);
-
-            if (pushState) {
-              history.pushState({ pageId }, '', `#${pageId}`);
-            }
-
-            document.body.classList.add('loading');
-            window.currentPage = pageId;
-
-            let contentFileName = pageId;
-            if (window.contentIdMap && contentIdMap[pageId] && contentIdMap[pageId].filename) {
-              contentFileName = contentIdMap[pageId].filename;
-              debug('Using filename from contentIdMap:', contentFileName);
-            } else {
-              debug('No contentIdMap entry found for:', pageId);
-            }
-
-            loadContent(pageId)
-              .then(content => {
-                const title = getPageTitle(pageId);
-                contentTitleEl.textContent = title;
-                document.title = title;
-
-                contentEl.innerHTML = content;
-                enhanceTables();
-                
-                // Only initialize review features if in review mode
-                if (window.reviewMode) {
-                  initializeReviewForContent();
-                  loadReviewDataForPage(pageId);
-                }
-                
-                document.body.classList.remove('loading');
-                debug('Content loaded successfully for:', pageId);
-              })
-              .catch(error => {
-                debug('Error loading with ID, trying original filename:', contentFileName);
-                if (contentFileName !== pageId) {
-                  loadContent(contentFileName)
-                    .then(content => {
-                      contentTitleEl.textContent = getPageTitle(pageId);
-                      document.title = getPageTitle(pageId);
-                      contentEl.innerHTML = content;
-                      enhanceTables();
-                      
-                      if (window.reviewMode) {
-                        initializeReviewForContent();
-                        loadReviewDataForPage(pageId);
-                      }
-                      
-                      document.body.classList.remove('loading');
-                      debug('Content loaded from original filename:', contentFileName);
-                    })
-                    .catch(altError => {
-                      if (pageId.includes('-')) {
-                        const underscoreId = pageId.replace(/-/g, '_');
-                        debug('Trying with underscore version:', underscoreId);
-                        loadContent(underscoreId)
-                          .then(content => {
-                            contentTitleEl.textContent = getPageTitle(pageId);
-                            document.title = getPageTitle(pageId);
-                            contentEl.innerHTML = content;
-                            enhanceTables();
-                            
-                            if (window.reviewMode) {
-                              initializeReviewForContent();
-                              loadReviewDataForPage(pageId);
-                            }
-                            
-                            document.body.classList.remove('loading');
-                            debug('Content loaded with underscore version');
-                          })
-                          .catch(finalError => {
-                            showErrorContent(pageId);
-                          });
-                      } else {
-                        showErrorContent(pageId);
-                      }
-                    });
-                } else {
-                  showErrorContent(pageId);
-                }
-              });
-          }
-
-          // Review System Functions
+          // Toggle Review Mode
           function toggleReviewMode() {
             window.reviewMode = !window.reviewMode;
             
+            debug('Toggling review mode to:', window.reviewMode);
+            
             if (window.reviewMode) {
-              // Create snapshot of current content for review
-              createReviewSnapshot();
               document.body.classList.add('review-mode');
-              debug('Review mode activated with content snapshot');
+              debug('Review mode activated');
               
               if (window.currentPage) {
                 initializeReviewForContent();
@@ -1898,7 +1455,6 @@ jobs:
               }
             } else {
               document.body.classList.remove('review-mode', 'show-comments');
-              // Clear any visible highlights from main view
               clearReviewHighlights();
               
               // Close any open dialogs
@@ -1907,46 +1463,26 @@ jobs:
               if (commentDialog) commentDialog.classList.remove('show');
               if (dialogOverlay) dialogOverlay.classList.remove('show');
               
-              // Hide image modal if open
-              const imageModal = document.getElementById('imageModal');
-              if (imageModal) imageModal.classList.remove('show');
-              
-              debug('Review mode deactivated - returned to clean publication view');
+              debug('Review mode deactivated');
             }
             
             updateReviewButtons();
           }
 
-          function createReviewSnapshot() {
-            // Store original content HTML for review mode
-            window.reviewSnapshot = {
-              pageId: window.currentPage,
-              content: contentEl.innerHTML,
-              timestamp: new Date().toISOString(),
-              title: getPageTitle(window.currentPage)
-            };
-            
-            debug('Created review snapshot for:', window.currentPage);
-          }
-
           function clearReviewHighlights() {
-            // Remove all comment highlights and image markers from the current view
             const elements = document.querySelectorAll('[data-comment-id]');
             elements.forEach(element => {
               const parent = element.parentNode;
               if (parent) {
                 if (element.classList.contains('image-comment-marker')) {
-                  // Remove image markers
                   parent.removeChild(element);
                 } else {
-                  // Remove text highlights
                   parent.insertBefore(document.createTextNode(element.textContent), element);
                   parent.removeChild(element);
                 }
               }
             });
             
-            // Hide tooltip if visible
             hideTooltip();
           }
 
@@ -1970,8 +1506,7 @@ jobs:
               reviewToggleBtn.classList.toggle('active', window.reviewMode);
             }
             
-            // Show/hide all review control buttons based on review mode
-            const startReviewBtn = document.getElementById('startReview');
+            // Show/hide secondary review controls based on review mode
             if (startReviewBtn) {
               startReviewBtn.style.display = window.reviewMode ? 'block' : 'none';
             }
@@ -1981,35 +1516,26 @@ jobs:
               exportOptions.style.display = window.reviewMode ? 'block' : 'none';
             }
             
-            // Update main print button text and style based on mode
+            // Update main print button
             const mainPrintButton = document.getElementById('mainPrintButton');
             if (mainPrintButton) {
               const buttonText = mainPrintButton.querySelector('span');
               if (buttonText) {
                 buttonText.textContent = window.reviewMode ? 'Review Snapshot' : 'Print';
               }
-              
-              // Update button styling
-              if (window.reviewMode) {
-                mainPrintButton.style.background = 'linear-gradient(135deg, #ff9800, #f57c00)';
-                mainPrintButton.title = 'Generate review snapshot with comments in new window';
-              } else {
-                mainPrintButton.style.background = 'linear-gradient(135deg, #00acc1, #0097a7)';
-                mainPrintButton.title = 'Print current page';
-              }
             }
           }
 
           function initializeReviewForContent() {
-            if (!window.reviewMode) return;
+            if (!window.reviewMode || !contentEl) return;
+            
+            debug('Initializing review for content');
             
             // Make all text elements selectable and add event listeners
             const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th');
             
             textElements.forEach(element => {
               element.classList.add('reviewable-text');
-              
-              // Add mouseup event for text selection
               element.addEventListener('mouseup', handleTextSelection);
             });
             
@@ -2026,7 +1552,6 @@ jobs:
                 container.appendChild(image);
               }
               
-              // Add click event for image commenting
               image.addEventListener('click', handleImageComment);
             });
             
@@ -2035,7 +1560,7 @@ jobs:
           }
 
           function addReviewToolbar() {
-            if (!window.reviewMode) return; // Only show toolbar in review mode
+            if (!window.reviewMode || !contentEl) return;
             
             const existingToolbar = document.querySelector('.review-toolbar');
             if (existingToolbar) {
@@ -2066,7 +1591,6 @@ jobs:
             const selectedText = selection.toString().trim();
             const range = selection.getRangeAt(0);
             
-            // Store selection data for comment creation
             window.currentSelection = {
               type: 'text',
               text: selectedText,
@@ -2074,7 +1598,6 @@ jobs:
               range: range.cloneRange()
             };
             
-            // Show comment dialog
             setTimeout(() => showCommentDialog(), 100);
           }
 
@@ -2084,23 +1607,14 @@ jobs:
             event.preventDefault();
             
             const image = event.target;
-            const rect = image.getBoundingClientRect();
-            const containerRect = image.parentElement.getBoundingClientRect();
             
-            // Calculate click position relative to image
-            const x = ((event.clientX - rect.left) / rect.width) * 100;
-            const y = ((event.clientY - rect.top) / rect.height) * 100;
-            
-            // Store image selection data
             window.currentSelection = {
               type: 'image',
               element: image,
-              position: { x: x, y: y },
               imageSrc: image.src,
               imageAlt: image.alt || 'Image'
             };
             
-            // Show comment dialog
             showCommentDialog();
           }
 
@@ -2108,34 +1622,35 @@ jobs:
             const dialog = document.getElementById('commentDialog');
             const overlay = document.getElementById('dialogOverlay');
             
-            dialog.classList.add('show');
-            overlay.classList.add('show');
-            
-            // Focus on textarea
-            document.getElementById('commentText').focus();
+            if (dialog && overlay) {
+              dialog.classList.add('show');
+              overlay.classList.add('show');
+              
+              const textarea = document.getElementById('commentText');
+              if (textarea) {
+                textarea.focus();
+              }
+            }
           }
 
           function closeCommentDialog() {
             const dialog = document.getElementById('commentDialog');
             const overlay = document.getElementById('dialogOverlay');
             
-            dialog.classList.remove('show');
-            overlay.classList.remove('show');
+            if (dialog && overlay) {
+              dialog.classList.remove('show');
+              overlay.classList.remove('show');
+            }
             
             // Clear form
-            document.getElementById('commentText').value = '';
-            document.querySelector('input[name="commentType"]:checked').checked = false;
-            document.querySelector('input[name="commentType"][value="comment"]').checked = true;
-            
-            // Clear uploaded images
-            window.currentCommentImages = [];
-            const imagePreview = document.getElementById('imagePreview');
-            if (imagePreview) {
-              imagePreview.innerHTML = '';
+            const commentText = document.getElementById('commentText');
+            if (commentText) {
+              commentText.value = '';
             }
-            const imageUpload = document.getElementById('imageUpload');
-            if (imageUpload) {
-              imageUpload.value = '';
+            
+            const commentRadio = document.querySelector('input[name="commentType"][value="comment"]');
+            if (commentRadio) {
+              commentRadio.checked = true;
             }
             
             // Clear selection
@@ -2149,15 +1664,22 @@ jobs:
               return;
             }
             
-            const commentText = document.getElementById('commentText').value.trim();
-            const commentType = document.querySelector('input[name="commentType"]:checked').value;
+            const commentTextEl = document.getElementById('commentText');
+            const commentTypeEl = document.querySelector('input[name="commentType"]:checked');
             
-            if (!commentText && (!window.currentCommentImages || window.currentCommentImages.length === 0)) {
-              alert('Please enter a comment or add at least one image.');
+            if (!commentTextEl || !commentTypeEl) {
+              alert('Error accessing form elements.');
               return;
             }
             
-            // Create comment object (handle both text and image comments)
+            const commentText = commentTextEl.value.trim();
+            const commentType = commentTypeEl.value;
+            
+            if (!commentText) {
+              alert('Please enter a comment.');
+              return;
+            }
+            
             const comment = {
               id: generateCommentId(),
               pageId: window.currentPage,
@@ -2165,8 +1687,7 @@ jobs:
               text: commentText,
               timestamp: new Date().toISOString(),
               resolved: false,
-              selectionType: window.currentSelection.type,
-              uploadedImages: window.currentCommentImages ? [...window.currentCommentImages] : []
+              selectionType: window.currentSelection.type
             };
             
             if (window.currentSelection.type === 'text') {
@@ -2174,7 +1695,6 @@ jobs:
             } else if (window.currentSelection.type === 'image') {
               comment.imageSrc = window.currentSelection.imageSrc;
               comment.imageAlt = window.currentSelection.imageAlt;
-              comment.position = window.currentSelection.position;
               comment.selectedText = `Image: ${window.currentSelection.imageAlt}`;
             }
             
@@ -2189,7 +1709,6 @@ jobs:
             window.reviewData[window.currentPage].comments.push(comment);
             window.reviewData[window.currentPage].lastModified = new Date().toISOString();
             
-            // Persist to localStorage
             localStorage.setItem('reviewData', JSON.stringify(window.reviewData));
             
             // Add visual indicator to document
@@ -2199,30 +1718,24 @@ jobs:
               addImageCommentMarker(window.currentSelection, comment);
             }
             
-            // Update comment panel
             updateCommentPanel();
-            
-            // Update toolbar
             addReviewToolbar();
-            
             closeCommentDialog();
             
-            debug('Comment saved with images:', comment);
+            debug('Comment saved:', comment);
           }
 
           function highlightTextInDocument(selection, comment) {
             const span = document.createElement('span');
-            span.className = comment.type === 'suggestion' ? 'review-suggestion-highlight' : 'review-comment-highlight';
+            span.className = comment.type === 'suggestion' ? 'suggestion-highlight' : 'comment-highlight';
             span.setAttribute('data-comment-id', comment.id);
             
-            // Add hover events for tooltip (only in review mode)
             span.addEventListener('mouseenter', (e) => showTooltip(e, comment));
             span.addEventListener('mouseleave', hideTooltip);
             
             try {
               selection.range.surroundContents(span);
             } catch (e) {
-              // Fallback for complex selections
               span.textContent = selection.text;
               selection.range.deleteContents();
               selection.range.insertNode(span);
@@ -2233,33 +1746,27 @@ jobs:
             const image = selection.element;
             const container = image.parentElement;
             
-            // Create marker element
             const marker = document.createElement('div');
             marker.className = `image-comment-marker ${comment.type}`;
             marker.setAttribute('data-comment-id', comment.id);
             marker.innerHTML = '💬';
             
-            // Position marker based on click coordinates
-            marker.style.left = selection.position.x + '%';
-            marker.style.top = selection.position.y + '%';
+            marker.style.left = '10px';
+            marker.style.top = '10px';
             marker.style.transform = 'translate(-50%, -50%)';
             
-            // Add hover events for tooltip
             marker.addEventListener('mouseenter', (e) => showTooltip(e, comment));
             marker.addEventListener('mouseleave', hideTooltip);
             
-            // Add marker to container
             container.appendChild(marker);
           }
 
-          // Hover Tooltip Functions
           function showTooltip(event, comment) {
             if (!window.reviewMode) return;
             
             const tooltip = document.getElementById('commentTooltip');
             if (!tooltip) return;
             
-            // Set tooltip content (simplified - no action buttons)
             tooltip.className = `comment-tooltip ${comment.type} show`;
             tooltip.innerHTML = `
               <div class="tooltip-header">${comment.type.toUpperCase()}</div>
@@ -2271,7 +1778,6 @@ jobs:
               </div>
             `;
             
-            // Position tooltip
             positionTooltip(tooltip, event.target);
           }
 
@@ -2286,13 +1792,11 @@ jobs:
             const rect = targetElement.getBoundingClientRect();
             const tooltipRect = tooltip.getBoundingClientRect();
             
-            // Position above the highlighted text
             let top = rect.top - tooltipRect.height - 10;
             let left = rect.left;
             
-            // Adjust if tooltip would go off screen
             if (top < 10) {
-              top = rect.bottom + 10; // Position below instead
+              top = rect.bottom + 10;
             }
             
             if (left + tooltipRect.width > window.innerWidth - 20) {
@@ -2327,16 +1831,6 @@ jobs:
             }
             
             commentList.innerHTML = comments.map(comment => {
-              // Generate uploaded images HTML
-              const imagesHTML = comment.uploadedImages && comment.uploadedImages.length > 0 
-                ? comment.uploadedImages.map(img => `
-                    <div class="comment-image-container">
-                      <img src="${img.data}" alt="${img.name}" class="comment-image-preview" onclick="showImageModal('${img.data}')">
-                      <div class="image-caption">${img.name} (${(img.size / 1024).toFixed(1)} KB)</div>
-                    </div>
-                  `).join('')
-                : '';
-              
               return `
                 <div class="comment-item ${comment.type}" data-comment-id="${comment.id}">
                   <div class="comment-header">
@@ -2345,10 +1839,8 @@ jobs:
                   </div>
                   <div style="font-weight: bold; margin-bottom: 5px; font-size: 0.9em; color: #555; cursor: pointer;" onclick="scrollToComment('${comment.id}')">
                     "${comment.selectedText}" ${comment.selectionType === 'image' ? '🖼️' : ''}
-                    ${comment.uploadedImages && comment.uploadedImages.length > 0 ? `📎 ${comment.uploadedImages.length} image(s)` : ''}
                   </div>
                   <div class="comment-content">${comment.text}</div>
-                  ${imagesHTML}
                   <div class="comment-actions">
                     ${!comment.resolved ? `<button class="comment-btn resolve" onclick="resolveComment('${comment.id}')">Resolve</button>` : '<span style="color: #4caf50; font-size: 0.8em;">✓ Resolved</span>'}
                     <button class="comment-btn delete" onclick="deleteComment('${comment.id}')">Delete</button>
@@ -2361,29 +1853,21 @@ jobs:
           function scrollToComment(commentId) {
             const element = document.querySelector(`[data-comment-id="${commentId}"]`);
             if (element) {
-              // Scroll element into view with smooth behavior
               element.scrollIntoView({ 
                 behavior: 'smooth', 
                 block: 'center',
                 inline: 'nearest'
               });
               
-              // Highlight the element temporarily
               const originalStyle = element.style.cssText;
               element.style.boxShadow = '0 0 15px #2196f3';
               element.style.transform = 'scale(1.05)';
               element.style.transition = 'all 0.3s ease';
               
-              // Remove highlight after 2 seconds
               setTimeout(() => {
                 element.style.cssText = originalStyle;
               }, 2000);
             }
-          }
-
-          function toggleCommentPanel() {
-            document.body.classList.toggle('show-comments');
-            updateCommentPanel();
           }
 
           function resolveComment(commentId) {
@@ -2395,7 +1879,6 @@ jobs:
                 localStorage.setItem('reviewData', JSON.stringify(window.reviewData));
                 updateCommentPanel();
                 
-                // Update highlight styling
                 const highlight = document.querySelector(`[data-comment-id="${commentId}"]`);
                 if (highlight) {
                   highlight.style.opacity = '0.5';
@@ -2413,16 +1896,17 @@ jobs:
               pageData.comments = pageData.comments.filter(c => c.id !== commentId);
               localStorage.setItem('reviewData', JSON.stringify(window.reviewData));
               
-              // Remove highlight from document
               const highlight = document.querySelector(`[data-comment-id="${commentId}"]`);
               if (highlight) {
                 const parent = highlight.parentNode;
-                parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
-                parent.removeChild(highlight);
+                if (parent) {
+                  parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+                  parent.removeChild(highlight);
+                }
               }
               
               updateCommentPanel();
-              addReviewToolbar(); // Update comment count
+              addReviewToolbar();
             }
           }
 
@@ -2432,46 +1916,54 @@ jobs:
             // Clear existing highlights
             const existingHighlights = document.querySelectorAll('[data-comment-id]');
             existingHighlights.forEach(highlight => {
-              const parent = highlight.parentNode;
-              parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
-              parent.removeChild(highlight);
+              if (highlight.classList.contains('image-comment-marker')) {
+                highlight.remove();
+              } else {
+                const parent = highlight.parentNode;
+                if (parent) {
+                  parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+                  parent.removeChild(highlight);
+                }
+              }
             });
             
-            // Re-apply highlights (simplified version - in production you'd want more sophisticated text matching)
+            // Re-apply highlights (simplified)
             comments.forEach(comment => {
-              const textNodes = getAllTextNodes(contentEl);
-              textNodes.forEach(node => {
-                if (node.textContent.includes(comment.selectedText)) {
-                  const parent = node.parentNode;
-                  const index = node.textContent.indexOf(comment.selectedText);
-                  
-                  if (index !== -1) {
-                    const beforeText = node.textContent.substring(0, index);
-                    const selectedText = comment.selectedText;
-                    const afterText = node.textContent.substring(index + selectedText.length);
+              if (comment.selectionType === 'text') {
+                const textNodes = getAllTextNodes(contentEl);
+                textNodes.forEach(node => {
+                  if (node.textContent.includes(comment.selectedText)) {
+                    const parent = node.parentNode;
+                    const index = node.textContent.indexOf(comment.selectedText);
                     
-                    const span = document.createElement('span');
-                    span.className = comment.type === 'suggestion' ? 'review-suggestion-highlight' : 'review-comment-highlight';
-                    span.setAttribute('data-comment-id', comment.id);
-                    span.textContent = selectedText;
-                    span.title = `${comment.type}: ${comment.text}`;
-                    span.addEventListener('click', () => showCommentDetails(comment.id));
-                    
-                    if (comment.resolved) {
-                      span.style.opacity = '0.5';
-                      span.title += ' (Resolved)';
+                    if (index !== -1) {
+                      const beforeText = node.textContent.substring(0, index);
+                      const selectedText = comment.selectedText;
+                      const afterText = node.textContent.substring(index + selectedText.length);
+                      
+                      const span = document.createElement('span');
+                      span.className = comment.type === 'suggestion' ? 'suggestion-highlight' : 'comment-highlight';
+                      span.setAttribute('data-comment-id', comment.id);
+                      span.textContent = selectedText;
+                      span.title = `${comment.type}: ${comment.text}`;
+                      span.addEventListener('mouseenter', (e) => showTooltip(e, comment));
+                      span.addEventListener('mouseleave', hideTooltip);
+                      
+                      if (comment.resolved) {
+                        span.style.opacity = '0.5';
+                        span.title += ' (Resolved)';
+                      }
+                      
+                      parent.removeChild(node);
+                      if (beforeText) parent.appendChild(document.createTextNode(beforeText));
+                      parent.appendChild(span);
+                      if (afterText) parent.appendChild(document.createTextNode(afterText));
+                      
+                      return;
                     }
-                    
-                    // Replace the text node
-                    parent.removeChild(node);
-                    if (beforeText) parent.appendChild(document.createTextNode(beforeText));
-                    parent.appendChild(span);
-                    if (afterText) parent.appendChild(document.createTextNode(afterText));
-                    
-                    return; // Only highlight first occurrence
                   }
-                }
-              });
+                });
+              }
             });
           }
 
@@ -2494,6 +1986,14 @@ jobs:
             return textNodes;
           }
 
+          function handleMainPrint() {
+            if (window.reviewMode) {
+              saveReviewSnapshot();
+            } else {
+              window.print();
+            }
+          }
+
           function saveReviewSnapshot() {
             if (!window.currentPage) {
               alert('No page selected for snapshot.');
@@ -2508,20 +2008,11 @@ jobs:
             const comments = getCommentsForPage(window.currentPage);
             const pageTitle = getPageTitle(window.currentPage);
             
-            // Generate print-optimized HTML with parallel annotations
             const snapshotHTML = generateSnapshotHTML(pageTitle, comments);
-            
-            // Open in new window instead of modal
             openSnapshotInNewWindow(snapshotHTML, pageTitle);
           }
 
           function openSnapshotInNewWindow(snapshotHTML, pageTitle) {
-            // Final safeguard - ensure review mode is active
-            if (!window.reviewMode) {
-              alert('Print Snapshot functionality requires Review Mode to be active.');
-              return;
-            }
-            
             const printWindow = window.open('', '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
             
             const fullHTML = `
@@ -2530,232 +2021,28 @@ jobs:
               <head>
                 <title>Review Snapshot - ${pageTitle}</title>
                 <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                  /* Complete print-optimized styles */
-                  * { margin: 0; padding: 0; box-sizing: border-box; }
-                  body { 
-                    font-family: 'Times New Roman', serif; 
-                    line-height: 1.6; 
-                    color: #000; 
-                    background: white;
-                    padding: 20px;
-                  }
-                  
-                  .print-snapshot { padding: 0; }
+                  body { font-family: Arial, sans-serif; margin: 20px; }
                   .snapshot-header { border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
-                  .snapshot-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-                  .snapshot-meta { font-size: 12px; color: #666; font-style: italic; }
-                  
-                  .content-with-annotations { 
-                    display: grid; 
-                    grid-template-columns: 1fr 300px; 
-                    gap: 30px; 
-                    align-items: start; 
-                  }
-                  
-                  .main-article { 
-                    font-size: 14px; 
-                    line-height: 1.6; 
-                  }
-                  
-                  .main-article h1, .main-article h2, .main-article h3, .main-article h4 {
-                    color: #333;
-                    margin: 1.5em 0 0.8em 0;
-                  }
-                  
-                  .main-article h1 { font-size: 1.8em; }
-                  .main-article h2 { font-size: 1.5em; }
-                  .main-article h3 { font-size: 1.3em; }
-                  
-                  .main-article p { margin-bottom: 1em; }
-                  .main-article ul, .main-article ol { margin-left: 2em; margin-bottom: 1em; }
-                  .main-article li { margin-bottom: 0.5em; }
-                  
-                  .main-article img {
-                    max-width: 100%;
-                    height: auto;
-                    border: 1px solid #ddd;
-                    border-radius: 4px;
-                    margin: 1em 0;
-                  }
-                  
-                  .main-article table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin: 1em 0;
-                    border: 1px solid #ddd;
-                  }
-                  
-                  .main-article th, .main-article td {
-                    border: 1px solid #ddd;
-                    padding: 8px;
-                    text-align: left;
-                  }
-                  
-                  .main-article th {
-                    background-color: #f5f5f5;
-                    font-weight: bold;
-                  }
-                  
-                  .comment-annotations { 
-                    font-size: 11px; 
-                    background: #f9f9f9; 
-                    padding: 15px; 
-                    border-left: 3px solid #2196f3;
-                    height: fit-content;
-                  }
-                  
-                  .annotation-item { 
-                    margin-bottom: 15px; 
-                    padding-bottom: 10px; 
-                    border-bottom: 1px solid #e0e0e0; 
-                  }
-                  
-                  .annotation-item:last-child { 
-                    border-bottom: none; 
-                    margin-bottom: 0; 
-                  }
-                  
-                  .annotation-marker { 
-                    display: inline-block; 
-                    background: #2196f3; 
-                    color: white; 
-                    padding: 2px 6px; 
-                    border-radius: 3px; 
-                    font-size: 10px; 
-                    font-weight: bold; 
-                    margin-right: 5px; 
-                  }
-                  
-                  .annotation-marker.suggestion { 
-                    background: #ff9800; 
-                  }
-                  
-                  .text-marker { 
-                    background: #ffeb3b; 
-                    padding: 1px 3px; 
-                    border-radius: 2px; 
-                    font-weight: bold; 
-                  }
-                  
-                  .comment-image-print {
-                    max-width: 200px;
-                    max-height: 150px;
-                    border: 1px solid #ddd;
-                    border-radius: 4px;
-                    margin: 10px 0;
-                    display: block;
-                  }
-                  
-                  .image-marker-indicator { 
-                    background: #e3f2fd; 
-                    border: 1px solid #2196f3; 
-                    padding: 5px; 
-                    margin: 10px 0; 
-                    border-radius: 4px; 
-                    font-size: 12px; 
-                  }
-                  
-                  .comment-summary { 
-                    margin-top: 30px; 
-                    border-top: 2px solid #333; 
-                    padding-top: 15px; 
-                  }
-                  
-                  .summary-title { 
-                    font-size: 16px; 
-                    font-weight: bold; 
-                    margin-bottom: 15px; 
-                  }
-                  
-                  .window-toolbar {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    background: #2c5aa0;
-                    color: white;
-                    padding: 10px 20px;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    z-index: 1000;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-                  }
-                  
-                  .window-toolbar h3 {
-                    margin: 0;
-                    color: white;
-                    font-size: 1.1em;
-                  }
-                  
-                  .toolbar-actions {
-                    display: flex;
-                    gap: 10px;
-                  }
-                  
-                  .toolbar-btn {
-                    background: rgba(255,255,255,0.2);
-                    border: 1px solid rgba(255,255,255,0.3);
-                    color: white;
-                    padding: 6px 12px;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    font-size: 0.9em;
-                    transition: all 0.2s;
-                  }
-                  
-                  .toolbar-btn:hover {
-                    background: rgba(255,255,255,0.3);
-                  }
-                  
-                  .content-wrapper {
-                    margin-top: 60px;
-                    padding: 20px 0;
-                  }
-                  
-                  @media print {
-                    .window-toolbar { display: none; }
-                    .content-wrapper { margin-top: 0; padding: 0; }
-                    body { padding: 15px; font-size: 12px; }
-                    .content-with-annotations { grid-template-columns: 1fr 250px; gap: 20px; }
-                    .comment-annotations { font-size: 10px; padding: 10px; }
-                  }
+                  .comment-annotations { background: #f9f9f9; padding: 15px; margin: 20px 0; border-left: 3px solid #2196f3; }
+                  .comment-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+                  .comment-type { background: #2196f3; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.8em; }
+                  .comment-type.suggestion { background: #ff9800; }
+                  .text-marker { background: #ffeb3b; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
                 </style>
               </head>
               <body>
-                <div class="window-toolbar">
-                  <h3>Review Snapshot - ${pageTitle}</h3>
-                  <div class="toolbar-actions">
-                    <button class="toolbar-btn" onclick="window.print()">🖨️ Print</button>
-                    <button class="toolbar-btn" onclick="downloadCurrentSnapshot()">💾 Save HTML</button>
-                    <button class="toolbar-btn" onclick="window.close()">✕ Close</button>
-                  </div>
+                <div class="snapshot-header">
+                  <h1>Review Snapshot - ${pageTitle}</h1>
+                  <p>Generated: ${new Date().toLocaleString()}</p>
                 </div>
-                <div class="content-wrapper">
-                  ${snapshotHTML}
-                </div>
-                
+                ${snapshotHTML}
                 <script>
-                  function downloadCurrentSnapshot() {
-                    const htmlContent = document.documentElement.outerHTML;
-                    const blob = new Blob([htmlContent], { type: 'text/html' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = 'review-snapshot-${window.currentPage}-' + new Date().toISOString().split('T')[0] + '.html';
-                    link.click();
-                    URL.revokeObjectURL(url);
-                  }
-                  
-                  // Print shortcut
-                  document.addEventListener('keydown', function(e) {
-                    if (e.ctrlKey && e.key === 'p') {
-                      e.preventDefault();
+                  window.onload = function() {
+                    if (confirm('Print this review snapshot?')) {
                       window.print();
                     }
-                  });
+                  };
                 </script>
               </body>
               </html>
@@ -2767,10 +2054,9 @@ jobs:
           }
 
           function generateSnapshotHTML(pageTitle, comments) {
-            // Get clean content without review highlights
             const contentClone = contentEl.cloneNode(true);
             
-            // Remove all review highlights from clone
+            // Remove review highlights from clone
             const highlights = contentClone.querySelectorAll('[data-comment-id]');
             highlights.forEach(highlight => {
               if (highlight.classList.contains('image-comment-marker')) {
@@ -2784,145 +2070,25 @@ jobs:
               }
             });
 
-            // Add text markers for comments in the content
-            let annotationCounter = 1;
-            const annotationMap = {};
-
-            comments.forEach(comment => {
-              if (comment.selectionType === 'text') {
-                // Find and mark text in content
-                const walker = document.createTreeWalker(
-                  contentClone,
-                  NodeFilter.SHOW_TEXT,
-                  null,
-                  false
-                );
-
-                let node;
-                while (node = walker.nextNode()) {
-                  if (node.textContent.includes(comment.selectedText)) {
-                    const parent = node.parentNode;
-                    const text = node.textContent;
-                    const index = text.indexOf(comment.selectedText);
-                    
-                    if (index !== -1) {
-                      const beforeText = text.substring(0, index);
-                      const selectedText = comment.selectedText;
-                      const afterText = text.substring(index + selectedText.length);
-                      
-                      const marker = document.createElement('span');
-                      marker.className = 'text-marker';
-                      marker.innerHTML = `${selectedText}<sup>[${annotationCounter}]</sup>`;
-                      
-                      annotationMap[annotationCounter] = comment;
-                      annotationCounter++;
-                      
-                      parent.removeChild(node);
-                      if (beforeText) parent.appendChild(document.createTextNode(beforeText));
-                      parent.appendChild(marker);
-                      if (afterText) parent.appendChild(document.createTextNode(afterText));
-                      
-                      break;
-                    }
-                  }
-                }
-              } else if (comment.selectionType === 'image') {
-                // Add image annotation markers
-                const images = contentClone.querySelectorAll('img');
-                images.forEach(img => {
-                  if (img.src.includes(comment.imageSrc.split('/').pop())) {
-                    const imageIndicator = document.createElement('div');
-                    imageIndicator.className = 'image-marker-indicator';
-                    imageIndicator.innerHTML = `📍 <strong>Image Comment [${annotationCounter}]:</strong> "${comment.imageAlt}"`;
-                    
-                    annotationMap[annotationCounter] = comment;
-                    annotationCounter++;
-                    
-                    img.parentNode.insertBefore(imageIndicator, img.nextSibling);
-                  }
-                });
-              }
-            });
-
-            // Generate annotations sidebar
-            const annotationsHTML = Object.keys(annotationMap).map(num => {
-              const comment = annotationMap[num];
-              
-              // Generate images for this annotation
-              const commentImagesHTML = comment.uploadedImages && comment.uploadedImages.length > 0
-                ? comment.uploadedImages.map(img => `
-                    <div style="margin: 8px 0;">
-                      <img src="${img.data}" alt="${img.name}" class="comment-image-print">
-                      <div style="font-size: 9px; color: #666; margin-top: 2px;">${img.name}</div>
-                    </div>
-                  `).join('')
-                : '';
-              
+            const annotationsHTML = comments.map((comment, index) => {
               return `
-                <div class="annotation-item">
-                  <div>
-                    <span class="annotation-marker ${comment.type}">[${num}]</span>
-                    <strong>${comment.type.toUpperCase()}</strong>
-                  </div>
-                  <div style="margin: 5px 0; font-weight: bold;">
-                    "${comment.selectedText}"
-                  </div>
+                <div class="comment-item">
+                  <span class="comment-type ${comment.type}">[${index + 1}] ${comment.type.toUpperCase()}</span>
+                  <div><strong>"${comment.selectedText}"</strong></div>
                   <div>${comment.text}</div>
-                  ${commentImagesHTML}
-                  ${comment.uploadedImages && comment.uploadedImages.length > 0 && comment.type === 'suggestion' 
-                    ? '<div style="font-size: 10px; color: #ff9800; font-weight: bold; margin-top: 5px;">📍 Suggested image placement/reference</div>' 
-                    : ''}
-                  <div style="margin-top: 5px; font-size: 10px; color: #666;">
+                  <div style="font-size: 0.8em; color: #666; margin-top: 5px;">
                     ${new Date(comment.timestamp).toLocaleString()}
                     ${comment.resolved ? ' • ✓ Resolved' : ''}
-                    ${comment.uploadedImages && comment.uploadedImages.length > 0 ? ` • ${comment.uploadedImages.length} image(s)` : ''}
                   </div>
                 </div>
               `;
             }).join('');
 
-            // Generate summary statistics
-            const totalComments = comments.length;
-            const resolvedComments = comments.filter(c => c.resolved).length;
-            const textComments = comments.filter(c => c.selectionType === 'text').length;
-            const imageComments = comments.filter(c => c.selectionType === 'image').length;
-            const commentsWithImages = comments.filter(c => c.uploadedImages && c.uploadedImages.length > 0).length;
-            const totalUploadedImages = comments.reduce((sum, c) => sum + (c.uploadedImages ? c.uploadedImages.length : 0), 0);
-
-                            return `
-              <div class="print-snapshot">
-                <div class="snapshot-header">
-                  <div class="snapshot-title">${pageTitle}</div>
-                  <div class="snapshot-meta">
-                    Review Snapshot • Generated ${new Date().toLocaleString()} • 
-                    ${totalComments} comments (${resolvedComments} resolved)
-                  </div>
-                </div>
-                
-                <div class="content-with-annotations">
-                  <div class="main-article">
-                    ${contentClone.innerHTML}
-                  </div>
-                  
-                  <div class="comment-annotations">
-                    <h4 style="margin-top: 0; color: #2c5aa0;">Review Comments</h4>
-                    ${annotationsHTML || '<p style="font-style: italic; color: #666;">No comments</p>'}
-                  </div>
-                </div>
-                
-                <div class="comment-summary">
-                  <div class="summary-title">Review Summary</div>
-                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; font-size: 12px; margin-bottom: 15px;">
-                    <div><strong>Total Comments:</strong><br>${totalComments}</div>
-                    <div><strong>Text Comments:</strong><br>${textComments}</div>
-                    <div><strong>Image Comments:</strong><br>${imageComments}</div>
-                  </div>
-                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; font-size: 12px;">
-                    <div><strong>Resolved:</strong><br>${resolvedComments}</div>
-                    <div><strong>With Images:</strong><br>${commentsWithImages}</div>
-                    <div><strong>Uploaded Images:</strong><br>${totalUploadedImages}</div>
-                  </div>
-                </div>
+            return `
+              <div>${contentClone.innerHTML}</div>
+              <div class="comment-annotations">
+                <h3>Review Comments (${comments.length})</h3>
+                ${annotationsHTML || '<p>No comments</p>'}
               </div>
             `;
           }
@@ -2958,7 +2124,6 @@ jobs:
             window.reviewData = {};
             localStorage.removeItem('reviewData');
             
-            // Clear highlights from current page
             const highlights = document.querySelectorAll('[data-comment-id]');
             highlights.forEach(highlight => {
               const parent = highlight.parentNode;
@@ -2968,10 +2133,7 @@ jobs:
               }
             });
             
-            // Hide any visible tooltip
             hideTooltip();
-            
-            // Update UI
             updateCommentPanel();
             if (window.reviewMode) {
               addReviewToolbar();
@@ -2986,47 +2148,120 @@ jobs:
           window.exportReviewData = exportReviewData;
           window.clearReviewData = clearReviewData;
           window.saveReviewSnapshot = saveReviewSnapshot;
-          window.toggleCommentPanel = toggleCommentPanel;
           window.resolveComment = resolveComment;
           window.deleteComment = deleteComment;
           window.closeCommentDialog = closeCommentDialog;
           window.saveComment = saveComment;
-          window.showTooltip = showTooltip;
-          window.hideTooltip = hideTooltip;
           window.scrollToComment = scrollToComment;
-          window.removeImageFromComment = removeImageFromComment;
-          window.showImageModal = showImageModal;
-          window.closeImageModal = closeImageModal;
           window.handleMainPrint = handleMainPrint;
 
-          // Enhance tables with OxygenXML-like styling
-          function enhanceTables() {
-            const tables = document.querySelectorAll('#content table');
-            tables.forEach(table => {
-              if (!table.className.includes('table')) {
-                table.classList.add('table');
-              }
-              
-              if (!table.parentElement.className.includes('table-container')) {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'table-container';
-                table.parentNode.insertBefore(wrapper, table);
-                wrapper.appendChild(table);
-              }
-            });
+          // Function to show welcome screen
+          function showWelcomeScreen() {
+            if (contentTitleEl) contentTitleEl.textContent = 'Documentation';
+            document.title = 'Documentation';
+
+            if (contentEl) {
+              contentEl.innerHTML = `
+                <div class="welcome-screen">
+                  <h2>Welcome to Documentation</h2>
+                  <p>Please select a topic from the navigation menu or use the search bar.</p>
+                  <p><strong>Review Mode:</strong> Click "Review Mode" in the sidebar to enable collaborative commenting and review features.</p>
+                </div>
+              `;
+            }
+
+            document.body.classList.remove('loading');
           }
 
-          // Show error content when page cannot be loaded
-          function showErrorContent(pageId) {
-            console.error('Failed to load content:', pageId);
-            contentEl.innerHTML = `
-              <div class="error">
-                <h2>Content Not Found</h2>
-                <p>The requested content "${pageId}" could not be loaded.</p>
-                <p>Please select another topic from the navigation menu.</p>
-              </div>
-            `;
-            document.body.classList.remove('loading');
+          // Render the navigation menu with hierarchy
+          function renderNavigation(items, parentEl = navigationEl) {
+            if (!parentEl) return;
+            
+            const ul = document.createElement('ul');
+            ul.setAttribute('role', 'menu');
+
+            items.forEach(item => {
+              const li = document.createElement('li');
+              li.setAttribute('role', 'presentation');
+
+              if (item.children && item.children.length > 0) {
+                li.classList.add('has-children');
+
+                const toggle = document.createElement('span');
+                toggle.className = 'toggle-arrow';
+                toggle.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  li.classList.toggle('expanded');
+                });
+                li.appendChild(toggle);
+              }
+
+              const a = document.createElement('a');
+              a.setAttribute('role', 'menuitem');
+              a.textContent = item.title;
+              a.setAttribute('data-id', item.id);
+              a.href = `#${item.id}`;
+
+              a.addEventListener('click', (e) => {
+                e.preventDefault();
+                navigateToPage(item.id);
+                if (searchResultsEl) searchResultsEl.innerHTML = '';
+                if (searchInput) searchInput.value = '';
+              });
+
+              li.appendChild(a);
+
+              if (item.children && item.children.length > 0) {
+                renderNavigation(item.children, li);
+              }
+
+              ul.appendChild(li);
+            });
+
+            parentEl.appendChild(ul);
+          }
+
+          // Navigate to a specific page
+          function navigateToPage(pageId, pushState = true) {
+            debug('Navigating to page:', pageId);
+            
+            if (!pageId) {
+              console.error('Invalid pageId - cannot navigate to undefined page');
+              showErrorContent('undefined');
+              return;
+            }
+
+            updateActiveNavItem(pageId);
+            expandNavigationTo(pageId);
+
+            if (pushState) {
+              history.pushState({ pageId }, '', `#${pageId}`);
+            }
+
+            document.body.classList.add('loading');
+            window.currentPage = pageId;
+
+            loadContent(pageId)
+              .then(content => {
+                const title = getPageTitle(pageId);
+                if (contentTitleEl) contentTitleEl.textContent = title;
+                document.title = title;
+
+                if (contentEl) contentEl.innerHTML = content;
+                enhanceTables();
+                
+                if (window.reviewMode) {
+                  initializeReviewForContent();
+                  loadReviewDataForPage(pageId);
+                }
+                
+                document.body.classList.remove('loading');
+                debug('Content loaded successfully for:', pageId);
+              })
+              .catch(error => {
+                debug('Error loading content:', error);
+                showErrorContent(pageId);
+              });
           }
 
           // Load content for a page
@@ -3054,22 +2289,44 @@ jobs:
             const activeItem = document.querySelector(`.sidebar a[data-id="${pageId}"]`);
             if (activeItem) {
               activeItem.classList.add('active');
-
-              let parent = activeItem.parentElement;
-              while (parent && !parent.classList.contains('sidebar')) {
-                if (parent.classList.contains('has-children')) {
-                  parent.classList.add('expanded');
-                }
-                parent = parent.parentElement;
-              }
             }
           }
 
-          // Handle popstate event (browser back/forward)
+          // Expand navigation path to the current page
+          function expandNavigationTo(pageId) {
+            function findPageInNavigation(items, id, path = []) {
+              for (const item of items) {
+                const currentPath = [...path, item];
+                if (item.id === id) {
+                  return currentPath;
+                }
+                if (item.children && item.children.length > 0) {
+                  const result = findPageInNavigation(item.children, id, currentPath);
+                  if (result) return result;
+                }
+              }
+              return null;
+            }
+
+            if (typeof navigationConfig === 'undefined') return;
+            
+            const path = findPageInNavigation(navigationConfig, pageId);
+            if (!path) return;
+
+            for (let i = 0; i < path.length - 1; i++) {
+              const item = path[i];
+              const li = document.querySelector(`.sidebar li a[data-id="${item.id}"]`)?.parentElement;
+              if (li) li.classList.add('expanded');
+            }
+          }
+
+          // Handle popstate event
           function handlePopState(event) {
-            const pageId = event.state?.pageId || getPageIdFromUrl() || navigationConfig[0].id;
-            debug('Popstate event, loading page:', pageId);
-            navigateToPage(pageId, false);
+            const pageId = event.state?.pageId || getPageIdFromUrl();
+            if (pageId) {
+              debug('Popstate event, loading page:', pageId);
+              navigateToPage(pageId, false);
+            }
           }
 
           // Get page ID from URL hash
@@ -3077,17 +2334,15 @@ jobs:
             return window.location.hash.substring(1) || null;
           }
 
-          // Get page title from content manifest
+          // Get page title
           function getPageTitle(pageId) {
-            if (window.contentIdMap && contentIdMap[pageId]) {
+            if (typeof contentIdMap !== 'undefined' && contentIdMap[pageId]) {
               return contentIdMap[pageId].title;
             }
 
             function findTitleInNav(items, id) {
               for (const item of items) {
-                if (item.id === id) {
-                  return item.title;
-                }
+                if (item.id === id) return item.title;
                 if (item.children && item.children.length > 0) {
                   const title = findTitleInNav(item.children, id);
                   if (title) return title;
@@ -3096,8 +2351,10 @@ jobs:
               return null;
             }
 
-            const navTitle = findTitleInNav(navigationConfig, pageId);
-            if (navTitle) return navTitle;
+            if (typeof navigationConfig !== 'undefined') {
+              const navTitle = findTitleInNav(navigationConfig, pageId);
+              if (navTitle) return navTitle;
+            }
 
             return pageId.split(/-|_/).map(word =>
               word.charAt(0).toUpperCase() + word.slice(1)
@@ -3106,6 +2363,8 @@ jobs:
 
           // Search functionality
           function performSearch() {
+            if (!searchInput || !searchResultsEl) return;
+            
             const query = searchInput.value.toLowerCase().trim();
             searchResultsEl.innerHTML = '';
 
@@ -3117,6 +2376,11 @@ jobs:
             }
 
             debug('Performing search for:', query);
+
+            if (typeof contentIdMap === 'undefined') {
+              searchResultsEl.innerHTML = '<li><p>Search not available - content index not loaded.</p></li>';
+              return;
+            }
 
             const results = [];
             for (const id in contentIdMap) {
@@ -3162,26 +2426,9 @@ jobs:
                 link.addEventListener('click', (e) => {
                   e.preventDefault();
                   debug('Search result clicked for ID:', result.id);
-                  
-                  if (!result.id || !contentIdMap[result.id]) {
-                    debug('Invalid content ID in search result:', result.id);
-                    alert('Error: Content not found. Please try another search result.');
-                    return;
-                  }
-                  
-                  fetch(`${basePath}/content/${result.id}.html`)
-                    .then(response => {
-                      if (!response.ok) {
-                        throw new Error('Content file not found');
-                      }
-                      navigateToPage(result.id);
-                      searchResultsEl.innerHTML = '';
-                      searchInput.value = '';
-                    })
-                    .catch(error => {
-                      debug('Content not available:', error);
-                      alert('Error: The selected content could not be loaded. Please try another search result.');
-                    });
+                  navigateToPage(result.id);
+                  searchResultsEl.innerHTML = '';
+                  searchInput.value = '';
                 });
                 
                 li.appendChild(link);
@@ -3200,6 +2447,40 @@ jobs:
             return text.replace(regex, '<span class="highlight">$1</span>');
           }
 
+          // Show error content when page cannot be loaded
+          function showErrorContent(pageId) {
+            console.error('Failed to load content:', pageId);
+            if (contentEl) {
+              contentEl.innerHTML = `
+                <div class="error">
+                  <h2>Content Not Found</h2>
+                  <p>The requested content "${pageId}" could not be loaded.</p>
+                  <p>Please select another topic from the navigation menu.</p>
+                </div>
+              `;
+            }
+            document.body.classList.remove('loading');
+          }
+
+          // Enhance tables
+          function enhanceTables() {
+            if (!contentEl) return;
+            
+            const tables = contentEl.querySelectorAll('table');
+            tables.forEach(table => {
+              if (!table.className.includes('table')) {
+                table.classList.add('table');
+              }
+              
+              if (!table.parentElement.className.includes('table-container')) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'table-container';
+                table.parentNode.insertBefore(wrapper, table);
+                wrapper.appendChild(table);
+              }
+            });
+          }
+
           // Make navigateToPage available globally
           window.navigateToPage = navigateToPage;
 
@@ -3207,8 +2488,8 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create Enhanced index.html with Review System UI
-      - name: Create Enhanced Index HTML with Review System
+      # Step 10: Create Enhanced index.html with Working Review System
+      - name: Create Enhanced Index HTML with Working Review System
         run: |
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
@@ -3248,16 +2529,16 @@ jobs:
                 <ul id="searchResults" class="search-results"></ul>
               </div>
               
-              <!-- Review Controls Section -->
+              <!-- FIXED Review Controls Section - Always Visible -->
               <div class="review-controls">
-                <h3>Review System</h3>
+                <h3>📝 Review System</h3>
                 <div class="review-mode-toggle">
                   <button id="reviewToggle" class="review-btn">Review Mode</button>
                 </div>
                 <button id="startReview" class="review-btn secondary" style="display: none;">Start Review</button>
                 <div class="export-options" style="display: none;">
-                  <button id="exportReview" class="export-btn">Export Reviews</button>
-                  <button id="clearReview" class="review-btn secondary" style="background: linear-gradient(135deg, #f44336, #d32f2f); margin-top: 5px;">Clear All</button>
+                  <button id="exportReview" class="export-btn">📤 Export Reviews</button>
+                  <button id="clearReview" class="review-btn secondary" style="background: linear-gradient(135deg, #f44336, #d32f2f); margin-top: 5px;">🗑️ Clear All</button>
                 </div>
               </div>
               
@@ -3289,6 +2570,35 @@ jobs:
             <button class="main-print-button" id="mainPrintButton">
               🖨️ <span>Print</span>
             </button>
+
+            <script>
+              // Debug logging for review system
+              console.log('Loading review system...');
+              
+              // Ensure review controls are visible
+              document.addEventListener('DOMContentLoaded', function() {
+                const reviewControls = document.querySelector('.review-controls');
+                const reviewToggle = document.getElementById('reviewToggle');
+                
+                if (reviewControls) {
+                  reviewControls.style.display = 'flex';
+                  reviewControls.style.visibility = 'visible';
+                  reviewControls.style.opacity = '1';
+                  console.log('Review controls found and made visible');
+                } else {
+                  console.error('Review controls not found!');
+                }
+                
+                if (reviewToggle) {
+                  reviewToggle.style.display = 'block';
+                  reviewToggle.style.visibility = 'visible';
+                  reviewToggle.style.opacity = '1';
+                  console.log('Review toggle button found and made visible');
+                } else {
+                  console.error('Review toggle button not found!');
+                }
+              });
+            </script>
 
             <script src="js/navigation-config.js"></script>
             <script src="js/content-id-map.js"></script>
@@ -3339,34 +2649,36 @@ jobs:
       # Step 12: Create default content for container nodes
       - name: Create Default Content
         run: |
-          # Create content directory if it doesn't exist
           mkdir -p ./site/content
 
           # Extract container nodes from navigation
-          grep -o '"id": "[^"]*".*"children"' ./navigation-structure.json |
-          sed 's/"id": "\([^"]*\)".*/\1/' > container-nodes.txt
+          if [ -f "./navigation-structure.json" ]; then
+            grep -o '"id": "[^"]*".*"children"' ./navigation-structure.json |
+            sed 's/"id": "\([^"]*\)".*/\1/' > container-nodes.txt || echo "No container nodes found"
+          fi
 
           # Create default content for container nodes
-          while IFS= read -r id || [ -n "$id" ]; do
-            if [ ! -f "./site/content/$id.html" ]; then
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
+          if [ -f "container-nodes.txt" ] && [ -s "container-nodes.txt" ]; then
+            while IFS= read -r id || [ -n "$id" ]; do
+              if [ ! -f "./site/content/$id.html" ]; then
+                title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
 
-              echo "Creating default content for container node: $id ($title)"
-              cat > "./site/content/$id.html" << EOF
+                echo "Creating default content for container node: $id ($title)"
+                cat > "./site/content/$id.html" << EOF
           <h1>${title}</h1>
           <p>This section contains information about ${title}.</p>
           <p>Use the navigation menu to explore topics within this section.</p>
           <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
           EOF
-            fi
-          done < container-nodes.txt
+              fi
+            done < container-nodes.txt
+          fi
 
           # Create default containers if none found
-          if [ ! -s container-nodes.txt ]; then
+          if [ ! -f "container-nodes.txt" ] || [ ! -s "container-nodes.txt" ]; then
             echo "No container nodes found in navigation. Creating default containers."
 
-            # Create default containers
-            for id in automotive-information basic-maintenance major-vehicle-components; do
+            for id in automotive-information basic-maintenance major-vehicle-components welcome; do
               title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
 
               echo "Creating default container: $id ($title)"
@@ -3375,6 +2687,15 @@ jobs:
           <p>This section contains information about ${title}.</p>
           <p>Use the navigation menu to explore topics within this section.</p>
           <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
+          <div style="background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h3>✨ Review System Features:</h3>
+            <ul>
+              <li><strong>Text Comments:</strong> Select any text to add comments or suggestions</li>
+              <li><strong>Image Comments:</strong> Click on images to add contextual feedback</li>
+              <li><strong>Review Snapshots:</strong> Generate printable reports with all comments</li>
+              <li><strong>Export Reviews:</strong> Download review data as JSON for external processing</li>
+            </ul>
+          </div>
           EOF
             done
           fi
