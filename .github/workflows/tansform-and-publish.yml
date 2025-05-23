@@ -866,6 +866,17 @@ jobs:
             padding: 6px 10px;
           }
 
+          .review-btn.danger {
+            background: linear-gradient(135deg, #f44336, #d32f2f);
+            border-color: #f44336;
+            font-size: 0.85em;
+            padding: 6px 10px;
+          }
+
+          .review-btn.danger:hover {
+            background: linear-gradient(135deg, #d32f2f, #c62828);
+          }
+
           /* Search Bar Styling */
           .search-container {
             margin-bottom: 15px;
@@ -1473,29 +1484,78 @@ jobs:
             cursor: pointer;
           }
 
-          /* Review Export Options */
-          .export-options {
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #ddd;
+          /* Password Dialog Styles */
+          .password-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 2px solid #f44336;
+            border-radius: 8px;
+            padding: 20px;
+            width: 350px;
+            max-width: 90vw;
+            z-index: 2100;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+            display: none;
           }
 
-          .export-btn {
-            background: linear-gradient(135deg, #4caf50, #388e3c);
-            color: white;
-            border: none;
+          .password-dialog.show {
+            display: block;
+          }
+
+          .password-dialog h3 {
+            color: #f44336;
+            margin-bottom: 15px;
+          }
+
+          .password-dialog input[type="password"] {
+            width: 100%;
             padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+          }
+
+          .password-dialog input[type="password"]:focus {
+            border-color: #f44336;
+            outline: none;
+            box-shadow: 0 0 5px rgba(244, 67, 54, 0.3);
+          }
+
+          .password-dialog-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+          }
+
+          .password-dialog-btn {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 0.85em;
-            margin-bottom: 5px;
-            width: 100%;
+            font-size: 0.9em;
             transition: all 0.2s;
           }
 
-          .export-btn:hover {
-            background: linear-gradient(135deg, #388e3c, #2e7d32);
-            transform: translateY(-1px);
+          .password-dialog-btn.danger {
+            background: #f44336;
+            color: white;
+            border-color: #f44336;
+          }
+
+          .password-dialog-btn.danger:hover {
+            background: #d32f2f;
+          }
+
+          .password-dialog-btn.secondary {
+            background: #f5f5f5;
+          }
+
+          .password-dialog-btn.secondary:hover {
+            background: #e0e0e0;
           }
 
           /* Responsive design */
@@ -1546,7 +1606,6 @@ jobs:
           // Review System Elements
           const reviewToggleBtn = document.getElementById('reviewToggle');
           const startReviewBtn = document.getElementById('startReview');
-          const exportReviewBtn = document.getElementById('exportReview');
           const clearReviewBtn = document.getElementById('clearReview');
 
           // Base path handling for GitHub Pages
@@ -1596,11 +1655,8 @@ jobs:
             if (startReviewBtn) {
               startReviewBtn.addEventListener('click', startReviewSession);
             }
-            if (exportReviewBtn) {
-              exportReviewBtn.addEventListener('click', exportReviewData);
-            }
             if (clearReviewBtn) {
-              clearReviewBtn.addEventListener('click', clearReviewData);
+              clearReviewBtn.addEventListener('click', promptClearReviewData);
             }
 
             // Add print functionality
@@ -1645,6 +1701,9 @@ jobs:
             // Create image hover preview
             createImageHoverPreview();
             
+            // Create password dialog
+            createPasswordDialog();
+            
             // Update review button states
             updateReviewButtons();
           }
@@ -1687,6 +1746,39 @@ jobs:
             `;
             
             document.body.appendChild(sideCart);
+          }
+
+          // Create Password Dialog (NEW)
+          function createPasswordDialog() {
+            const overlay = document.createElement('div');
+            overlay.className = 'dialog-overlay';
+            overlay.id = 'passwordDialogOverlay';
+            
+            const dialog = document.createElement('div');
+            dialog.className = 'password-dialog';
+            dialog.id = 'passwordDialog';
+            dialog.innerHTML = `
+              <h3>⚠️ Clear All Comments</h3>
+              <p>This action will permanently delete all comments and suggestions. Please enter the password to confirm:</p>
+              <input type="password" id="clearPassword" placeholder="Enter password...">
+              <div class="password-dialog-actions">
+                <button class="password-dialog-btn secondary" onclick="closePasswordDialog()">Cancel</button>
+                <button class="password-dialog-btn danger" onclick="confirmClearReviewData()">Clear All</button>
+              </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            document.body.appendChild(dialog);
+            
+            // Close dialog when clicking overlay
+            overlay.addEventListener('click', closePasswordDialog);
+            
+            // Allow Enter key to submit password
+            document.getElementById('clearPassword').addEventListener('keypress', (e) => {
+              if (e.key === 'Enter') {
+                confirmClearReviewData();
+              }
+            });
           }
 
           // Create Image Hover Preview (NEW)
@@ -2056,6 +2148,67 @@ jobs:
             modal.classList.remove('show');
           }
 
+          // Password Protection Functions (NEW)
+          function promptClearReviewData() {
+            const dialog = document.getElementById('passwordDialog');
+            const overlay = document.getElementById('passwordDialogOverlay');
+            
+            dialog.classList.add('show');
+            overlay.classList.add('show');
+            
+            // Clear and focus on password input
+            const passwordInput = document.getElementById('clearPassword');
+            passwordInput.value = '';
+            passwordInput.focus();
+          }
+
+          function closePasswordDialog() {
+            const dialog = document.getElementById('passwordDialog');
+            const overlay = document.getElementById('passwordDialogOverlay');
+            
+            dialog.classList.remove('show');
+            overlay.classList.remove('show');
+            
+            // Clear password input
+            document.getElementById('clearPassword').value = '';
+          }
+
+          function confirmClearReviewData() {
+            const passwordInput = document.getElementById('clearPassword');
+            const enteredPassword = passwordInput.value;
+            
+            // Check if password is correct
+            if (enteredPassword !== 'poweroverwhelming') {
+              alert('Incorrect password. Access denied.');
+              passwordInput.value = '';
+              passwordInput.focus();
+              return;
+            }
+            
+            // Password is correct, proceed with clearing
+            window.reviewData = {};
+            localStorage.removeItem('reviewData');
+            
+            // Clear highlights from current page
+            clearReviewHighlights();
+            
+            // Update UI
+            if (window.reviewMode) {
+              addReviewToolbar();
+            }
+            
+            // Update side cart if open
+            const sideCart = document.getElementById('commentsSideCart');
+            if (sideCart && sideCart.classList.contains('open')) {
+              updateCommentsSideCart();
+            }
+            
+            // Close password dialog
+            closePasswordDialog();
+            
+            alert('All review data has been cleared successfully.');
+          }
+
           // Function to show welcome screen
           function showWelcomeScreen() {
             contentTitleEl.textContent = 'Documentation';
@@ -2306,7 +2459,7 @@ jobs:
               toggleReviewMode();
             }
             
-            alert(`Review session started for "${getPageTitle(window.currentPage)}". You can now:\n\n• Select text to add comments or suggestions\n• Click on images to add annotations\n• View all comments in the side cart with image previews\n• Download images attached to comments\n• Export your review data when finished`);
+            alert(`Review session started for "${getPageTitle(window.currentPage)}". You can now:\n\n• Select text to add comments or suggestions\n• Click on images to add annotations\n• View all comments in the side cart with image previews\n• Download images attached to comments`);
           }
 
           function updateReviewButtons() {
@@ -2760,59 +2913,12 @@ jobs:
             }
           }
 
-          function exportReviewData() {
-            if (Object.keys(window.reviewData).length === 0) {
-              alert('No review data to export.');
-              return;
-            }
-            
-            const exportData = {
-              exportDate: new Date().toISOString(),
-              totalPages: Object.keys(window.reviewData).length,
-              totalComments: Object.values(window.reviewData).reduce((sum, page) => sum + page.comments.length, 0),
-              data: window.reviewData
-            };
-            
-            const dataStr = JSON.stringify(exportData, null, 2);
-            const dataBlob = new Blob([dataStr], { type: 'application/json' });
-            const url = URL.createObjectURL(dataBlob);
-            
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `review-data-export-${new Date().toISOString().split('T')[0]}.json`;
-            link.click();
-            
-            URL.revokeObjectURL(url);
-          }
-
-          function clearReviewData() {
-            if (!confirm('Are you sure you want to clear all review data? This cannot be undone.')) return;
-            
-            window.reviewData = {};
-            localStorage.removeItem('reviewData');
-            
-            // Clear highlights from current page
-            clearReviewHighlights();
-            
-            // Update UI
-            if (window.reviewMode) {
-              addReviewToolbar();
-            }
-            
-            // Update side cart if open
-            const sideCart = document.getElementById('commentsSideCart');
-            if (sideCart && sideCart.classList.contains('open')) {
-              updateCommentsSideCart();
-            }
-            
-            alert('All review data has been cleared.');
-          }
-
           // Make functions available globally
           window.toggleReviewMode = toggleReviewMode;
           window.startReviewSession = startReviewSession;
-          window.exportReviewData = exportReviewData;
-          window.clearReviewData = clearReviewData;
+          window.promptClearReviewData = promptClearReviewData;
+          window.confirmClearReviewData = confirmClearReviewData;
+          window.closePasswordDialog = closePasswordDialog;
           window.openCommentsSideCart = openCommentsSideCart;
           window.closeCommentsSideCart = closeCommentsSideCart;
           window.openPrintSnapshotWindow = openPrintSnapshotWindow;
@@ -3130,10 +3236,7 @@ jobs:
                   <button id="reviewToggle" class="review-btn">Review Mode</button>
                 </div>
                 <button id="startReview" class="review-btn secondary">Start Review</button>
-                <div class="export-options">
-                  <button id="exportReview" class="export-btn">Export Reviews</button>
-                  <button id="clearReview" class="review-btn secondary" style="background: linear-gradient(135deg, #f44336, #d32f2f); margin-top: 5px;">Clear All</button>
-                </div>
+                <button id="clearReview" class="review-btn danger" style="margin-top: 10px;">Clear All</button>
               </div>
               
               <div class="sidebar-nav">
