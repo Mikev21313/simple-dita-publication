@@ -1,4 +1,4 @@
-name: DITA to SPA Transformation with Auto-Generated Navigation
+name: DITA to SPA Transformation with Auto-Generated Navigation and Review System
 
 on:
   push:
@@ -318,11 +318,11 @@ jobs:
 
           echo "Navigation configuration generated from DITAMAP structure"
 
-      # Step 8: Create SPA CSS with improved styling (based on Oxygen WebHelp)
-      - name: Create SPA CSS
+      # Step 8: Create SPA CSS with improved styling and review system (ENHANCED)
+      - name: Create Enhanced SPA CSS with Review System
         run: |
           cat > ./site/css/style.css << 'EOF'
-          /* General styles based on Oxygen WebHelp theme */
+          /* General styles based on Oxygen WebHelp theme with Review System */
           * {
             margin: 0;
             padding: 0;
@@ -360,6 +360,7 @@ jobs:
             overflow-y: auto;
             background-color: #ffffff;
             box-shadow: inset 0 0 10px rgba(0,0,0,0.02);
+            position: relative;
           }
 
           .sidebar h2 {
@@ -451,6 +452,58 @@ jobs:
             box-shadow: inset 3px 0 0 #00acc1;
           }
 
+          /* Review Controls Section */
+          .review-controls {
+            border-top: 2px solid #80cbc4;
+            padding-top: 15px;
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          }
+
+          .review-controls h3 {
+            color: #00747a;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+          }
+
+          .review-mode-toggle {
+            display: flex;
+            gap: 5px;
+          }
+
+          .review-btn {
+            padding: 8px 12px;
+            border: 1px solid #00acc1;
+            background: linear-gradient(135deg, #00acc1, #0097a7);
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s;
+            text-align: center;
+            flex: 1;
+          }
+
+          .review-btn:hover {
+            background: linear-gradient(135deg, #0097a7, #00838f);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+          }
+
+          .review-btn.active {
+            background: linear-gradient(135deg, #ff6f00, #e65100);
+            border-color: #ff6f00;
+          }
+
+          .review-btn.secondary {
+            background: linear-gradient(135deg, #546e7a, #455a64);
+            border-color: #546e7a;
+            font-size: 0.85em;
+            padding: 6px 10px;
+          }
+
           /* Search Bar Styling */
           .search-container {
             margin-bottom: 15px;
@@ -493,7 +546,7 @@ jobs:
             background-color: #0097a7;
           }
 
-          /* Search Results Styling - UPDATED */
+          /* Search Results Styling */
           .search-results {
             list-style-type: none;
             padding: 0;
@@ -536,6 +589,287 @@ jobs:
           .highlight {
             background-color: #fff9c4;
             font-weight: bold;
+          }
+
+          /* Review Mode Styling */
+          .review-mode .main-content {
+            background-color: #fffbf0;
+          }
+
+          .review-toolbar {
+            background: linear-gradient(135deg, #2c5aa0, #1e3a8a);
+            color: white;
+            padding: 10px 15px;
+            margin: -30px -30px 20px -30px;
+            display: none;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+          }
+
+          .review-mode .review-toolbar {
+            display: flex;
+          }
+
+          .review-toolbar h3 {
+            margin: 0;
+            color: white;
+          }
+
+          .review-toolbar-actions {
+            display: flex;
+            gap: 10px;
+            margin-left: auto;
+          }
+
+          .review-toolbar-btn {
+            padding: 6px 12px;
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+          }
+
+          .review-toolbar-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
+          }
+
+          /* Text Selection and Highlighting for Review */
+          .review-mode .reviewable-text {
+            cursor: text;
+            user-select: text;
+          }
+
+          .review-mode .selected-text {
+            background-color: #ffeb3b;
+            border-radius: 2px;
+            position: relative;
+          }
+
+          .review-comment-highlight {
+            background-color: #e1f5fe;
+            border-left: 3px solid #2196f3;
+            padding: 2px 4px;
+            margin: 2px 0;
+            border-radius: 2px;
+            position: relative;
+            cursor: pointer;
+          }
+
+          .review-comment-highlight:hover {
+            background-color: #bbdefb;
+          }
+
+          .review-suggestion-highlight {
+            background-color: #fff3e0;
+            border-left: 3px solid #ff9800;
+            padding: 2px 4px;
+            margin: 2px 0;
+            border-radius: 2px;
+            position: relative;
+            cursor: pointer;
+          }
+
+          .review-suggestion-highlight:hover {
+            background-color: #ffe0b2;
+          }
+
+          /* Comment Panel */
+          .comment-panel {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: 350px;
+            height: 100vh;
+            background: white;
+            border-left: 2px solid #e0e0e0;
+            padding: 20px;
+            overflow-y: auto;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.1);
+          }
+
+          .review-mode.show-comments .comment-panel {
+            transform: translateX(0);
+          }
+
+          .review-mode.show-comments .main-content {
+            padding-right: 370px;
+          }
+
+          .comment-panel h3 {
+            color: #2c5aa0;
+            border-bottom: 2px solid #e1f5fe;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+          }
+
+          .comment-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            position: relative;
+          }
+
+          .comment-item.suggestion {
+            background: #fff8e1;
+            border-color: #ffcc02;
+          }
+
+          .comment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            color: #666;
+          }
+
+          .comment-type {
+            background: #2196f3;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75em;
+            font-weight: bold;
+          }
+
+          .comment-type.suggestion {
+            background: #ff9800;
+          }
+
+          .comment-content {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+            margin-bottom: 10px;
+          }
+
+          .comment-actions {
+            display: flex;
+            gap: 5px;
+            justify-content: flex-end;
+          }
+
+          .comment-btn {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: all 0.2s;
+          }
+
+          .comment-btn:hover {
+            background: #f5f5f5;
+          }
+
+          .comment-btn.resolve {
+            background: #4caf50;
+            color: white;
+            border-color: #4caf50;
+          }
+
+          .comment-btn.delete {
+            background: #f44336;
+            color: white;
+            border-color: #f44336;
+          }
+
+          /* Comment Creation Dialog */
+          .comment-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 2px solid #2c5aa0;
+            border-radius: 8px;
+            padding: 20px;
+            width: 400px;
+            max-width: 90vw;
+            z-index: 2000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: none;
+          }
+
+          .comment-dialog.show {
+            display: block;
+          }
+
+          .dialog-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.5);
+            z-index: 1999;
+            display: none;
+          }
+
+          .dialog-overlay.show {
+            display: block;
+          }
+
+          .comment-dialog h3 {
+            color: #2c5aa0;
+            margin-bottom: 15px;
+          }
+
+          .comment-dialog textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.9em;
+            resize: vertical;
+          }
+
+          .dialog-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 15px;
+          }
+
+          .dialog-btn {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+          }
+
+          .dialog-btn.primary {
+            background: #2c5aa0;
+            color: white;
+            border-color: #2c5aa0;
+          }
+
+          .dialog-btn.primary:hover {
+            background: #1e3a8a;
+          }
+
+          .dialog-btn.secondary {
+            background: #f5f5f5;
+          }
+
+          .dialog-btn.secondary:hover {
+            background: #e0e0e0;
           }
 
           /* Content styling */
@@ -676,6 +1010,31 @@ jobs:
             cursor: pointer;
           }
 
+          /* Review Export Options */
+          .export-options {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+          }
+
+          .export-btn {
+            background: linear-gradient(135deg, #4caf50, #388e3c);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            margin-bottom: 5px;
+            width: 100%;
+            transition: all 0.2s;
+          }
+
+          .export-btn:hover {
+            background: linear-gradient(135deg, #388e3c, #2e7d32);
+            transform: translateY(-1px);
+          }
+
           /* Responsive design */
           @media (max-width: 768px) {
             body {
@@ -695,14 +1054,30 @@ jobs:
               height: auto;
               min-height: 60vh;
             }
+
+            .comment-panel {
+              width: 100%;
+              position: fixed;
+              top: 0;
+              right: 0;
+              transform: translateY(100%);
+            }
+
+            .review-mode.show-comments .comment-panel {
+              transform: translateY(0);
+            }
+
+            .review-mode.show-comments .main-content {
+              padding-right: 30px;
+            }
           }
           EOF
 
-      # Step 9: Create SPA JavaScript Application (Updated for Search Fixes)
-      - name: Create SPA Application
+      # Step 9: Create Enhanced SPA JavaScript Application with Review System
+      - name: Create Enhanced SPA Application with Review System
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // SPA Application with dynamic navigation and search from DITAMAP
+          // Enhanced SPA Application with dynamic navigation, search, and review system
 
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -711,6 +1086,12 @@ jobs:
           const searchInput = document.getElementById('searchInput');
           const searchButton = document.getElementById('searchButton');
           const searchResultsEl = document.getElementById('searchResults');
+
+          // Review System Elements
+          const reviewToggleBtn = document.getElementById('reviewToggle');
+          const startReviewBtn = document.getElementById('startReview');
+          const exportReviewBtn = document.getElementById('exportReview');
+          const clearReviewBtn = document.getElementById('clearReview');
 
           // Base path handling for GitHub Pages
           const getBasePath = () => {
@@ -724,7 +1105,9 @@ jobs:
           };
 
           // Current state
-          window.currentPage = null; // Make it available globally
+          window.currentPage = null;
+          window.reviewMode = false;
+          window.reviewData = JSON.parse(localStorage.getItem('reviewData') || '{}');
           const basePath = getBasePath();
 
           // Debug logging function
@@ -750,22 +1133,98 @@ jobs:
                 });
             }
 
+            // Review system event listeners
+            if (reviewToggleBtn) {
+              reviewToggleBtn.addEventListener('click', toggleReviewMode);
+            }
+            if (startReviewBtn) {
+              startReviewBtn.addEventListener('click', startReviewSession);
+            }
+            if (exportReviewBtn) {
+              exportReviewBtn.addEventListener('click', exportReviewData);
+            }
+            if (clearReviewBtn) {
+              clearReviewBtn.addEventListener('click', clearReviewData);
+            }
+
             // Add print functionality
             document.querySelector('.wh_print_link button').addEventListener('click', (e) => {
               e.preventDefault();
               window.print();
             });
 
+            // Initialize review system UI
+            initReviewSystem();
+
             // Check if we have a hash in the URL
             const initialPageId = getPageIdFromUrl();
 
             if (initialPageId) {
-              // If we have a page ID in the URL, load that page
               navigateToPage(initialPageId, false);
             } else {
-              // Otherwise, show a welcome screen
               showWelcomeScreen();
             }
+          }
+
+          // Initialize Review System
+          function initReviewSystem() {
+            debug('Initializing review system');
+            
+            // Create comment panel
+            createCommentPanel();
+            
+            // Create comment dialog
+            createCommentDialog();
+            
+            // Update review button states
+            updateReviewButtons();
+          }
+
+          // Create Comment Panel
+          function createCommentPanel() {
+            const commentPanel = document.createElement('div');
+            commentPanel.className = 'comment-panel';
+            commentPanel.id = 'commentPanel';
+            commentPanel.innerHTML = `
+              <h3>Review Comments</h3>
+              <div id="commentList"></div>
+            `;
+            document.body.appendChild(commentPanel);
+          }
+
+          // Create Comment Dialog
+          function createCommentDialog() {
+            const overlay = document.createElement('div');
+            overlay.className = 'dialog-overlay';
+            overlay.id = 'dialogOverlay';
+            
+            const dialog = document.createElement('div');
+            dialog.className = 'comment-dialog';
+            dialog.id = 'commentDialog';
+            dialog.innerHTML = `
+              <h3>Add Review Comment</h3>
+              <div>
+                <label>
+                  <input type="radio" name="commentType" value="comment" checked> Comment
+                </label>
+                <label style="margin-left: 15px;">
+                  <input type="radio" name="commentType" value="suggestion"> Suggestion
+                </label>
+              </div>
+              <div style="margin: 15px 0;">
+                <textarea id="commentText" placeholder="Enter your comment or suggestion..."></textarea>
+              </div>
+              <div class="dialog-actions">
+                <button class="dialog-btn secondary" onclick="closeCommentDialog()">Cancel</button>
+                <button class="dialog-btn primary" onclick="saveComment()">Save</button>
+              </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            document.body.appendChild(dialog);
+            
+            // Close dialog when clicking overlay
+            overlay.addEventListener('click', closeCommentDialog);
           }
 
           // Function to show welcome screen
@@ -777,6 +1236,7 @@ jobs:
               <div class="welcome-screen">
                 <h2>Welcome to Documentation</h2>
                 <p>Please select a topic from the navigation menu or use the search bar.</p>
+                <p><strong>Review Mode:</strong> Click "Start Review" to enable collaborative commenting and suggestions.</p>
               </div>
             `;
 
@@ -792,11 +1252,9 @@ jobs:
               const li = document.createElement('li');
               li.setAttribute('role', 'presentation');
 
-              // Add class if item has children
               if (item.children && item.children.length > 0) {
                 li.classList.add('has-children');
 
-                // Create a toggle arrow element
                 const toggle = document.createElement('span');
                 toggle.className = 'toggle-arrow';
                 toggle.addEventListener('click', (e) => {
@@ -812,25 +1270,20 @@ jobs:
               a.setAttribute('data-id', item.id);
               a.href = `#${item.id}`;
 
-              // Click handler for navigation items
               a.addEventListener('click', (e) => {
                 e.preventDefault();
 
-                // If this is a parent item with children, toggle expansion
                 if (item.children && item.children.length > 0) {
                   li.classList.toggle('expanded');
                 }
 
-                // Always navigate to the page
                 navigateToPage(item.id);
-                // Clear search results when navigating
                 if (searchResultsEl) searchResultsEl.innerHTML = '';
                 if (searchInput) searchInput.value = '';
               });
 
               li.appendChild(a);
 
-              // Recursively render children if any
               if (item.children && item.children.length > 0) {
                 renderNavigation(item.children, li);
               }
@@ -843,7 +1296,6 @@ jobs:
 
           // Expand navigation path to the current page
           function expandNavigationTo(pageId) {
-            // Helper to search for a page in the navigation tree
             function findPageInNavigation(items, id, path = []) {
               for (let i = 0; i < items.length; i++) {
                 const item = items[i];
@@ -860,15 +1312,12 @@ jobs:
                   }
                 }
               }
-
               return null;
             }
 
-            // Find the path to the page
             const path = findPageInNavigation(navigationConfig, pageId);
             if (!path) return;
 
-            // Expand all parent items in the path
             for (let i = 0; i < path.length - 1; i++) {
               const item = path[i];
               const li = document.querySelector(`.sidebar li a[data-id="${item.id}"]`).parentElement;
@@ -880,31 +1329,22 @@ jobs:
           function navigateToPage(pageId, pushState = true) {
             debug('Navigating to page:', pageId);
             
-            // Validate pageId
             if (!pageId) {
               console.error('Invalid pageId - cannot navigate to undefined page');
               showErrorContent('undefined');
               return;
             }
 
-            // Update active state in navigation
             updateActiveNavItem(pageId);
-
-            // Expand navigation to show the current page
             expandNavigationTo(pageId);
 
-            // Update the URL
             if (pushState) {
               history.pushState({ pageId }, '', `#${pageId}`);
             }
 
-            // Show loading indicator
             document.body.classList.add('loading');
-
-            // Update current page
             window.currentPage = pageId;
 
-            // Get filename from ID (using contentIdMap if available)
             let contentFileName = pageId;
             if (window.contentIdMap && contentIdMap[pageId] && contentIdMap[pageId].filename) {
               contentFileName = contentIdMap[pageId].filename;
@@ -913,27 +1353,26 @@ jobs:
               debug('No contentIdMap entry found for:', pageId);
             }
 
-            // Try both hyphenated and underscore versions
             loadContent(pageId)
               .then(content => {
-                // Update title
                 const title = getPageTitle(pageId);
                 contentTitleEl.textContent = title;
                 document.title = title;
 
-                // Update content
                 contentEl.innerHTML = content;
-
-                // Add OxygenXML classes to tables if present
                 enhanceTables();
-
-                // Hide loading indicator
+                
+                // Initialize review mode for current content if active
+                if (window.reviewMode) {
+                  initializeReviewForContent();
+                  loadReviewDataForPage(pageId);
+                }
+                
                 document.body.classList.remove('loading');
                 debug('Content loaded successfully for:', pageId);
               })
               .catch(error => {
                 debug('Error loading with ID, trying original filename:', contentFileName);
-                // Try with original filename if different from ID
                 if (contentFileName !== pageId) {
                   loadContent(contentFileName)
                     .then(content => {
@@ -941,11 +1380,16 @@ jobs:
                       document.title = getPageTitle(pageId);
                       contentEl.innerHTML = content;
                       enhanceTables();
+                      
+                      if (window.reviewMode) {
+                        initializeReviewForContent();
+                        loadReviewDataForPage(pageId);
+                      }
+                      
                       document.body.classList.remove('loading');
                       debug('Content loaded from original filename:', contentFileName);
                     })
                     .catch(altError => {
-                      // Try with underscore version if pageId contains hyphens
                       if (pageId.includes('-')) {
                         const underscoreId = pageId.replace(/-/g, '_');
                         debug('Trying with underscore version:', underscoreId);
@@ -955,6 +1399,12 @@ jobs:
                             document.title = getPageTitle(pageId);
                             contentEl.innerHTML = content;
                             enhanceTables();
+                            
+                            if (window.reviewMode) {
+                              initializeReviewForContent();
+                              loadReviewDataForPage(pageId);
+                            }
+                            
                             document.body.classList.remove('loading');
                             debug('Content loaded with underscore version');
                           })
@@ -971,16 +1421,457 @@ jobs:
               });
           }
 
+          // Review System Functions
+          function toggleReviewMode() {
+            window.reviewMode = !window.reviewMode;
+            
+            if (window.reviewMode) {
+              document.body.classList.add('review-mode');
+              debug('Review mode activated');
+              
+              if (window.currentPage) {
+                initializeReviewForContent();
+                loadReviewDataForPage(window.currentPage);
+              }
+            } else {
+              document.body.classList.remove('review-mode', 'show-comments');
+              debug('Review mode deactivated');
+            }
+            
+            updateReviewButtons();
+          }
+
+          function startReviewSession() {
+            if (!window.currentPage) {
+              alert('Please select a document to review first.');
+              return;
+            }
+            
+            if (!window.reviewMode) {
+              toggleReviewMode();
+            }
+            
+            document.body.classList.add('show-comments');
+            updateCommentPanel();
+          }
+
+          function updateReviewButtons() {
+            if (reviewToggleBtn) {
+              reviewToggleBtn.textContent = window.reviewMode ? 'Exit Review' : 'Review Mode';
+              reviewToggleBtn.classList.toggle('active', window.reviewMode);
+            }
+            
+            const reviewControls = document.querySelectorAll('.review-btn:not(#reviewToggle)');
+            reviewControls.forEach(btn => {
+              btn.style.display = window.reviewMode ? 'block' : 'none';
+            });
+          }
+
+          function initializeReviewForContent() {
+            if (!window.reviewMode) return;
+            
+            // Make all text elements selectable and add event listeners
+            const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th');
+            
+            textElements.forEach(element => {
+              element.classList.add('reviewable-text');
+              
+              // Add mouseup event for text selection
+              element.addEventListener('mouseup', handleTextSelection);
+            });
+            
+            // Add review toolbar
+            addReviewToolbar();
+          }
+
+          function addReviewToolbar() {
+            const existingToolbar = document.querySelector('.review-toolbar');
+            if (existingToolbar) {
+              existingToolbar.remove();
+            }
+            
+            const toolbar = document.createElement('div');
+            toolbar.className = 'review-toolbar';
+            toolbar.innerHTML = `
+              <h3>Review Mode: ${getPageTitle(window.currentPage)}</h3>
+              <div class="review-toolbar-actions">
+                <button class="review-toolbar-btn" onclick="toggleCommentPanel()">
+                  Comments (${getCommentsForPage(window.currentPage).length})
+                </button>
+                <button class="review-toolbar-btn" onclick="saveReviewSnapshot()">Save Snapshot</button>
+              </div>
+            `;
+            
+            contentEl.insertBefore(toolbar, contentEl.firstChild);
+          }
+
+          function handleTextSelection(event) {
+            if (!window.reviewMode) return;
+            
+            const selection = window.getSelection();
+            if (selection.toString().trim().length === 0) return;
+            
+            const selectedText = selection.toString().trim();
+            const range = selection.getRangeAt(0);
+            
+            // Store selection data for comment creation
+            window.currentSelection = {
+              text: selectedText,
+              element: event.target,
+              range: range.cloneRange()
+            };
+            
+            // Show comment dialog
+            setTimeout(() => showCommentDialog(), 100);
+          }
+
+          function showCommentDialog() {
+            const dialog = document.getElementById('commentDialog');
+            const overlay = document.getElementById('dialogOverlay');
+            
+            dialog.classList.add('show');
+            overlay.classList.add('show');
+            
+            // Focus on textarea
+            document.getElementById('commentText').focus();
+          }
+
+          function closeCommentDialog() {
+            const dialog = document.getElementById('commentDialog');
+            const overlay = document.getElementById('dialogOverlay');
+            
+            dialog.classList.remove('show');
+            overlay.classList.remove('show');
+            
+            // Clear form
+            document.getElementById('commentText').value = '';
+            document.querySelector('input[name="commentType"]:checked').checked = false;
+            document.querySelector('input[name="commentType"][value="comment"]').checked = true;
+            
+            // Clear selection
+            window.getSelection().removeAllRanges();
+            window.currentSelection = null;
+          }
+
+          function saveComment() {
+            if (!window.currentSelection) {
+              closeCommentDialog();
+              return;
+            }
+            
+            const commentText = document.getElementById('commentText').value.trim();
+            const commentType = document.querySelector('input[name="commentType"]:checked').value;
+            
+            if (!commentText) {
+              alert('Please enter a comment.');
+              return;
+            }
+            
+            // Create comment object
+            const comment = {
+              id: generateCommentId(),
+              pageId: window.currentPage,
+              type: commentType,
+              text: commentText,
+              selectedText: window.currentSelection.text,
+              timestamp: new Date().toISOString(),
+              resolved: false
+            };
+            
+            // Store comment
+            if (!window.reviewData[window.currentPage]) {
+              window.reviewData[window.currentPage] = {
+                comments: [],
+                lastModified: new Date().toISOString()
+              };
+            }
+            
+            window.reviewData[window.currentPage].comments.push(comment);
+            window.reviewData[window.currentPage].lastModified = new Date().toISOString();
+            
+            // Persist to localStorage
+            localStorage.setItem('reviewData', JSON.stringify(window.reviewData));
+            
+            // Highlight the selected text in the document
+            highlightTextInDocument(window.currentSelection, comment);
+            
+            // Update comment panel
+            updateCommentPanel();
+            
+            // Update toolbar
+            addReviewToolbar();
+            
+            closeCommentDialog();
+            
+            debug('Comment saved:', comment);
+          }
+
+          function highlightTextInDocument(selection, comment) {
+            const span = document.createElement('span');
+            span.className = comment.type === 'suggestion' ? 'review-suggestion-highlight' : 'review-comment-highlight';
+            span.setAttribute('data-comment-id', comment.id);
+            span.title = `${comment.type}: ${comment.text}`;
+            
+            // Add click handler to show comment details
+            span.addEventListener('click', () => showCommentDetails(comment.id));
+            
+            try {
+              selection.range.surroundContents(span);
+            } catch (e) {
+              // Fallback for complex selections
+              span.textContent = selection.text;
+              selection.range.deleteContents();
+              selection.range.insertNode(span);
+            }
+          }
+
+          function generateCommentId() {
+            return 'comment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          }
+
+          function getCommentsForPage(pageId) {
+            return window.reviewData[pageId] ? window.reviewData[pageId].comments : [];
+          }
+
+          function updateCommentPanel() {
+            const commentList = document.getElementById('commentList');
+            if (!commentList) return;
+            
+            const comments = getCommentsForPage(window.currentPage);
+            
+            if (comments.length === 0) {
+              commentList.innerHTML = '<p style="color: #666; font-style: italic;">No comments yet. Select text and add your first comment!</p>';
+              return;
+            }
+            
+            commentList.innerHTML = comments.map(comment => `
+              <div class="comment-item ${comment.type}" data-comment-id="${comment.id}">
+                <div class="comment-header">
+                  <span class="comment-type ${comment.type}">${comment.type}</span>
+                  <span>${new Date(comment.timestamp).toLocaleString()}</span>
+                </div>
+                <div style="font-weight: bold; margin-bottom: 5px; font-size: 0.9em; color: #555;">
+                  "${comment.selectedText}"
+                </div>
+                <div class="comment-content">${comment.text}</div>
+                <div class="comment-actions">
+                  ${!comment.resolved ? `<button class="comment-btn resolve" onclick="resolveComment('${comment.id}')">Resolve</button>` : '<span style="color: #4caf50; font-size: 0.8em;">✓ Resolved</span>'}
+                  <button class="comment-btn delete" onclick="deleteComment('${comment.id}')">Delete</button>
+                </div>
+              </div>
+            `).join('');
+          }
+
+          function toggleCommentPanel() {
+            document.body.classList.toggle('show-comments');
+            updateCommentPanel();
+          }
+
+          function showCommentDetails(commentId) {
+            const comment = getCommentsForPage(window.currentPage).find(c => c.id === commentId);
+            if (comment) {
+              alert(`${comment.type.toUpperCase()}: ${comment.text}\n\nSelected text: "${comment.selectedText}"\nCreated: ${new Date(comment.timestamp).toLocaleString()}`);
+            }
+          }
+
+          function resolveComment(commentId) {
+            const pageData = window.reviewData[window.currentPage];
+            if (pageData) {
+              const comment = pageData.comments.find(c => c.id === commentId);
+              if (comment) {
+                comment.resolved = true;
+                localStorage.setItem('reviewData', JSON.stringify(window.reviewData));
+                updateCommentPanel();
+                
+                // Update highlight styling
+                const highlight = document.querySelector(`[data-comment-id="${commentId}"]`);
+                if (highlight) {
+                  highlight.style.opacity = '0.5';
+                  highlight.title += ' (Resolved)';
+                }
+              }
+            }
+          }
+
+          function deleteComment(commentId) {
+            if (!confirm('Are you sure you want to delete this comment?')) return;
+            
+            const pageData = window.reviewData[window.currentPage];
+            if (pageData) {
+              pageData.comments = pageData.comments.filter(c => c.id !== commentId);
+              localStorage.setItem('reviewData', JSON.stringify(window.reviewData));
+              
+              // Remove highlight from document
+              const highlight = document.querySelector(`[data-comment-id="${commentId}"]`);
+              if (highlight) {
+                const parent = highlight.parentNode;
+                parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+                parent.removeChild(highlight);
+              }
+              
+              updateCommentPanel();
+              addReviewToolbar(); // Update comment count
+            }
+          }
+
+          function loadReviewDataForPage(pageId) {
+            const comments = getCommentsForPage(pageId);
+            
+            // Clear existing highlights
+            const existingHighlights = document.querySelectorAll('[data-comment-id]');
+            existingHighlights.forEach(highlight => {
+              const parent = highlight.parentNode;
+              parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+              parent.removeChild(highlight);
+            });
+            
+            // Re-apply highlights (simplified version - in production you'd want more sophisticated text matching)
+            comments.forEach(comment => {
+              const textNodes = getAllTextNodes(contentEl);
+              textNodes.forEach(node => {
+                if (node.textContent.includes(comment.selectedText)) {
+                  const parent = node.parentNode;
+                  const index = node.textContent.indexOf(comment.selectedText);
+                  
+                  if (index !== -1) {
+                    const beforeText = node.textContent.substring(0, index);
+                    const selectedText = comment.selectedText;
+                    const afterText = node.textContent.substring(index + selectedText.length);
+                    
+                    const span = document.createElement('span');
+                    span.className = comment.type === 'suggestion' ? 'review-suggestion-highlight' : 'review-comment-highlight';
+                    span.setAttribute('data-comment-id', comment.id);
+                    span.textContent = selectedText;
+                    span.title = `${comment.type}: ${comment.text}`;
+                    span.addEventListener('click', () => showCommentDetails(comment.id));
+                    
+                    if (comment.resolved) {
+                      span.style.opacity = '0.5';
+                      span.title += ' (Resolved)';
+                    }
+                    
+                    // Replace the text node
+                    parent.removeChild(node);
+                    if (beforeText) parent.appendChild(document.createTextNode(beforeText));
+                    parent.appendChild(span);
+                    if (afterText) parent.appendChild(document.createTextNode(afterText));
+                    
+                    return; // Only highlight first occurrence
+                  }
+                }
+              });
+            });
+          }
+
+          function getAllTextNodes(element) {
+            const textNodes = [];
+            const walker = document.createTreeWalker(
+              element,
+              NodeFilter.SHOW_TEXT,
+              null,
+              false
+            );
+            
+            let node;
+            while (node = walker.nextNode()) {
+              if (node.textContent.trim()) {
+                textNodes.push(node);
+              }
+            }
+            
+            return textNodes;
+          }
+
+          function saveReviewSnapshot() {
+            const snapshot = {
+              pageId: window.currentPage,
+              pageTitle: getPageTitle(window.currentPage),
+              content: contentEl.innerHTML,
+              comments: getCommentsForPage(window.currentPage),
+              timestamp: new Date().toISOString()
+            };
+            
+            const dataStr = JSON.stringify(snapshot, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `review-snapshot-${window.currentPage}-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            
+            URL.revokeObjectURL(url);
+          }
+
+          function exportReviewData() {
+            if (Object.keys(window.reviewData).length === 0) {
+              alert('No review data to export.');
+              return;
+            }
+            
+            const exportData = {
+              exportDate: new Date().toISOString(),
+              totalPages: Object.keys(window.reviewData).length,
+              totalComments: Object.values(window.reviewData).reduce((sum, page) => sum + page.comments.length, 0),
+              data: window.reviewData
+            };
+            
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `review-data-export-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            
+            URL.revokeObjectURL(url);
+          }
+
+          function clearReviewData() {
+            if (!confirm('Are you sure you want to clear all review data? This cannot be undone.')) return;
+            
+            window.reviewData = {};
+            localStorage.removeItem('reviewData');
+            
+            // Clear highlights from current page
+            const highlights = document.querySelectorAll('[data-comment-id]');
+            highlights.forEach(highlight => {
+              const parent = highlight.parentNode;
+              parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+              parent.removeChild(highlight);
+            });
+            
+            // Update UI
+            updateCommentPanel();
+            if (window.reviewMode) {
+              addReviewToolbar();
+            }
+            
+            alert('All review data has been cleared.');
+          }
+
+          // Make functions available globally
+          window.toggleReviewMode = toggleReviewMode;
+          window.startReviewSession = startReviewSession;
+          window.exportReviewData = exportReviewData;
+          window.clearReviewData = clearReviewData;
+          window.saveReviewSnapshot = saveReviewSnapshot;
+          window.toggleCommentPanel = toggleCommentPanel;
+          window.showCommentDetails = showCommentDetails;
+          window.resolveComment = resolveComment;
+          window.deleteComment = deleteComment;
+          window.closeCommentDialog = closeCommentDialog;
+          window.saveComment = saveComment;
+
           // Enhance tables with OxygenXML-like styling
           function enhanceTables() {
             const tables = document.querySelectorAll('#content table');
             tables.forEach(table => {
-              // Add OxygenXML-like classes
               if (!table.className.includes('table')) {
                 table.classList.add('table');
               }
               
-              // Wrap tables in container for responsive design
               if (!table.parentElement.className.includes('table-container')) {
                 const wrapper = document.createElement('div');
                 wrapper.className = 'table-container';
@@ -1022,16 +1913,13 @@ jobs:
 
           // Update active state in navigation
           function updateActiveNavItem(pageId) {
-            // Remove active class from all nav items
             const allNavItems = document.querySelectorAll('.sidebar a');
             allNavItems.forEach(item => item.classList.remove('active'));
 
-            // Add active class to current page nav item
             const activeItem = document.querySelector(`.sidebar a[data-id="${pageId}"]`);
             if (activeItem) {
               activeItem.classList.add('active');
 
-              // Make sure the parents are expanded
               let parent = activeItem.parentElement;
               while (parent && !parent.classList.contains('sidebar')) {
                 if (parent.classList.contains('has-children')) {
@@ -1056,12 +1944,10 @@ jobs:
 
           // Get page title from content manifest
           function getPageTitle(pageId) {
-            // First try contentIdMap
             if (window.contentIdMap && contentIdMap[pageId]) {
               return contentIdMap[pageId].title;
             }
 
-            // Then try navigation config
             function findTitleInNav(items, id) {
               for (const item of items) {
                 if (item.id === id) {
@@ -1078,18 +1964,17 @@ jobs:
             const navTitle = findTitleInNav(navigationConfig, pageId);
             if (navTitle) return navTitle;
 
-            // Fallback: generate title from ID
             return pageId.split(/-|_/).map(word =>
               word.charAt(0).toUpperCase() + word.slice(1)
             ).join(' ');
           }
 
-          // --- Search Functionality --- UPDATED
+          // Search functionality
           function performSearch() {
             const query = searchInput.value.toLowerCase().trim();
-            searchResultsEl.innerHTML = ''; // Clear previous results
+            searchResultsEl.innerHTML = '';
 
-            if (query.length < 2) { // Require at least 2 characters for search
+            if (query.length < 2) {
               if (query.length > 0) {
                 searchResultsEl.innerHTML = '<li><p>Please enter at least 2 characters to search.</p></li>';
               }
@@ -1108,16 +1993,14 @@ jobs:
                 let snippet = '';
                 let matchCount = 0;
 
-                // Check for title match
                 if (title.includes(query)) {
-                  matchCount += 10; // Higher weight for title match
+                  matchCount += 10;
                   snippet = `Found in title: "${highlightMatch(item.title, query)}"`;
                 }
 
-                // Check for content match
                 const contentMatches = content.split(query).length - 1;
                 if (contentMatches > 0) {
-                  matchCount += contentMatches; // Add weight for each content match
+                  matchCount += contentMatches;
                   const matchIndex = content.indexOf(query);
                   const start = Math.max(0, matchIndex - 50);
                   const end = Math.min(content.length, matchIndex + query.length + 50);
@@ -1131,7 +2014,6 @@ jobs:
               }
             }
 
-            // Sort results by score (most relevant first)
             results.sort((a, b) => b.score - a.score);
 
             if (results.length === 0) {
@@ -1146,22 +2028,18 @@ jobs:
                   e.preventDefault();
                   debug('Search result clicked for ID:', result.id);
                   
-                  // Verify content exists before navigating
                   if (!result.id || !contentIdMap[result.id]) {
                     debug('Invalid content ID in search result:', result.id);
                     alert('Error: Content not found. Please try another search result.');
                     return;
                   }
                   
-                  // Double check content file existence
                   fetch(`${basePath}/content/${result.id}.html`)
                     .then(response => {
                       if (!response.ok) {
                         throw new Error('Content file not found');
                       }
-                      // If content exists, navigate to the page
                       navigateToPage(result.id);
-                      // Clear search results after navigating
                       searchResultsEl.innerHTML = '';
                       searchInput.value = '';
                     })
@@ -1194,8 +2072,8 @@ jobs:
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create index.html (Updated for Search Bar and Results Position)
-      - name: Create Index HTML
+      # Step 10: Create Enhanced index.html with Review System UI
+      - name: Create Enhanced Index HTML with Review System
         run: |
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
@@ -1219,34 +2097,62 @@ jobs:
               }
             </script>
 
-            <title>Automotive Documentation</title>
+            <title>Automotive Documentation - Enhanced with Review System</title>
             <link rel="stylesheet" href="css/style.css">
           </head>
           <body>
             <div class="sidebar">
               <div class="sidebar-header">
                 <h2>Navigation</h2>
-                <!-- Updated search container HTML -->
+                <!-- Search container -->
                 <div class="search-container">
                   <input type="text" id="searchInput" placeholder="Search...">
                   <button id="searchButton">Search</button>
                 </div>
-                <!-- Moved search results directly under search container -->
+                <!-- Search results -->
                 <ul id="searchResults" class="search-results"></ul>
               </div>
+              
+              <!-- Review Controls Section -->
+              <div class="review-controls">
+                <h3>Review System</h3>
+                <div class="review-mode-toggle">
+                  <button id="reviewToggle" class="review-btn">Review Mode</button>
+                </div>
+                <button id="startReview" class="review-btn secondary">Start Review</button>
+                <div class="export-options">
+                  <button id="exportReview" class="export-btn">Export Reviews</button>
+                  <button id="clearReview" class="review-btn secondary" style="background: linear-gradient(135deg, #f44336, #d32f2f); margin-top: 5px;">Clear All</button>
+                </div>
+              </div>
+              
               <div class="sidebar-nav">
                 <div id="navigation"></div>
               </div>
             </div>
 
             <div class="main-content">
+              <!-- Review Toolbar (hidden by default) -->
+              <div class="review-toolbar">
+                <h3>Review Mode Active</h3>
+                <div class="review-toolbar-actions">
+                  <button class="review-toolbar-btn">Comments</button>
+                  <button class="review-toolbar-btn">Export</button>
+                </div>
+              </div>
+              
               <h1 id="content-title">Loading...</h1>
               <div id="loading">Loading content...</div>
               <div id="content">
                 <div class="initial-loading">
-                  <p>Initializing documentation viewer...</p>
+                  <p>Initializing enhanced documentation viewer with review system...</p>
                 </div>
               </div>
+            </div>
+
+            <!-- Print functionality -->
+            <div class="wh_print_link" style="position: fixed; top: 10px; right: 10px; z-index: 999;">
+              <button>🖨️ Print</button>
             </div>
 
             <script src="js/navigation-config.js"></script>
@@ -1315,6 +2221,7 @@ jobs:
           <h1>${title}</h1>
           <p>This section contains information about ${title}.</p>
           <p>Use the navigation menu to explore topics within this section.</p>
+          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
           EOF
             fi
           done < container-nodes.txt
@@ -1332,6 +2239,7 @@ jobs:
           <h1>${title}</h1>
           <p>This section contains information about ${title}.</p>
           <p>Use the navigation menu to explore topics within this section.</p>
+          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
           EOF
             done
           fi
