@@ -591,9 +591,54 @@ jobs:
             font-weight: bold;
           }
 
-          /* Review Mode Styling */
-          .review-mode .main-content {
-            background-color: #fffbf0;
+          /* Review Mode Restrictions - Hide all review UI in normal mode */
+          body:not(.review-mode) .review-toolbar,
+          body:not(.review-mode) .comment-panel,
+          body:not(.review-mode) .comment-dialog,
+          body:not(.review-mode) .dialog-overlay,
+          body:not(.review-mode) .image-modal,
+          body:not(.review-mode) [data-comment-id],
+          body:not(.review-mode) .review-comment-highlight,
+          body:not(.review-mode) .review-suggestion-highlight,
+          body:not(.review-mode) .image-comment-marker {
+            display: none !important;
+          }
+
+          /* Ensure clean main content in normal mode */
+          body:not(.review-mode) .main-content {
+            background-color: #ffffff;
+            padding-right: 30px;
+          }
+
+          /* Print button integration into main interface */
+          .main-print-button {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: linear-gradient(135deg, #00acc1, #0097a7);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+
+          .main-print-button:hover {
+            background: linear-gradient(135deg, #0097a7, #00838f);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          }
+
+          /* Review mode print integration */
+          .review-mode .main-print-button {
+            top: 70px; /* Move down when review toolbar is present */
           }
 
           .review-toolbar {
@@ -1221,6 +1266,9 @@ jobs:
           function initApp() {
             debug('Initializing app with base path:', basePath);
 
+            // Initialize review system first
+            initReviewSystem();
+
             // Render navigation
             renderNavigation(navigationConfig);
 
@@ -1255,8 +1303,9 @@ jobs:
               window.print();
             });
 
-            // Initialize review system UI
-            initReviewSystem();
+            // Ensure we start in normal mode (not review mode)
+            window.reviewMode = false;
+            document.body.classList.remove('review-mode', 'show-comments');
 
             // Check if we have a hash in the URL
             const initialPageId = getPageIdFromUrl();
@@ -1728,6 +1777,17 @@ jobs:
               document.body.classList.remove('review-mode', 'show-comments');
               // Clear any visible highlights from main view
               clearReviewHighlights();
+              
+              // Close any open dialogs
+              const commentDialog = document.getElementById('commentDialog');
+              const dialogOverlay = document.getElementById('dialogOverlay');
+              if (commentDialog) commentDialog.classList.remove('show');
+              if (dialogOverlay) dialogOverlay.classList.remove('show');
+              
+              // Hide image modal if open
+              const imageModal = document.getElementById('imageModal');
+              if (imageModal) imageModal.classList.remove('show');
+              
               debug('Review mode deactivated - returned to clean publication view');
             }
             
@@ -1787,16 +1847,28 @@ jobs:
               reviewToggleBtn.classList.toggle('active', window.reviewMode);
             }
             
-            // Only show review control buttons when in review mode
-            const reviewControls = document.querySelectorAll('.review-btn:not(#reviewToggle)');
-            reviewControls.forEach(btn => {
-              btn.style.display = window.reviewMode ? 'block' : 'none';
-            });
+            // Show/hide all review control buttons based on review mode
+            const startReviewBtn = document.getElementById('startReview');
+            if (startReviewBtn) {
+              startReviewBtn.style.display = window.reviewMode ? 'block' : 'none';
+            }
             
-            // Update export options visibility
             const exportOptions = document.querySelector('.export-options');
             if (exportOptions) {
               exportOptions.style.display = window.reviewMode ? 'block' : 'none';
+            }
+            
+            // Hide comment panel if exiting review mode
+            if (!window.reviewMode) {
+              document.body.classList.remove('show-comments');
+            }
+            
+            // Remove review toolbar if exiting review mode
+            if (!window.reviewMode) {
+              const existingToolbar = document.querySelector('.review-toolbar');
+              if (existingToolbar) {
+                existingToolbar.remove();
+              }
             }
           }
 
@@ -2316,6 +2388,12 @@ jobs:
           }
 
           function openSnapshotInNewWindow(snapshotHTML, pageTitle) {
+            // Final safeguard - ensure review mode is active
+            if (!window.reviewMode) {
+              alert('Print Snapshot functionality requires Review Mode to be active.');
+              return;
+            }
+            
             const printWindow = window.open('', '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
             
             const fullHTML = `
@@ -3047,8 +3125,8 @@ jobs:
                 <div class="review-mode-toggle">
                   <button id="reviewToggle" class="review-btn">Review Mode</button>
                 </div>
-                <button id="startReview" class="review-btn secondary">Start Review</button>
-                <div class="export-options">
+                <button id="startReview" class="review-btn secondary" style="display: none;">Start Review</button>
+                <div class="export-options" style="display: none;">
                   <button id="exportReview" class="export-btn">Export Reviews</button>
                   <button id="clearReview" class="review-btn secondary" style="background: linear-gradient(135deg, #f44336, #d32f2f); margin-top: 5px;">Clear All</button>
                 </div>
