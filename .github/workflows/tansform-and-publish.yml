@@ -761,35 +761,48 @@ jobs:
             margin-bottom: 8px;
           }
 
-          .tooltip-meta {
-            font-size: 0.8em;
-            opacity: 0.8;
-            border-top: 1px solid rgba(255,255,255,0.2);
-            padding-top: 6px;
-          }
-
-          /* Interactive tooltip buttons */
-          .tooltip-actions {
-            display: flex;
-            gap: 6px;
-            margin-top: 8px;
-            pointer-events: auto;
-          }
-
-          .tooltip-btn {
-            background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.3);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 3px;
-            font-size: 0.75em;
+          /* Image Comment Indicators */
+          .image-comment-marker {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            background: #2196f3;
+            border: 2px solid white;
+            border-radius: 50%;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            z-index: 100;
             transition: all 0.2s;
           }
 
-          .tooltip-btn:hover {
-            background: rgba(255,255,255,0.3);
-            transform: translateY(-1px);
+          .image-comment-marker.suggestion {
+            background: #ff9800;
+          }
+
+          .image-comment-marker:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+          }
+
+          .image-comment-container {
+            position: relative;
+            display: inline-block;
+          }
+
+          .reviewable-image {
+            cursor: crosshair;
+            border: 2px dashed transparent;
+            transition: border-color 0.2s;
+          }
+
+          .review-mode .reviewable-image:hover {
+            border-color: #2196f3;
           }
 
           .comment-panel h3 {
@@ -1462,7 +1475,7 @@ jobs:
                 contentEl.innerHTML = content;
                 enhanceTables();
                 
-                // Initialize review mode for current content if active
+                // Only initialize review features if in review mode
                 if (window.reviewMode) {
                   initializeReviewForContent();
                   loadReviewDataForPage(pageId);
@@ -1611,6 +1624,23 @@ jobs:
               element.addEventListener('mouseup', handleTextSelection);
             });
             
+            // Make images commentable
+            const images = contentEl.querySelectorAll('img');
+            images.forEach(image => {
+              image.classList.add('reviewable-image');
+              
+              // Wrap image in container for positioning markers
+              if (!image.parentElement.classList.contains('image-comment-container')) {
+                const container = document.createElement('div');
+                container.className = 'image-comment-container';
+                image.parentNode.insertBefore(container, image);
+                container.appendChild(image);
+              }
+              
+              // Add click event for image commenting
+              image.addEventListener('click', handleImageComment);
+            });
+            
             // Add review toolbar
             addReviewToolbar();
           }
@@ -1647,6 +1677,7 @@ jobs:
             
             // Store selection data for comment creation
             window.currentSelection = {
+              type: 'text',
               text: selectedText,
               element: event.target,
               range: range.cloneRange()
@@ -1654,6 +1685,32 @@ jobs:
             
             // Show comment dialog
             setTimeout(() => showCommentDialog(), 100);
+          }
+
+          function handleImageComment(event) {
+            if (!window.reviewMode) return;
+            
+            event.preventDefault();
+            
+            const image = event.target;
+            const rect = image.getBoundingClientRect();
+            const containerRect = image.parentElement.getBoundingClientRect();
+            
+            // Calculate click position relative to image
+            const x = ((event.clientX - rect.left) / rect.width) * 100;
+            const y = ((event.clientY - rect.top) / rect.height) * 100;
+            
+            // Store image selection data
+            window.currentSelection = {
+              type: 'image',
+              element: image,
+              position: { x: x, y: y },
+              imageSrc: image.src,
+              imageAlt: image.alt || 'Image'
+            };
+            
+            // Show comment dialog
+            showCommentDialog();
           }
 
           function showCommentDialog() {
@@ -1698,16 +1755,25 @@ jobs:
               return;
             }
             
-            // Create comment object
+            // Create comment object (handle both text and image comments)
             const comment = {
               id: generateCommentId(),
               pageId: window.currentPage,
               type: commentType,
               text: commentText,
-              selectedText: window.currentSelection.text,
               timestamp: new Date().toISOString(),
-              resolved: false
+              resolved: false,
+              selectionType: window.currentSelection.type
             };
+            
+            if (window.currentSelection.type === 'text') {
+              comment.selectedText = window.currentSelection.text;
+            } else if (window.currentSelection.type === 'image') {
+              comment.imageSrc = window.currentSelection.imageSrc;
+              comment.imageAlt = window.currentSelection.imageAlt;
+              comment.position = window.currentSelection.position;
+              comment.selectedText = `Image: ${window.currentSelection.imageAlt}`;
+            }
             
             // Store comment
             if (!window.reviewData[window.currentPage]) {
@@ -1723,8 +1789,12 @@ jobs:
             // Persist to localStorage
             localStorage.setItem('reviewData', JSON.stringify(window.reviewData));
             
-            // Highlight the selected text in the document
-            highlightTextInDocument(window.currentSelection, comment);
+            // Add visual indicator to document
+            if (window.currentSelection.type === 'text') {
+              highlightTextInDocument(window.currentSelection, comment);
+            } else if (window.currentSelection.type === 'image') {
+              addImageCommentMarker(window.currentSelection, comment);
+            }
             
             // Update comment panel
             updateCommentPanel();
@@ -1756,6 +1826,29 @@ jobs:
             }
           }
 
+          function addImageCommentMarker(selection, comment) {
+            const image = selection.element;
+            const container = image.parentElement;
+            
+            // Create marker element
+            const marker = document.createElement('div');
+            marker.className = `image-comment-marker ${comment.type}`;
+            marker.setAttribute('data-comment-id', comment.id);
+            marker.innerHTML = '💬';
+            
+            // Position marker based on click coordinates
+            marker.style.left = selection.position.x + '%';
+            marker.style.top = selection.position.y + '%';
+            marker.style.transform = 'translate(-50%, -50%)';
+            
+            // Add hover events for tooltip
+            marker.addEventListener('mouseenter', (e) => showTooltip(e, comment));
+            marker.addEventListener('mouseleave', hideTooltip);
+            
+            // Add marker to container
+            container.appendChild(marker);
+          }
+
           // Hover Tooltip Functions
           function showTooltip(event, comment) {
             if (!window.reviewMode) return;
@@ -1763,7 +1856,7 @@ jobs:
             const tooltip = document.getElementById('commentTooltip');
             if (!tooltip) return;
             
-            // Set tooltip content
+            // Set tooltip content (simplified - no action buttons)
             tooltip.className = `comment-tooltip ${comment.type} show`;
             tooltip.innerHTML = `
               <div class="tooltip-header">${comment.type.toUpperCase()}</div>
@@ -1772,10 +1865,6 @@ jobs:
                 Selected: "${comment.selectedText}"<br>
                 ${new Date(comment.timestamp).toLocaleString()}
                 ${comment.resolved ? '<br>✓ Resolved' : ''}
-              </div>
-              <div class="tooltip-actions">
-                ${!comment.resolved ? `<button class="tooltip-btn" onclick="resolveComment('${comment.id}')">Resolve</button>` : ''}
-                <button class="tooltip-btn" onclick="deleteComment('${comment.id}')">Delete</button>
               </div>
             `;
             
@@ -1830,7 +1919,7 @@ jobs:
             const comments = getCommentsForPage(window.currentPage);
             
             if (comments.length === 0) {
-              commentList.innerHTML = '<p style="color: #666; font-style: italic;">No comments yet. Select text and add your first comment!</p>';
+              commentList.innerHTML = '<p style="color: #666; font-style: italic;">No comments yet. Select text or click on images to add your first comment!</p>';
               return;
             }
             
@@ -1840,8 +1929,8 @@ jobs:
                   <span class="comment-type ${comment.type}">${comment.type}</span>
                   <span>${new Date(comment.timestamp).toLocaleString()}</span>
                 </div>
-                <div style="font-weight: bold; margin-bottom: 5px; font-size: 0.9em; color: #555;">
-                  "${comment.selectedText}"
+                <div style="font-weight: bold; margin-bottom: 5px; font-size: 0.9em; color: #555; cursor: pointer;" onclick="scrollToComment('${comment.id}')">
+                  "${comment.selectedText}" ${comment.selectionType === 'image' ? '🖼️' : ''}
                 </div>
                 <div class="comment-content">${comment.text}</div>
                 <div class="comment-actions">
@@ -1852,16 +1941,32 @@ jobs:
             `).join('');
           }
 
+          function scrollToComment(commentId) {
+            const element = document.querySelector(`[data-comment-id="${commentId}"]`);
+            if (element) {
+              // Scroll element into view with smooth behavior
+              element.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'center',
+                inline: 'nearest'
+              });
+              
+              // Highlight the element temporarily
+              const originalStyle = element.style.cssText;
+              element.style.boxShadow = '0 0 15px #2196f3';
+              element.style.transform = 'scale(1.05)';
+              element.style.transition = 'all 0.3s ease';
+              
+              // Remove highlight after 2 seconds
+              setTimeout(() => {
+                element.style.cssText = originalStyle;
+              }, 2000);
+            }
+          }
+
           function toggleCommentPanel() {
             document.body.classList.toggle('show-comments');
             updateCommentPanel();
-          }
-
-          function showCommentDetails(commentId) {
-            const comment = getCommentsForPage(window.currentPage).find(c => c.id === commentId);
-            if (comment) {
-              alert(`${comment.type.toUpperCase()}: ${comment.text}\n\nSelected text: "${comment.selectedText}"\nCreated: ${new Date(comment.timestamp).toLocaleString()}`);
-            }
           }
 
           function resolveComment(commentId) {
@@ -2028,9 +2133,14 @@ jobs:
             const highlights = document.querySelectorAll('[data-comment-id]');
             highlights.forEach(highlight => {
               const parent = highlight.parentNode;
-              parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
-              parent.removeChild(highlight);
+              if (parent) {
+                parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+                parent.removeChild(highlight);
+              }
             });
+            
+            // Hide any visible tooltip
+            hideTooltip();
             
             // Update UI
             updateCommentPanel();
@@ -2048,11 +2158,12 @@ jobs:
           window.clearReviewData = clearReviewData;
           window.saveReviewSnapshot = saveReviewSnapshot;
           window.toggleCommentPanel = toggleCommentPanel;
-          window.showCommentDetails = showCommentDetails;
           window.resolveComment = resolveComment;
           window.deleteComment = deleteComment;
           window.closeCommentDialog = closeCommentDialog;
           window.saveComment = saveComment;
+          window.showTooltip = showTooltip;
+          window.hideTooltip = hideTooltip;
 
           // Enhance tables with OxygenXML-like styling
           function enhanceTables() {
