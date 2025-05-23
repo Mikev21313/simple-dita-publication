@@ -618,7 +618,7 @@ jobs:
             background: linear-gradient(135deg, #f57c00, #ef6c00);
           }
 
-          /* FIXED: Non-distorting comment panel */
+          /* FIXED: Non-distorting comment panel with proper isolation */
           .comment-panel {
             background: #f8f9fa;
             border: 1px solid #dee2e6;
@@ -627,6 +627,10 @@ jobs:
             padding: 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             display: none;
+            position: relative;
+            z-index: 1;
+            clear: both;
+            overflow: hidden;
           }
 
           .review-mode .comment-panel {
@@ -647,9 +651,106 @@ jobs:
             transition: background-color 0.3s ease;
           }
 
-          /* Remove problematic layout changes */
-          .review-mode .content-area {
-            order: unset;
+          /* Comment item styling fixes */
+          .comment-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            position: relative;
+            clear: both;
+            overflow: hidden;
+          }
+
+          .comment-item.suggestion {
+            background: #fff8e1;
+            border-color: #ffcc02;
+          }
+
+          /* Image preview in comments - clickable */
+          .comment-image-preview {
+            max-width: 150px;
+            max-height: 100px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 8px 0;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            display: block;
+          }
+
+          .comment-image-preview:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          }
+
+          .image-caption {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 4px;
+          }
+
+          /* Image Modal for full-size viewing */
+          .image-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            padding: 20px;
+            box-sizing: border-box;
+          }
+
+          .image-modal.show {
+            display: flex;
+          }
+
+          .image-modal img {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+          }
+
+          .image-modal .close-btn {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            background: rgba(255,255,255,0.9);
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+          }
+
+          .image-modal .close-btn:hover {
+            background: white;
+          }
+
+          /* Image info overlay */
+          .image-modal .image-info {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 0.9em;
           }
 
           /* FIXED: Non-distorting review toolbar */
@@ -1071,6 +1172,13 @@ jobs:
             margin: 1em auto;
             border: 1px solid #e0e0e0;
             border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+          }
+
+          .main-content img:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
           }
 
           /* Table styling */
@@ -1345,7 +1453,7 @@ jobs:
             }
           }
 
-          // Create Comment Dialog
+          // Create Comment Dialog with Image Upload
           function createCommentDialog() {
             let overlay = document.getElementById('dialogOverlay');
             let dialog = document.getElementById('commentDialog');
@@ -1377,13 +1485,88 @@ jobs:
                 <div style="margin: 15px 0;">
                   <textarea id="commentText" placeholder="Enter your comment or suggestion..."></textarea>
                 </div>
+                <div class="image-upload-section" style="margin: 15px 0;">
+                  <label for="imageUpload" style="display: block; margin-bottom: 8px; font-weight: bold;">📷 Attach Images (optional):</label>
+                  <input type="file" id="imageUpload" accept="image/*" multiple style="margin-bottom: 10px;">
+                  <div id="imagePreview" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
+                </div>
                 <div class="dialog-actions">
                   <button class="dialog-btn secondary" onclick="closeCommentDialog()">Cancel</button>
                   <button class="dialog-btn primary" onclick="saveComment()">Save</button>
                 </div>
               `;
               document.body.appendChild(dialog);
+              
+              // Set up image upload functionality
+              setupImageUpload();
             }
+          }
+
+          // Setup Image Upload Functionality
+          function setupImageUpload() {
+            const imageUpload = document.getElementById('imageUpload');
+            const imagePreview = document.getElementById('imagePreview');
+            
+            // Store uploaded images for current comment
+            window.currentCommentImages = [];
+            
+            if (imageUpload) {
+              imageUpload.addEventListener('change', handleImageFiles);
+            }
+          }
+
+          function handleImageFiles(event) {
+            const files = Array.from(event.target.files);
+            processImageFiles(files);
+          }
+
+          function processImageFiles(files) {
+            files.forEach(file => {
+              if (file.type.startsWith('image/') && file.size < 5 * 1024 * 1024) { // 5MB limit
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                  const imageData = {
+                    id: generateImageId(),
+                    data: e.target.result,
+                    name: file.name,
+                    size: file.size,
+                    type: file.type
+                  };
+                  
+                  window.currentCommentImages.push(imageData);
+                  updateImagePreview();
+                };
+                reader.readAsDataURL(file);
+              } else if (file.size >= 5 * 1024 * 1024) {
+                alert(`Image "${file.name}" is too large. Please use images smaller than 5MB.`);
+              }
+            });
+          }
+
+          function generateImageId() {
+            return 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          }
+
+          function updateImagePreview() {
+            const imagePreview = document.getElementById('imagePreview');
+            
+            if (!imagePreview || window.currentCommentImages.length === 0) {
+              if (imagePreview) imagePreview.innerHTML = '';
+              return;
+            }
+            
+            imagePreview.innerHTML = window.currentCommentImages.map(img => `
+              <div style="position: relative; display: inline-block;">
+                <img src="${img.data}" alt="${img.name}" style="width: 80px; height: 60px; object-fit: cover; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" onclick="showImageModal('${img.data}', '${img.name}', '${img.name} (${(img.size / 1024).toFixed(1)} KB)')">
+                <button onclick="removeImageFromComment('${img.id}')" style="position: absolute; top: -5px; right: -5px; background: #dc3545; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; cursor: pointer;">×</button>
+                <div style="font-size: 0.7em; text-align: center; margin-top: 2px; max-width: 80px; overflow: hidden; text-overflow: ellipsis;">${img.name}</div>
+              </div>
+            `).join('');
+          }
+
+          function removeImageFromComment(imageId) {
+            window.currentCommentImages = window.currentCommentImages.filter(img => img.id !== imageId);
+            updateImagePreview();
           }
 
           // Toggle Review Mode - simplified and non-distorting
@@ -1429,6 +1612,20 @@ jobs:
                   parent.insertBefore(document.createTextNode(element.textContent), element);
                   parent.removeChild(element);
                 }
+              }
+            });
+            
+            // Clean up review-specific classes and event handlers
+            const reviewableElements = document.querySelectorAll('.reviewable-text, .reviewable-image');
+            reviewableElements.forEach(element => {
+              element.classList.remove('reviewable-text', 'reviewable-image');
+              
+              if (element.tagName === 'IMG') {
+                // Remove review mode click handler
+                element.removeEventListener('click', handleImageComment);
+              } else {
+                // Remove text selection handler
+                element.removeEventListener('mouseup', handleTextSelection);
               }
             });
             
@@ -1478,7 +1675,7 @@ jobs:
               element.addEventListener('mouseup', handleTextSelection);
             });
             
-            // Make images commentable
+            // Make images commentable in review mode
             const images = contentEl.querySelectorAll('img');
             images.forEach(image => {
               image.classList.add('reviewable-image');
@@ -1491,6 +1688,7 @@ jobs:
                 container.appendChild(image);
               }
               
+              // Add review mode click handler (will prevent modal from opening)
               image.addEventListener('click', handleImageComment);
             });
             
@@ -1544,6 +1742,7 @@ jobs:
             if (!window.reviewMode) return;
             
             event.preventDefault();
+            event.stopPropagation(); // Prevent modal from opening
             
             const image = event.target;
             
@@ -1562,6 +1761,17 @@ jobs:
             const overlay = document.getElementById('dialogOverlay');
             
             if (dialog && overlay) {
+              // Reset image upload state
+              window.currentCommentImages = [];
+              const imagePreview = document.getElementById('imagePreview');
+              if (imagePreview) {
+                imagePreview.innerHTML = '';
+              }
+              const imageUpload = document.getElementById('imageUpload');
+              if (imageUpload) {
+                imageUpload.value = '';
+              }
+              
               dialog.classList.add('show');
               overlay.classList.add('show');
               
@@ -1592,6 +1802,17 @@ jobs:
               commentRadio.checked = true;
             }
             
+            // Clear uploaded images
+            window.currentCommentImages = [];
+            const imagePreview = document.getElementById('imagePreview');
+            if (imagePreview) {
+              imagePreview.innerHTML = '';
+            }
+            const imageUpload = document.getElementById('imageUpload');
+            if (imageUpload) {
+              imageUpload.value = '';
+            }
+            
             // Clear selection
             window.getSelection().removeAllRanges();
             window.currentSelection = null;
@@ -1614,8 +1835,8 @@ jobs:
             const commentText = commentTextEl.value.trim();
             const commentType = commentTypeEl.value;
             
-            if (!commentText) {
-              alert('Please enter a comment.');
+            if (!commentText && (!window.currentCommentImages || window.currentCommentImages.length === 0)) {
+              alert('Please enter a comment or attach at least one image.');
               return;
             }
             
@@ -1626,7 +1847,8 @@ jobs:
               text: commentText,
               timestamp: new Date().toISOString(),
               resolved: false,
-              selectionType: window.currentSelection.type
+              selectionType: window.currentSelection.type,
+              uploadedImages: window.currentCommentImages ? [...window.currentCommentImages] : []
             };
             
             if (window.currentSelection.type === 'text') {
@@ -1661,7 +1883,7 @@ jobs:
             addReviewToolbar();
             closeCommentDialog();
             
-            debug('Comment saved:', comment);
+            debug('Comment saved with images:', comment);
           }
 
           function highlightTextInDocument(selection, comment) {
@@ -2092,6 +2314,9 @@ jobs:
           window.saveComment = saveComment;
           window.scrollToComment = scrollToComment;
           window.handleMainPrint = handleMainPrint;
+          window.showImageModal = showImageModal;
+          window.closeImageModal = closeImageModal;
+          window.removeImageFromComment = removeImageFromComment;
 
           // Function to show welcome screen
           function showWelcomeScreen() {
@@ -2400,7 +2625,7 @@ jobs:
             document.body.classList.remove('loading');
           }
 
-          // Enhance tables
+          // Enhance tables and make images clickable
           function enhanceTables() {
             if (!contentEl) return;
             
@@ -2417,6 +2642,30 @@ jobs:
                 wrapper.appendChild(table);
               }
             });
+            
+            // Make all images in content clickable to open in modal
+            const images = contentEl.querySelectorAll('img');
+            images.forEach(image => {
+              // Remove any existing click handlers to avoid duplicates
+              image.removeEventListener('click', openImageInModal);
+              
+              // Add click handler for modal viewing (always available)
+              image.addEventListener('click', function(e) {
+                // Only open modal if not in review mode or if review mode click didn't handle it
+                if (!window.reviewMode || !e.defaultPrevented) {
+                  e.preventDefault();
+                  const imageName = image.alt || image.src.split('/').pop() || 'Image';
+                  showImageModal(image.src, imageName, `Click anywhere outside to close • ${imageName}`);
+                }
+              });
+            });
+          }
+
+          function openImageInModal(event) {
+            event.preventDefault();
+            const image = event.target;
+            const imageName = image.alt || image.src.split('/').pop() || 'Image';
+            showImageModal(image.src, imageName, `Click anywhere outside to close • ${imageName}`);
           }
 
           // Make navigateToPage available globally
