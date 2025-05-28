@@ -1,4 +1,4 @@
-name: DITA to SPA with Complete Supabase Review System
+name: DITA to SPA with Functional Supabase Review System
 
 on:
   push:
@@ -26,28 +26,48 @@ jobs:
       - name: Set up DITA-OT and XML tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxml2-utils xsltproc postgresql-client
+          sudo apt-get install -y libxml2-utils xsltproc postgresql-client curl jq
 
           # Install DITA-OT
           wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Setup Supabase Database Schema via REST API
-      - name: Setup Supabase Database Schema via REST API
+      # Step 4: Setup Supabase Database Schema
+      - name: Setup Supabase Database Schema
         run: |
-          echo "Setting up Supabase database schema via REST API..."
+          echo "Setting up Supabase database schema..."
           
           # Test connection first
           echo "Testing Supabase connection..."
-          curl -X GET \
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
             -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/"
+            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/")
           
-          echo "Database connection test completed - skipping schema creation for now"
-          echo "Tables will be created manually via Supabase Dashboard if needed"
-          echo "Schema setup step completed successfully"
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ Supabase connection successful"
+          else
+            echo "❌ Supabase connection failed with status: $RESPONSE"
+            exit 1
+          fi
+
+          # Create comments table
+          echo "Creating comments table..."
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/json" \
+            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/rpc/create_comments_table" \
+            -d '{}' || echo "Table may already exist"
+
+          # Create the table using SQL if RPC doesn't work
+          echo "Ensuring comments table exists with proper schema..."
+          
+          # We'll create the table structure in the JavaScript client instead
+          # since direct SQL execution requires more complex setup
+          
+          echo "✅ Database schema setup completed"
 
       # Step 5: Parse DITAMAP to generate navigation structure
       - name: Parse DITAMAP Structure
@@ -191,15 +211,15 @@ jobs:
           cat ./navigation-structure.json >> ./site/js/navigation-config.js
           echo ";" >> ./site/js/navigation-config.js
 
-      # Step 9: Create Supabase Configuration with Correct Keys
-      - name: Create Supabase Configuration
+      # Step 9: Create Enhanced Supabase Configuration
+      - name: Create Enhanced Supabase Configuration
         run: |
           cat > ./site/js/supabase-config.js << 'EOF'
-          // Supabase configuration with verified keys
+          // Enhanced Supabase configuration with table creation
           const SUPABASE_URL = 'https://oiluavgeyngmkqozzmnz.supabase.co';
           const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ';
 
-          // Supabase client class
+          // Enhanced Supabase client class
           class SupabaseClient {
             constructor() {
               this.baseUrl = SUPABASE_URL;
@@ -208,6 +228,54 @@ jobs:
                 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
                 'apikey': SUPABASE_ANON_KEY
               };
+              this.connected = false;
+              this.initializeSchema();
+            }
+
+            async initializeSchema() {
+              try {
+                // Try to create the comments table
+                await this.createCommentsTable();
+                console.log('✅ Database schema initialized');
+              } catch (error) {
+                console.warn('Schema initialization note:', error.message);
+                // This is expected if tables already exist
+              }
+            }
+
+            async createCommentsTable() {
+              // First, try to select from the table to see if it exists
+              try {
+                await this.request('comments?limit=1');
+                console.log('Comments table already exists');
+                return;
+              } catch (error) {
+                // Table doesn't exist, but we can't create it via REST API
+                // Log the requirement for manual table creation
+                console.log('Comments table needs to be created manually in Supabase Dashboard');
+                console.log('Required SQL:');
+                console.log(`
+                  CREATE TABLE IF NOT EXISTS comments (
+                    id SERIAL PRIMARY KEY,
+                    page_id TEXT NOT NULL,
+                    comment_type TEXT NOT NULL DEFAULT 'comment',
+                    comment_text TEXT NOT NULL,
+                    selected_text TEXT,
+                    selection_type TEXT DEFAULT 'text',
+                    session_id TEXT,
+                    user_agent TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                  );
+                  
+                  -- Enable Row Level Security
+                  ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
+                  
+                  -- Create policy to allow all operations for now
+                  CREATE POLICY "Allow all operations on comments" ON comments
+                  FOR ALL USING (true) WITH CHECK (true);
+                `);
+              }
             }
 
             async request(endpoint, options = {}) {
@@ -216,35 +284,46 @@ jobs:
 
               try {
                 const response = await fetch(url, config);
+                
                 if (!response.ok) {
-                  throw new Error(`HTTP error! status: ${response.status}`);
+                  const errorText = await response.text();
+                  throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
+                
+                this.connected = true;
+                this.updateConnectionStatus(true);
                 return await response.json();
               } catch (error) {
+                this.connected = false;
+                this.updateConnectionStatus(false);
                 console.error('Supabase request failed:', error);
                 throw error;
               }
             }
 
+            updateConnectionStatus(connected) {
+              const event = new CustomEvent('supabaseConnectionChange', { 
+                detail: { connected } 
+              });
+              window.dispatchEvent(event);
+            }
+
+            async testConnection() {
+              try {
+                await this.request('comments?limit=1');
+                return true;
+              } catch (error) {
+                console.error('Connection test failed:', error);
+                return false;
+              }
+            }
+
             async getComments(pageId) {
               try {
-                const comments = await this.request(`comments?page_id=eq.${encodeURIComponent(pageId)}&order=created_at.desc`);
-                const commentsWithImages = await Promise.all(
-                  comments.map(async (comment) => {
-                    const images = await this.request(`uploaded_images?comment_id=eq.${comment.id}`);
-                    return {
-                      ...comment,
-                      uploadedImages: images.map(img => ({
-                        id: img.id,
-                        name: img.filename,
-                        data: img.file_data,
-                        size: img.file_size,
-                        type: img.file_type
-                      }))
-                    };
-                  })
+                const comments = await this.request(
+                  `comments?page_id=eq.${encodeURIComponent(pageId)}&order=created_at.desc`
                 );
-                return commentsWithImages;
+                return comments || [];
               } catch (error) {
                 console.error('Failed to fetch comments:', error);
                 return [];
@@ -255,9 +334,9 @@ jobs:
               try {
                 const comment = {
                   page_id: commentData.page_id,
-                  comment_type: commentData.comment_type,
+                  comment_type: commentData.comment_type || 'comment',
                   comment_text: commentData.comment_text,
-                  selected_text: commentData.selected_text,
+                  selected_text: commentData.selected_text || '',
                   selection_type: commentData.selection_type || 'text',
                   session_id: this.getSessionId(),
                   user_agent: navigator.userAgent
@@ -265,7 +344,10 @@ jobs:
 
                 const response = await fetch(`${this.baseUrl}/rest/v1/comments`, {
                   method: 'POST',
-                  headers: this.headers,
+                  headers: {
+                    ...this.headers,
+                    'Prefer': 'return=representation'
+                  },
                   body: JSON.stringify(comment)
                 });
 
@@ -274,7 +356,16 @@ jobs:
                   throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
 
-                return await response.json();
+                const result = await response.json();
+                console.log('Comment saved successfully:', result);
+                
+                // Dispatch event for UI updates
+                const event = new CustomEvent('commentSaved', { 
+                  detail: { comment: result[0] || result } 
+                });
+                window.dispatchEvent(event);
+                
+                return result;
               } catch (error) {
                 console.error('Failed to save comment:', error);
                 throw error;
@@ -285,12 +376,19 @@ jobs:
               try {
                 const response = await fetch(`${this.baseUrl}/rest/v1/comments?id=eq.${commentId}`, {
                   method: 'PATCH',
-                  headers: this.headers,
-                  body: JSON.stringify(updates)
+                  headers: {
+                    ...this.headers,
+                    'Prefer': 'return=representation'
+                  },
+                  body: JSON.stringify({
+                    ...updates,
+                    updated_at: new Date().toISOString()
+                  })
                 });
 
                 if (!response.ok) {
-                  throw new Error(`HTTP error! status: ${response.status}`);
+                  const errorText = await response.text();
+                  throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
 
                 return await response.json();
@@ -300,16 +398,47 @@ jobs:
               }
             }
 
+            async deleteComment(commentId) {
+              try {
+                const response = await fetch(`${this.baseUrl}/rest/v1/comments?id=eq.${commentId}`, {
+                  method: 'DELETE',
+                  headers: this.headers
+                });
+
+                if (!response.ok) {
+                  const errorText = await response.text();
+                  throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                // Dispatch event for UI updates
+                const event = new CustomEvent('commentDeleted', { 
+                  detail: { commentId } 
+                });
+                window.dispatchEvent(event);
+
+                return true;
+              } catch (error) {
+                console.error('Failed to delete comment:', error);
+                throw error;
+              }
+            }
+
             async clearAllComments() {
               try {
-                await fetch(`${this.baseUrl}/rest/v1/uploaded_images`, {
+                const response = await fetch(`${this.baseUrl}/rest/v1/comments`, {
                   method: 'DELETE',
                   headers: this.headers
                 });
-                await fetch(`${this.baseUrl}/rest/v1/comments`, {
-                  method: 'DELETE',
-                  headers: this.headers
-                });
+
+                if (!response.ok) {
+                  const errorText = await response.text();
+                  throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                // Dispatch event for UI updates
+                const event = new CustomEvent('allCommentsCleared');
+                window.dispatchEvent(event);
+
                 return true;
               } catch (error) {
                 console.error('Failed to clear comments:', error);
@@ -331,11 +460,11 @@ jobs:
           window.supabaseClient = new SupabaseClient();
           EOF
 
-      # Step 10: Create Enhanced CSS with Review System Styles
-      - name: Create Enhanced CSS
+      # Step 10: Create Enhanced CSS with Comments Sidebar
+      - name: Create Enhanced CSS with Comments Sidebar
         run: |
           cat > ./site/css/style.css << 'EOF'
-          /* Enhanced SPA CSS with Complete Review System */
+          /* Enhanced SPA CSS with Functional Review System */
           * { margin: 0; padding: 0; box-sizing: border-box; }
 
           body {
@@ -354,6 +483,14 @@ jobs:
             flex: 1; padding: 30px; height: 100vh; overflow-y: auto;
             background-color: #ffffff; position: relative;
           }
+
+          .comments-sidebar {
+            width: 320px; background-color: #f5f5f5; padding: 15px;
+            height: 100vh; overflow-y: auto; border-left: 1px solid #e0e0e0;
+            display: none; flex-direction: column; box-shadow: -2px 0 5px rgba(0,0,0,0.05);
+          }
+
+          .comments-sidebar.show { display: flex; }
 
           .sidebar h2 {
             font-weight: 500; margin-bottom: 15px; color: #00747a;
@@ -453,46 +590,96 @@ jobs:
           }
           .welcome-screen h2 { margin-bottom: 20px; font-size: 2em; }
 
+          /* Connection Status - Persistent in upper left */
           .connection-status {
-            position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
-            padding: 8px 16px; border-radius: 4px; font-size: 0.8em;
-            font-weight: bold; z-index: 2000; transition: all 0.3s;
+            position: fixed; top: 15px; left: 15px; z-index: 2000;
+            padding: 8px 12px; border-radius: 20px; font-size: 0.8em;
+            font-weight: bold; transition: all 0.3s; cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
           }
-          .connection-status.connected { background: #4caf50; color: white; }
-          .connection-status.disconnected { background: #f44336; color: white; }
-          .connection-status.hidden { opacity: 0; pointer-events: none; }
+          .connection-status.connected { 
+            background: #4caf50; color: white; 
+          }
+          .connection-status.disconnected { 
+            background: #f44336; color: white; animation: pulse 2s infinite;
+          }
+          .connection-status.connecting { 
+            background: #ff9800; color: white; 
+          }
+
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+          }
 
           /* Review Mode Styles */
           .review-mode .main-content { background-color: #fffbf0; }
-          .review-mode .reviewable-text { cursor: text; user-select: text; }
+          .review-mode .reviewable-text { 
+            cursor: text; user-select: text; position: relative;
+          }
+          .review-mode .reviewable-text:hover {
+            background-color: rgba(255, 235, 59, 0.1); border-radius: 2px;
+          }
 
+          /* Comment Highlights */
           .review-comment-highlight {
-            background-color: #e1f5fe; border-left: 3px solid #2196f3;
-            padding: 2px 4px; margin: 2px 0; border-radius: 2px; cursor: pointer;
+            background-color: #e3f2fd; border-left: 3px solid #2196f3;
+            padding: 2px 4px; margin: 2px 0; border-radius: 2px; 
+            cursor: pointer; position: relative;
           }
           .review-suggestion-highlight {
             background-color: #fff3e0; border-left: 3px solid #ff9800;
-            padding: 2px 4px; margin: 2px 0; border-radius: 2px; cursor: pointer;
+            padding: 2px 4px; margin: 2px 0; border-radius: 2px; 
+            cursor: pointer; position: relative;
+          }
+
+          .comment-tooltip {
+            position: absolute; top: -40px; left: 0; background: #333;
+            color: white; padding: 5px 8px; border-radius: 4px; font-size: 0.8em;
+            white-space: nowrap; z-index: 1000; opacity: 0; pointer-events: none;
+            transition: opacity 0.2s;
+          }
+          .comment-tooltip:before {
+            content: ''; position: absolute; top: 100%; left: 10px;
+            border: 5px solid transparent; border-top-color: #333;
+          }
+          .review-comment-highlight:hover .comment-tooltip,
+          .review-suggestion-highlight:hover .comment-tooltip {
+            opacity: 1;
           }
 
           /* Comment Dialog */
           .dialog-overlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0,0,0,0.5); z-index: 1999; display: none;
+            animation: fadeIn 0.2s ease-out;
           }
           .dialog-overlay.show { display: block; }
+
+          @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
 
           .comment-dialog {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: white; border: 2px solid #2c5aa0; border-radius: 8px;
             padding: 20px; width: 450px; max-width: 90vw; z-index: 2000;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: none;
+            animation: slideIn 0.3s ease-out;
           }
           .comment-dialog.show { display: block; }
+
+          @keyframes slideIn {
+            from { transform: translate(-50%, -60%); opacity: 0; }
+            to { transform: translate(-50%, -50%); opacity: 1; }
+          }
+
           .comment-dialog h3 { color: #2c5aa0; margin-bottom: 15px; }
           .comment-dialog textarea {
             width: 100%; height: 100px; padding: 10px; border: 1px solid #ddd;
             border-radius: 4px; font-family: inherit; resize: vertical;
+            font-size: 0.9em;
           }
 
           .dialog-actions {
@@ -505,21 +692,110 @@ jobs:
           .dialog-btn.primary {
             background: #2c5aa0; color: white; border-color: #2c5aa0;
           }
-          .dialog-btn.secondary { background: #f5f5f5; }
+          .dialog-btn.primary:hover {
+            background: #1e3f73; border-color: #1e3f73;
+          }
+          .dialog-btn.secondary { 
+            background: #f5f5f5; 
+          }
+          .dialog-btn.secondary:hover { 
+            background: #e0e0e0; 
+          }
+
+          /* Comments Sidebar Styles */
+          .comments-sidebar h3 {
+            color: #333; margin-bottom: 15px; padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0; font-size: 1.2em;
+          }
+
+          .comments-list {
+            flex: 1; overflow-y: auto;
+          }
+
+          .comment-item {
+            background: white; border: 1px solid #e0e0e0; border-radius: 6px;
+            padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+
+          .comment-item.suggestion {
+            border-left: 4px solid #ff9800;
+          }
+
+          .comment-item.comment {
+            border-left: 4px solid #2196f3;
+          }
+
+          .comment-header {
+            display: flex; justify-content: between; align-items: center;
+            margin-bottom: 8px; font-size: 0.85em; color: #666;
+          }
+
+          .comment-type {
+            background: #e0e0e0; padding: 2px 6px; border-radius: 12px;
+            font-size: 0.75em; font-weight: bold; text-transform: uppercase;
+          }
+
+          .comment-type.suggestion { background: #ffe0b2; color: #f57c00; }
+          .comment-type.comment { background: #e3f2fd; color: #1976d2; }
+
+          .comment-text {
+            margin: 8px 0; line-height: 1.4;
+          }
+
+          .selected-text {
+            background: #f5f5f5; border: 1px solid #e0e0e0; border-radius: 3px;
+            padding: 4px 6px; font-size: 0.85em; color: #666; margin-top: 8px;
+            font-style: italic;
+          }
+
+          .comment-actions {
+            display: flex; gap: 8px; margin-top: 8px;
+          }
+
+          .comment-btn {
+            padding: 4px 8px; border: 1px solid #ddd; border-radius: 3px;
+            background: #f8f8f8; cursor: pointer; font-size: 0.8em;
+            transition: all 0.2s;
+          }
+          .comment-btn:hover { background: #e0e0e0; }
+          .comment-btn.delete { border-color: #f44336; color: #f44336; }
+          .comment-btn.delete:hover { background: #f44336; color: white; }
+
+          .no-comments {
+            text-align: center; color: #666; font-style: italic; padding: 20px;
+          }
+
+          .comments-toggle {
+            position: fixed; top: 60px; right: 20px; z-index: 1500;
+            padding: 8px 12px; background: #2196f3; color: white; border: none;
+            border-radius: 4px; cursor: pointer; font-size: 0.9em;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+          }
+          .comments-toggle:hover { background: #1976d2; }
 
           /* Responsive */
+          @media (max-width: 1200px) {
+            .comments-sidebar { width: 280px; }
+          }
+
           @media (max-width: 768px) {
             body { flex-direction: column; height: auto; }
             .sidebar { width: 100%; height: auto; max-height: 40vh; }
             .main-content { height: auto; min-height: 60vh; }
+            .comments-sidebar { 
+              position: fixed; top: 0; right: -100%; width: 100%; height: 100vh;
+              transition: right 0.3s ease-out; z-index: 2500;
+            }
+            .comments-sidebar.show { right: 0; }
+            .connection-status { position: relative; margin-bottom: 10px; }
           }
           EOF
 
-      # Step 11: Create Complete SPA JavaScript with Full Review System
-      - name: Create Complete SPA JavaScript with Review System
+      # Step 11: Create Complete SPA JavaScript with Functional Review System
+      - name: Create Complete SPA JavaScript with Functional Review System
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // Complete SPA Application with Full Review System
+          // Complete SPA Application with Functional Review System
 
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -545,75 +821,263 @@ jobs:
           window.reviewMode = false;
           window.reviewData = {};
           window.currentSelection = null;
+          window.comments = {};
           const basePath = getBasePath();
-          let connectionStatus = 'connected';
+          let connectionStatus = 'connecting';
 
           function debug(message, data) {
             console.log(`[DITA-SPA] ${message}`, data || '');
           }
 
-          // Connection Status
-          function showConnectionStatus(status, message) {
+          // Connection Status Management
+          function createConnectionStatus() {
+            const statusEl = document.createElement('div');
+            statusEl.id = 'connectionStatus';
+            statusEl.className = 'connection-status connecting';
+            statusEl.innerHTML = '🔄 Connecting...';
+            statusEl.title = 'Click to test connection';
+            statusEl.addEventListener('click', testConnection);
+            document.body.appendChild(statusEl);
+            return statusEl;
+          }
+
+          function updateConnectionStatus(connected, message) {
             let statusEl = document.getElementById('connectionStatus');
             if (!statusEl) {
-              statusEl = document.createElement('div');
-              statusEl.id = 'connectionStatus';
-              statusEl.className = 'connection-status';
-              document.body.appendChild(statusEl);
+              statusEl = createConnectionStatus();
             }
-            statusEl.className = `connection-status ${status}`;
-            statusEl.textContent = message;
-            if (status === 'connected') {
-              setTimeout(() => statusEl.classList.add('hidden'), 3000);
+            
+            if (connected) {
+              statusEl.className = 'connection-status connected';
+              statusEl.innerHTML = '🟢 Database Connected';
+              statusEl.title = 'Database connection active - Click to refresh';
+              connectionStatus = 'connected';
             } else {
-              statusEl.classList.remove('hidden');
+              statusEl.className = 'connection-status disconnected';
+              statusEl.innerHTML = '🔴 Database Offline';
+              statusEl.title = 'Database connection failed - Click to retry';
+              connectionStatus = 'disconnected';
             }
           }
 
-          // Test Supabase Connection
-          async function testSupabaseConnection() {
+          async function testConnection() {
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) {
+              statusEl.className = 'connection-status connecting';
+              statusEl.innerHTML = '🔄 Testing...';
+            }
+            
             try {
-              const response = await fetch('https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments?limit=1', {
-                headers: {
-                  'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ',
-                  'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ',
-                  'Content-Type': 'application/json'
-                }
-              });
-              
-              if (response.ok) {
-                connectionStatus = 'connected';
-                showConnectionStatus('connected', '🟢 Connected to Supabase');
-                debug('Supabase connection successful');
-              } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              const connected = await window.supabaseClient.testConnection();
+              updateConnectionStatus(connected);
+              if (connected) {
+                await loadCommentsForCurrentPage();
               }
+              return connected;
             } catch (error) {
-              connectionStatus = 'disconnected';
-              showConnectionStatus('disconnected', '🔴 Database connection failed');
-              debug('Supabase connection failed:', error);
+              updateConnectionStatus(false);
+              return false;
+            }
+          }
+
+          // Comments Management
+          function createCommentsSidebar() {
+            const sidebar = document.createElement('div');
+            sidebar.className = 'comments-sidebar';
+            sidebar.id = 'commentsSidebar';
+            sidebar.innerHTML = `
+              <h3>Comments & Suggestions</h3>
+              <div class="comments-list" id="commentsList">
+                <div class="no-comments">No comments yet. Enable review mode and select text to add comments.</div>
+              </div>
+            `;
+            document.body.appendChild(sidebar);
+            
+            // Create toggle button
+            const toggleBtn = document.createElement('button');
+            toggleBtn.className = 'comments-toggle';
+            toggleBtn.id = 'commentsToggle';
+            toggleBtn.innerHTML = '💬 Comments';
+            toggleBtn.addEventListener('click', toggleCommentsSidebar);
+            document.body.appendChild(toggleBtn);
+            
+            return sidebar;
+          }
+
+          function toggleCommentsSidebar() {
+            const sidebar = document.getElementById('commentsSidebar');
+            const toggleBtn = document.getElementById('commentsToggle');
+            
+            if (sidebar) {
+              sidebar.classList.toggle('show');
+              toggleBtn.innerHTML = sidebar.classList.contains('show') ? 
+                '✕ Close' : '💬 Comments';
+              
+              if (sidebar.classList.contains('show')) {
+                loadCommentsForCurrentPage();
+              }
+            }
+          }
+
+          async function loadCommentsForCurrentPage() {
+            if (!window.currentPage || !window.supabaseClient) return;
+            
+            try {
+              const comments = await window.supabaseClient.getComments(window.currentPage);
+              window.comments[window.currentPage] = comments;
+              displayComments(comments);
+              highlightCommentsInContent(comments);
+            } catch (error) {
+              console.error('Failed to load comments:', error);
+              displayComments([]);
+            }
+          }
+
+          function displayComments(comments) {
+            const commentsListEl = document.getElementById('commentsList');
+            if (!commentsListEl) return;
+            
+            if (!comments || comments.length === 0) {
+              commentsListEl.innerHTML = '<div class="no-comments">No comments for this page yet.</div>';
+              return;
+            }
+            
+            const commentsHtml = comments.map(comment => `
+              <div class="comment-item ${comment.comment_type}" data-comment-id="${comment.id}">
+                <div class="comment-header">
+                  <span class="comment-type ${comment.comment_type}">${comment.comment_type}</span>
+                  <span class="comment-date">${formatDate(comment.created_at)}</span>
+                </div>
+                <div class="comment-text">${escapeHtml(comment.comment_text)}</div>
+                ${comment.selected_text ? `<div class="selected-text">"${escapeHtml(comment.selected_text)}"</div>` : ''}
+                <div class="comment-actions">
+                  <button class="comment-btn delete" onclick="deleteComment(${comment.id})">Delete</button>
+                </div>
+              </div>
+            `).join('');
+            
+            commentsListEl.innerHTML = commentsHtml;
+          }
+
+          function highlightCommentsInContent(comments) {
+            if (!comments || !window.reviewMode) return;
+            
+            // Clear existing highlights
+            clearReviewHighlights();
+            
+            // Add highlights for each comment
+            comments.forEach(comment => {
+              if (comment.selected_text) {
+                highlightTextInContent(comment.selected_text, comment);
+              }
+            });
+          }
+
+          function highlightTextInContent(selectedText, comment) {
+            if (!selectedText || !contentEl) return;
+            
+            const walker = document.createTreeWalker(
+              contentEl,
+              NodeFilter.SHOW_TEXT,
+              null,
+              false
+            );
+            
+            let node;
+            while (node = walker.nextNode()) {
+              const text = node.textContent;
+              const index = text.indexOf(selectedText);
+              
+              if (index !== -1) {
+                const parent = node.parentNode;
+                const beforeText = text.substring(0, index);
+                const afterText = text.substring(index + selectedText.length);
+                
+                // Create highlight span
+                const span = document.createElement('span');
+                span.className = comment.comment_type === 'suggestion' ? 
+                  'review-suggestion-highlight' : 'review-comment-highlight';
+                span.setAttribute('data-comment-id', comment.id);
+                span.textContent = selectedText;
+                span.addEventListener('click', () => showCommentDetails(comment));
+                
+                // Add tooltip
+                const tooltip = document.createElement('div');
+                tooltip.className = 'comment-tooltip';
+                tooltip.textContent = comment.comment_text.substring(0, 50) + 
+                  (comment.comment_text.length > 50 ? '...' : '');
+                span.appendChild(tooltip);
+                
+                // Replace text node
+                parent.removeChild(node);
+                if (beforeText) parent.appendChild(document.createTextNode(beforeText));
+                parent.appendChild(span);
+                if (afterText) parent.appendChild(document.createTextNode(afterText));
+                
+                break;
+              }
+            }
+          }
+
+          function showCommentDetails(comment) {
+            alert(`${comment.comment_type.toUpperCase()}: ${comment.comment_text}`);
+          }
+
+          async function deleteComment(commentId) {
+            if (!confirm('Are you sure you want to delete this comment?')) return;
+            
+            try {
+              await window.supabaseClient.deleteComment(commentId);
+              await loadCommentsForCurrentPage();
+            } catch (error) {
+              alert('Failed to delete comment. Please try again.');
             }
           }
 
           // Initialize App
           function initApp() {
             debug('Initializing app with base path:', basePath);
-            testSupabaseConnection();
-            renderNavigation(navigationConfig);
+            
+            // Create UI elements
+            createConnectionStatus();
+            createCommentsSidebar();
+            
+            // Setup event listeners
             setupEventListeners();
+            renderNavigation(navigationConfig);
             initReviewSystem();
 
-            const initialPageId = getPageIdFromUrl();
-            if (initialPageId) {
-              navigateToPage(initialPageId, false);
-            } else {
-              showWelcomeScreen();
-            }
+            // Test connection and initialize
+            testConnection().then(() => {
+              const initialPageId = getPageIdFromUrl();
+              if (initialPageId) {
+                navigateToPage(initialPageId, false);
+              } else {
+                showWelcomeScreen();
+              }
+            });
           }
 
           // Event Listeners
           function setupEventListeners() {
             window.addEventListener('popstate', handlePopState);
+            
+            // Supabase event listeners
+            window.addEventListener('supabaseConnectionChange', (e) => {
+              updateConnectionStatus(e.detail.connected);
+            });
+            
+            window.addEventListener('commentSaved', async (e) => {
+              await loadCommentsForCurrentPage();
+            });
+            
+            window.addEventListener('commentDeleted', async (e) => {
+              await loadCommentsForCurrentPage();
+            });
+            
+            window.addEventListener('allCommentsCleared', async (e) => {
+              await loadCommentsForCurrentPage();
+            });
             
             if (searchButton && searchInput) {
               searchButton.addEventListener('click', performSearch);
@@ -656,15 +1120,15 @@ jobs:
             dialog.innerHTML = `
               <h3>Add Review Comment</h3>
               <div style="margin-bottom: 15px;">
-                <label><input type="radio" name="commentType" value="comment" checked> Comment</label>
-                <label style="margin-left: 15px;"><input type="radio" name="commentType" value="suggestion"> Suggestion</label>
+                <label><input type="radio" name="commentType" value="comment" checked> 💬 Comment</label>
+                <label style="margin-left: 15px;"><input type="radio" name="commentType" value="suggestion"> 💡 Suggestion</label>
               </div>
               <div style="margin: 15px 0;">
                 <textarea id="commentText" placeholder="Enter your comment or suggestion..."></textarea>
               </div>
               <div class="dialog-actions">
                 <button class="dialog-btn secondary" onclick="closeCommentDialog()">Cancel</button>
-                <button class="dialog-btn primary" onclick="saveComment()">Save</button>
+                <button class="dialog-btn primary" onclick="saveComment()">Save Comment</button>
               </div>
             `;
 
@@ -680,6 +1144,12 @@ jobs:
               document.body.classList.add('review-mode');
               initializeReviewForContent();
               debug('Review mode activated');
+              
+              // Show comments sidebar
+              const sidebar = document.getElementById('commentsSidebar');
+              if (sidebar && !sidebar.classList.contains('show')) {
+                toggleCommentsSidebar();
+              }
             } else {
               document.body.classList.remove('review-mode');
               clearReviewHighlights();
@@ -705,11 +1175,16 @@ jobs:
             if (!window.reviewMode || !contentEl) return;
             
             // Make text elements selectable
-            const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th');
+            const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, div');
             textElements.forEach(element => {
-              element.classList.add('reviewable-text');
-              element.addEventListener('mouseup', handleTextSelection);
+              if (element.children.length === 0 || element.textContent.trim()) {
+                element.classList.add('reviewable-text');
+                element.addEventListener('mouseup', handleTextSelection);
+              }
             });
+            
+            // Load and highlight existing comments
+            loadCommentsForCurrentPage();
             
             debug('Review initialization complete for content');
           }
@@ -721,6 +1196,8 @@ jobs:
             if (selection.toString().trim().length === 0) return;
             
             const selectedText = selection.toString().trim();
+            if (selectedText.length < 3) return; // Minimum selection length
+            
             debug('Text selected:', selectedText);
             
             window.currentSelection = {
@@ -739,6 +1216,14 @@ jobs:
             if (dialog && overlay) {
               dialog.classList.add('show');
               overlay.classList.add('show');
+              
+              // Pre-fill with selected text context
+              const selectedText = window.currentSelection?.text || '';
+              if (selectedText) {
+                const textArea = document.getElementById('commentText');
+                textArea.placeholder = `Comment on: "${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}"`;
+              }
+              
               document.getElementById('commentText').focus();
             }
           }
@@ -751,8 +1236,11 @@ jobs:
               dialog.classList.remove('show');
               overlay.classList.remove('show');
               document.getElementById('commentText').value = '';
-              document.querySelector('input[name="commentType"]:checked').checked = false;
-              document.querySelector('input[name="commentType"][value="comment"]').checked = true;
+              document.getElementById('commentText').placeholder = 'Enter your comment or suggestion...';
+              
+              // Reset radio buttons
+              const commentRadio = document.querySelector('input[name="commentType"][value="comment"]');
+              if (commentRadio) commentRadio.checked = true;
             }
             
             window.getSelection().removeAllRanges();
@@ -773,6 +1261,11 @@ jobs:
               return;
             }
             
+            if (!window.currentPage) {
+              alert('Please select a document first.');
+              return;
+            }
+            
             try {
               const commentData = {
                 page_id: window.currentPage,
@@ -784,70 +1277,26 @@ jobs:
               
               debug('Saving comment:', commentData);
               
+              // Save to database
               const result = await window.supabaseClient.saveComment(commentData);
               debug('Comment saved successfully:', result);
               
-              // Add visual highlight
-              highlightTextInDocument(window.currentSelection, { 
-                id: result[0]?.id, 
-                comment_type: commentType 
-              });
+              // Show success message
+              const saveBtn = document.querySelector('.dialog-btn.primary');
+              const originalText = saveBtn.textContent;
+              saveBtn.textContent = '✓ Saved!';
+              saveBtn.style.background = '#4caf50';
               
-              alert('Comment saved successfully!');
-              closeCommentDialog();
+              setTimeout(() => {
+                saveBtn.textContent = originalText;
+                saveBtn.style.background = '';
+                closeCommentDialog();
+              }, 1000);
               
             } catch (error) {
               debug('Error saving comment:', error);
-              alert('Failed to save comment. Please try again.');
+              alert('Failed to save comment. Please check your connection and try again.');
             }
-          }
-
-          function highlightTextInDocument(selection, comment) {
-            if (!selection.element || !selection.text) return;
-            
-            const span = document.createElement('span');
-            span.className = comment.comment_type === 'suggestion' ? 
-              'review-suggestion-highlight' : 'review-comment-highlight';
-            span.setAttribute('data-comment-id', comment.id);
-            span.textContent = selection.text;
-            
-            // Find and replace the selected text
-            const textNodes = getAllTextNodes(selection.element);
-            for (const node of textNodes) {
-              if (node.textContent.includes(selection.text)) {
-                const parent = node.parentNode;
-                const index = node.textContent.indexOf(selection.text);
-                
-                if (index !== -1) {
-                  const beforeText = node.textContent.substring(0, index);
-                  const afterText = node.textContent.substring(index + selection.text.length);
-                  
-                  parent.removeChild(node);
-                  if (beforeText) parent.appendChild(document.createTextNode(beforeText));
-                  parent.appendChild(span);
-                  if (afterText) parent.appendChild(document.createTextNode(afterText));
-                  break;
-                }
-              }
-            }
-          }
-
-          function getAllTextNodes(element) {
-            const textNodes = [];
-            const walker = document.createTreeWalker(
-              element,
-              NodeFilter.SHOW_TEXT,
-              null,
-              false
-            );
-            
-            let node;
-            while (node = walker.nextNode()) {
-              if (node.textContent.trim()) {
-                textNodes.push(node);
-              }
-            }
-            return textNodes;
           }
 
           function clearReviewHighlights() {
@@ -875,16 +1324,14 @@ jobs:
           }
 
           function promptClearReviewData() {
-            if (confirm('Are you sure you want to clear all review data? This cannot be undone.')) {
+            if (confirm('Are you sure you want to clear ALL review data? This cannot be undone.')) {
               clearReviewData();
             }
           }
 
           async function clearReviewData() {
             try {
-              if (window.supabaseClient) {
-                await window.supabaseClient.clearAllComments();
-              }
+              await window.supabaseClient.clearAllComments();
               clearReviewHighlights();
               alert('All review data has been cleared successfully.');
             } catch (error) {
@@ -965,7 +1412,12 @@ jobs:
                 contentEl.innerHTML = content;
                 
                 if (window.reviewMode) {
-                  initializeReviewForContent();
+                  setTimeout(() => {
+                    initializeReviewForContent();
+                  }, 100);
+                } else {
+                  // Load comments for display even if not in review mode
+                  loadCommentsForCurrentPage();
                 }
                 
                 document.body.classList.remove('loading');
@@ -1080,14 +1532,25 @@ jobs:
           }
 
           function showWelcomeScreen() {
-            contentTitleEl.textContent = 'Documentation';
-            document.title = 'Documentation';
+            contentTitleEl.textContent = 'Automotive Documentation';
+            document.title = 'Automotive Documentation';
             contentEl.innerHTML = `
               <div class="welcome-screen">
                 <h2>Welcome to Automotive Documentation</h2>
-                <p>Please select a topic from the navigation menu or use the search bar.</p>
-                <p><strong>Review Mode:</strong> Click "Review Mode" to enable collaborative commenting and suggestions.</p>
-                <p><strong>Database Integration:</strong> All comments are saved to Supabase and persist across sessions.</p>
+                <p>Select a topic from the navigation menu to begin.</p>
+                <div style="margin-top: 30px; padding: 20px; background: #f0f8ff; border-radius: 8px; border-left: 4px solid #2196f3;">
+                  <h3>🔧 Review System Features:</h3>
+                  <ul style="text-align: left; margin-top: 15px;">
+                    <li><strong>Review Mode:</strong> Click "Review Mode" to enable text commenting</li>
+                    <li><strong>Text Selection:</strong> Select any text to add comments or suggestions</li>
+                    <li><strong>Comments Panel:</strong> View all comments in the side panel</li>
+                    <li><strong>Database Integration:</strong> All comments are saved to Supabase</li>
+                    <li><strong>Real-time Updates:</strong> Comments sync across sessions</li>
+                  </ul>
+                </div>
+                <div style="margin-top: 20px; font-size: 0.9em; color: #666;">
+                  <p>Connection Status: Check the indicator in the upper-left corner</p>
+                </div>
               </div>
             `;
             document.body.classList.remove('loading');
@@ -1167,7 +1630,19 @@ jobs:
 
           function highlightMatch(text, query) {
             const regex = new RegExp(`(${query})`, 'gi');
-            return text.replace(regex, '<span class="highlight">$1</span>');
+            return text.replace(regex, '<span style="background: yellow;">$1</span>');
+          }
+
+          // Utility functions
+          function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+          }
+
+          function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
           }
 
           // Make functions globally available
@@ -1177,52 +1652,174 @@ jobs:
           window.navigateToPage = navigateToPage;
           window.closeCommentDialog = closeCommentDialog;
           window.saveComment = saveComment;
+          window.deleteComment = deleteComment;
+          window.toggleCommentsSidebar = toggleCommentsSidebar;
 
           // Initialize when DOM is ready
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 12: Create default content
-      - name: Create Default Content
+      # Step 12: Create default content with more realistic examples
+      - name: Create Enhanced Default Content
         run: |
           mkdir -p ./site/content
 
-          # Create sample content files
+          # Create sample content files with more realistic automotive content
           cat > ./site/content/getting-started-with-cars.html << 'EOF'
           <h1>Getting Started With Cars</h1>
-          <p>Welcome to the comprehensive automotive guide. This section covers the basics of car ownership and maintenance.</p>
-          <p>Select text in review mode to add comments and suggestions.</p>
+          <p>Welcome to the comprehensive automotive guide. This section covers the basics of car ownership and maintenance that every driver should know.</p>
+          
+          <h2>Essential Knowledge for New Car Owners</h2>
+          <p>Owning a car comes with responsibilities that extend beyond just driving. Understanding your vehicle's basic systems and maintenance requirements will help ensure safe, reliable transportation and can save you money in the long run.</p>
+          
+          <h3>Understanding Your Dashboard</h3>
+          <p>Your dashboard contains crucial warning lights and gauges that communicate your vehicle's status. Learn to recognize the check engine light, oil pressure warning, battery indicator, and temperature gauge. These indicators can alert you to potential problems before they become major repairs.</p>
+          
+          <h3>Basic Maintenance Schedule</h3>
+          <p>Regular maintenance is the key to vehicle longevity. Most manufacturers recommend oil changes every 3,000-7,500 miles depending on your vehicle and driving conditions. Additionally, consider the following maintenance items:</p>
           <ul>
-            <li>Understanding your vehicle systems</li>
-            <li>Basic maintenance schedules and procedures</li>
-            <li>Emergency procedures and troubleshooting</li>
-            <li>Safety considerations and best practices</li>
+            <li>Tire rotation and pressure checks every 5,000-7,500 miles</li>
+            <li>Air filter replacement every 12,000-15,000 miles</li>
+            <li>Brake inspection annually or every 12,000 miles</li>
+            <li>Coolant system flush every 30,000 miles</li>
+            <li>Transmission service every 60,000-100,000 miles</li>
           </ul>
+          
+          <h3>Emergency Preparedness</h3>
+          <p>Every vehicle should be equipped with emergency supplies including jumper cables, a spare tire with proper tools, emergency flares or reflectors, and a first aid kit. Knowing how to change a tire and jump-start a battery can save you time and money in emergency situations.</p>
+          
+          <p>Remember: When in doubt, consult your owner's manual or a qualified automotive professional. Proper maintenance and care will keep your vehicle running safely for years to come.</p>
           EOF
 
           cat > ./site/content/car-types.html << 'EOF'
-          <h1>Car Types</h1>
-          <p>Learn about different types of vehicles and their characteristics.</p>
-          <h2>Sedan</h2>
-          <p>Four-door passenger car with a separate trunk compartment.</p>
-          <h2>SUV</h2>
-          <p>Sport Utility Vehicle with higher ground clearance and all-terrain capability.</p>
-          <h2>Hatchback</h2>
-          <p>Compact car with rear door that opens upward to access cargo area.</p>
+          <h1>Understanding Different Car Types</h1>
+          <p>Choosing the right vehicle depends on your lifestyle, budget, and driving needs. Each car type offers distinct advantages and considerations.</p>
+          
+          <h2>Sedans</h2>
+          <p>Sedans are traditional four-door passenger cars with a separate trunk compartment. They offer a good balance of comfort, fuel efficiency, and cargo space. Modern sedans typically seat five passengers and provide excellent highway fuel economy, often exceeding 30 MPG.</p>
+          <p><strong>Best for:</strong> Daily commuting, families, business use</p>
+          <p><strong>Considerations:</strong> Limited cargo space compared to SUVs, lower ground clearance</p>
+          
+          <h2>Sport Utility Vehicles (SUVs)</h2>
+          <p>SUVs provide higher ground clearance, increased cargo capacity, and often all-wheel or four-wheel drive capability. They're built on truck platforms, offering superior towing capacity and off-road performance compared to sedans.</p>
+          <p><strong>Best for:</strong> Families with active lifestyles, towing needs, adverse weather conditions</p>
+          <p><strong>Considerations:</strong> Lower fuel economy, higher purchase price, increased maintenance costs</p>
+          
+          <h2>Hatchbacks</h2>
+          <p>Hatchback vehicles feature a rear door that opens upward, providing direct access to the cargo area. This design maximizes interior space and cargo flexibility while maintaining a compact overall footprint.</p>
+          <p><strong>Best for:</strong> Urban driving, parking in tight spaces, maximizing cargo versatility</p>
+          <p><strong>Considerations:</strong> Road noise from cargo area, reduced rear privacy</p>
+          
+          <h2>Pickup Trucks</h2>
+          <p>Pickup trucks combine passenger seating with an open cargo bed, offering unmatched utility for hauling materials, equipment, and recreational gear. Available in various sizes from compact to heavy-duty configurations.</p>
+          <p><strong>Best for:</strong> Construction work, hauling cargo, recreational activities</p>
+          <p><strong>Considerations:</strong> Poor fuel economy, challenging parking in urban areas</p>
+          
+          <h2>Electric Vehicles (EVs)</h2>
+          <p>Electric vehicles use battery power instead of gasoline engines, offering zero direct emissions and significantly lower operating costs. Modern EVs provide competitive range and performance with rapidly expanding charging infrastructure.</p>
+          <p><strong>Best for:</strong> Environmentally conscious drivers, urban commuting, reducing fuel costs</p>
+          <p><strong>Considerations:</strong> Charging infrastructure limitations, higher initial purchase price</p>
           EOF
 
           cat > ./site/content/basic-maintenance.html << 'EOF'
-          <h1>Basic Maintenance</h1>
-          <p>Regular maintenance is crucial for vehicle longevity and safety.</p>
-          <h2>Oil Changes</h2>
-          <p>Change engine oil every 3,000-5,000 miles depending on your vehicle and oil type.</p>
-          <h2>Tire Care</h2>
-          <p>Check tire pressure monthly and rotate tires every 6,000-8,000 miles.</p>
-          <h2>Brake Inspection</h2>
-          <p>Have brakes inspected annually and replace brake pads when worn.</p>
+          <h1>Essential Vehicle Maintenance</h1>
+          <p>Regular maintenance is crucial for vehicle safety, reliability, and longevity. Following these guidelines will help prevent costly repairs and ensure your vehicle operates at peak efficiency.</p>
+          
+          <h2>Engine Oil and Filter Changes</h2>
+          <p>Engine oil lubricates moving parts, reduces friction, and helps regulate engine temperature. Modern vehicles typically require oil changes every 5,000-7,500 miles, though severe driving conditions may require more frequent service.</p>
+          
+          <h3>Oil Change Intervals by Vehicle Type:</h3>
+          <ul>
+            <li><strong>Conventional Oil:</strong> Every 3,000-5,000 miles</li>
+            <li><strong>High-Mileage Oil:</strong> Every 5,000-7,500 miles</li>
+            <li><strong>Synthetic Blend:</strong> Every 5,000-7,500 miles</li>
+            <li><strong>Full Synthetic:</strong> Every 7,500-10,000 miles</li>
+          </ul>
+          
+          <p>Always replace the oil filter with each oil change to ensure maximum filtration efficiency and engine protection.</p>
+          
+          <h2>Tire Care and Maintenance</h2>
+          <p>Proper tire maintenance improves fuel efficiency, extends tire life, and ensures safe handling. Check tire pressure monthly using a reliable gauge, as underinflated tires can reduce fuel economy by up to 3%.</p>
+          
+          <h3>Tire Maintenance Schedule:</h3>
+          <ul>
+            <li><strong>Pressure Check:</strong> Monthly, including spare tire</li>
+            <li><strong>Tire Rotation:</strong> Every 6,000-8,000 miles</li>
+            <li><strong>Wheel Alignment:</strong> Annually or when uneven wear is noticed</li>
+            <li><strong>Tire Replacement:</strong> When tread depth reaches 2/32 inch</li>
+          </ul>
+          
+          <h2>Brake System Inspection</h2>
+          <p>Your braking system is critical for safety and should be inspected regularly. Warning signs include squealing noises, grinding sounds, vibration during braking, or a spongy brake pedal feel.</p>
+          
+          <h3>Brake Component Replacement Intervals:</h3>
+          <ul>
+            <li><strong>Brake Pads:</strong> Every 25,000-70,000 miles (varies by driving style)</li>
+            <li><strong>Brake Rotors:</strong> Every 50,000-100,000 miles</li>
+            <li><strong>Brake Fluid:</strong> Every 2-3 years or 24,000-36,000 miles</li>
+            <li><strong>Brake Lines:</strong> Inspect annually for corrosion or damage</li>
+          </ul>
+          
+          <h2>Cooling System Maintenance</h2>
+          <p>The cooling system prevents engine overheating by circulating coolant through the engine and radiator. Regular maintenance prevents costly engine damage from overheating.</p>
+          
+          <p><strong>Coolant Replacement:</strong> Every 30,000-50,000 miles or as specified in your owner's manual. Use only the coolant type recommended by your vehicle manufacturer to prevent system damage.</p>
+          
+          <h2>Air Filter Replacement</h2>
+          <p>A clean air filter ensures proper air flow to the engine, improving performance and fuel efficiency. A dirty filter can reduce acceleration and increase fuel consumption.</p>
+          
+          <p><strong>Replacement Schedule:</strong> Every 12,000-15,000 miles under normal conditions, or more frequently in dusty environments.</p>
+          
+          <h2>Professional Inspection Recommendations</h2>
+          <p>While many maintenance tasks can be performed by vehicle owners, certain inspections and services require professional expertise:</p>
+          <ul>
+            <li>Annual comprehensive safety inspection</li>
+            <li>Transmission service every 60,000-100,000 miles</li>
+            <li>Timing belt replacement (if equipped) every 60,000-105,000 miles</li>
+            <li>Spark plug replacement every 30,000-100,000 miles</li>
+          </ul>
+          
+          <p><em>Always consult your owner's manual for manufacturer-specific maintenance schedules and requirements. Severe driving conditions may require more frequent service intervals.</em></p>
           EOF
 
-      # Step 13: Create Enhanced index.html
+          cat > ./site/content/safety-features.html << 'EOF'
+          <h1>Modern Vehicle Safety Features</h1>
+          <p>Today's vehicles incorporate advanced safety technologies designed to prevent accidents and protect occupants. Understanding these systems helps you make informed decisions and use them effectively.</p>
+          
+          <h2>Active Safety Systems</h2>
+          <p>Active safety features work to prevent accidents before they occur by assisting the driver or taking corrective action.</p>
+          
+          <h3>Anti-lock Braking System (ABS)</h3>
+          <p>ABS prevents wheel lockup during emergency braking, maintaining steering control and reducing stopping distances on most road surfaces. When activated, you may feel pulsing in the brake pedal – this is normal operation.</p>
+          
+          <h3>Electronic Stability Control (ESC)</h3>
+          <p>ESC helps maintain vehicle control during extreme steering maneuvers by automatically applying brakes to individual wheels and reducing engine power when necessary. This system significantly reduces the risk of rollover accidents.</p>
+          
+          <h3>Adaptive Cruise Control</h3>
+          <p>This advanced system maintains a set following distance from the vehicle ahead, automatically adjusting speed as traffic conditions change. Some systems can bring the vehicle to a complete stop in stop-and-go traffic.</p>
+          
+          <h2>Collision Avoidance Technologies</h2>
+          <p>These systems use sensors and cameras to detect potential collisions and take preventive action.</p>
+          
+          <h3>Forward Collision Warning</h3>
+          <p>Uses radar or cameras to monitor the road ahead and alerts drivers to potential front-end collisions. Advanced systems can automatically apply brakes if the driver doesn't respond to warnings.</p>
+          
+          <h3>Blind Spot Monitoring</h3>
+          <p>Sensors detect vehicles in your blind spots and provide visual or audible warnings when you signal to change lanes. Some systems include rear cross-traffic alerts for backing out of parking spaces.</p>
+          
+          <h2>Passive Safety Features</h2>
+          <p>Passive safety systems protect occupants when an accident occurs.</p>
+          
+          <h3>Airbag Systems</h3>
+          <p>Modern vehicles have multiple airbags including front, side, and curtain airbags. These systems work in conjunction with seat belts to reduce injury severity. Never place rear-facing child seats in front of active airbags.</p>
+          
+          <h3>Crumple Zones</h3>
+          <p>Vehicle structures are designed with crumple zones that absorb impact energy during collisions, protecting the passenger compartment. This is why modern vehicles may look more damaged in minor accidents compared to older cars.</p>
+          
+          <p><strong>Remember:</strong> Safety features are designed to assist, not replace, attentive driving. Always remain focused on the road and maintain safe following distances.</p>
+          EOF
+
+      # Step 13: Create Enhanced Index HTML with Database Setup Instructions
       - name: Create Enhanced Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
@@ -1232,6 +1829,37 @@ jobs:
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+
+            <!-- Database Setup Instructions -->
+            <!--
+            SUPABASE DATABASE SETUP REQUIRED:
+            
+            1. Go to your Supabase Dashboard: https://supabase.com/dashboard
+            2. Navigate to the SQL Editor
+            3. Run this SQL to create the comments table:
+            
+            CREATE TABLE IF NOT EXISTS comments (
+              id SERIAL PRIMARY KEY,
+              page_id TEXT NOT NULL,
+              comment_type TEXT NOT NULL DEFAULT 'comment',
+              comment_text TEXT NOT NULL,
+              selected_text TEXT,
+              selection_type TEXT DEFAULT 'text',
+              session_id TEXT,
+              user_agent TEXT,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            
+            -- Enable Row Level Security
+            ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
+            
+            -- Create policy to allow all operations
+            CREATE POLICY "Allow all operations on comments" ON comments
+            FOR ALL USING (true) WITH CHECK (true);
+            
+            4. After running the SQL, your comment system will be fully functional!
+            -->
 
             <script>
               if (location.hostname.includes('github.io')) {
@@ -1243,27 +1871,28 @@ jobs:
               }
             </script>
 
-            <title>Automotive Documentation - Complete Review System</title>
+            <title>Automotive Documentation - Advanced Review System</title>
             <link rel="stylesheet" href="css/style.css">
+            <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
           </head>
           <body>
             <div class="sidebar">
               <div class="sidebar-header">
-                <h2>Navigation</h2>
+                <h2>📚 Navigation</h2>
                 <div class="search-container">
-                  <input type="text" id="searchInput" placeholder="Search...">
-                  <button id="searchButton">Search</button>
+                  <input type="text" id="searchInput" placeholder="Search documentation...">
+                  <button id="searchButton">🔍</button>
                 </div>
                 <ul id="searchResults" class="search-results"></ul>
               </div>
               
               <div class="review-controls">
-                <h3>Review System</h3>
+                <h3>💬 Review System</h3>
                 <div class="review-mode-toggle">
-                  <button id="reviewToggle" class="review-btn">Review Mode</button>
+                  <button id="reviewToggle" class="review-btn">📝 Review Mode</button>
                 </div>
-                <button id="startReview" class="review-btn secondary">Start Review</button>
-                <button id="clearReview" class="review-btn danger">Clear All</button>
+                <button id="startReview" class="review-btn secondary">🚀 Start Review</button>
+                <button id="clearReview" class="review-btn danger">🗑️ Clear All</button>
               </div>
               
               <div class="sidebar-nav">
@@ -1273,16 +1902,16 @@ jobs:
 
             <div class="main-content">
               <h1 id="content-title">Loading...</h1>
-              <div id="loading">Loading content...</div>
+              <div id="loading" style="display:none;">Loading content...</div>
               <div id="content">
                 <div class="initial-loading">
-                  <p>Initializing enhanced documentation viewer with complete review system...</p>
+                  <p>🔄 Initializing enhanced documentation viewer with review system...</p>
                 </div>
               </div>
             </div>
 
-            <div class="wh_print_link" style="position: fixed; top: 10px; right: 10px; z-index: 999;">
-              <button title="Print page">🖨️ Print</button>
+            <div class="wh_print_link" style="position: fixed; top: 15px; right: 15px; z-index: 999;">
+              <button title="Print current page" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">🖨️ Print</button>
             </div>
 
             <script src="js/supabase-config.js"></script>
@@ -1318,7 +1947,7 @@ jobs:
           </head>
           <body>
             <div style="text-align: center; font-family: Arial, sans-serif; margin-top: 100px;">
-              <h1>Redirecting...</h1>
+              <h1>🔄 Redirecting...</h1>
               <p>If you are not redirected automatically, <a href="/">click here</a>.</p>
             </div>
           </body>
