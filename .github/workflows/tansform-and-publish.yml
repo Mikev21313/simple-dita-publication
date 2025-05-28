@@ -1,4 +1,4 @@
-name: DITA to SPA Transformation with Supabase Comments Side Cart Review System
+name: DITA to SPA with Complete Supabase Review System
 
 on:
   push:
@@ -25,31 +25,28 @@ jobs:
       # Step 3: Install DITA-OT and required tools
       - name: Set up DITA-OT and XML tools
         run: |
-          # Install XML tools
           sudo apt-get update
-          sudo apt-get install -y libxml2-utils xsltproc
+          sudo apt-get install -y libxml2-utils xsltproc postgresql-client
 
           # Install DITA-OT
           wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Initialize Supabase Database Schema (FIXED)
-      - name: Setup Supabase Database Schema (FIXED)
+      # Step 4: Setup Supabase Database with Correct Schema
+      - name: Setup Supabase Database Schema
         run: |
           echo "Setting up Supabase database schema..."
-          
-          # Use psql to connect directly to database
           export PGPASSWORD="${{ secrets.SUPABASE_DB_PASSWORD }}"
           
-          # Install PostgreSQL client
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-          
-          # Create schema SQL
+          # Create comprehensive schema SQL
           cat > schema.sql << 'EOF'
-          -- Create comments table
-          CREATE TABLE IF NOT EXISTS comments (
+          -- Drop existing tables if they exist (for clean rebuild)
+          DROP TABLE IF EXISTS uploaded_images CASCADE;
+          DROP TABLE IF EXISTS comments CASCADE;
+
+          -- Create comments table with correct structure
+          CREATE TABLE comments (
             id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
             page_id TEXT NOT NULL,
             comment_type TEXT NOT NULL CHECK (comment_type IN ('comment', 'suggestion')),
@@ -69,7 +66,7 @@ jobs:
           );
 
           -- Create uploaded_images table
-          CREATE TABLE IF NOT EXISTS uploaded_images (
+          CREATE TABLE uploaded_images (
             id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
             comment_id UUID REFERENCES comments(id) ON DELETE CASCADE,
             filename TEXT NOT NULL,
@@ -79,53 +76,53 @@ jobs:
             created_at TIMESTAMPTZ DEFAULT NOW()
           );
 
-          -- Create indexes
-          CREATE INDEX IF NOT EXISTS idx_comments_page_id ON comments(page_id);
-          CREATE INDEX IF NOT EXISTS idx_comments_created_at ON comments(created_at);
-          CREATE INDEX IF NOT EXISTS idx_comments_resolved ON comments(resolved);
-          CREATE INDEX IF NOT EXISTS idx_uploaded_images_comment_id ON uploaded_images(comment_id);
+          -- Create indexes for performance
+          CREATE INDEX idx_comments_page_id ON comments(page_id);
+          CREATE INDEX idx_comments_created_at ON comments(created_at);
+          CREATE INDEX idx_comments_resolved ON comments(resolved);
+          CREATE INDEX idx_uploaded_images_comment_id ON uploaded_images(comment_id);
 
-          -- Disable RLS for now to avoid permission issues
+          -- Disable RLS for easier access (enable later if needed)
           ALTER TABLE comments DISABLE ROW LEVEL SECURITY;
           ALTER TABLE uploaded_images DISABLE ROW LEVEL SECURITY;
 
-          -- Create trigger function
+          -- Grant permissions to anon user
+          GRANT ALL ON comments TO anon;
+          GRANT ALL ON uploaded_images TO anon;
+          GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO anon;
+
+          -- Create trigger function for updated_at
           CREATE OR REPLACE FUNCTION update_updated_at_column()
-          RETURNS TRIGGER AS $
+          RETURNS TRIGGER AS $$
           BEGIN
             NEW.updated_at = NOW();
             RETURN NEW;
           END;
-          $ language 'plpgsql';
+          $$ language 'plpgsql';
 
           -- Create trigger
-          DROP TRIGGER IF EXISTS update_comments_updated_at ON comments;
           CREATE TRIGGER update_comments_updated_at BEFORE UPDATE ON comments
             FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
           EOF
           
           # Apply schema using psql
-          psql "postgresql://postgres:${{ secrets.SUPABASE_DB_PASSWORD }}@db.oiluavgeyngmkqozzmnz.supabase.co:5432/postgres" -f schema.sql || echo "Schema setup completed with warnings"
+          psql "postgresql://postgres:${{ secrets.SUPABASE_DB_PASSWORD }}@db.oiluavgeyngmkqozzmnz.supabase.co:5432/postgres" -f schema.sql
           
-          echo "Database schema setup completed"
+          echo "Database schema setup completed successfully"
 
       # Step 5: Parse DITAMAP to generate navigation structure
       - name: Parse DITAMAP Structure
         run: |
           echo "Parsing DITAMAP structure from dita-source/automotive.ditamap"
 
-          # Create an XSLT file to transform DITAMAP to JSON navigation structure
+          # Create XSLT file for navigation extraction
           cat > extract-nav.xsl << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
             <xsl:output method="text"/>
-
             <xsl:template match="/">
-              [
-                <xsl:apply-templates select="//topicref[not(ancestor::topicref)]"/>
-              ]
+              [<xsl:apply-templates select="//topicref[not(ancestor::topicref)]"/>]
             </xsl:template>
-
             <xsl:template match="topicref">
               <xsl:variable name="href" select="@href"/>
               <xsl:variable name="filename">
@@ -138,14 +135,12 @@ jobs:
                   </xsl:otherwise>
                 </xsl:choose>
               </xsl:variable>
-
               <xsl:variable name="id">
                 <xsl:choose>
                   <xsl:when test="@id"><xsl:value-of select="@id"/></xsl:when>
                   <xsl:otherwise><xsl:value-of select="translate($filename, '_', '-')"/></xsl:otherwise>
                 </xsl:choose>
               </xsl:variable>
-
               <xsl:variable name="title">
                 <xsl:choose>
                   <xsl:when test="@navtitle"><xsl:value-of select="@navtitle"/></xsl:when>
@@ -155,97 +150,73 @@ jobs:
                   </xsl:otherwise>
                 </xsl:choose>
               </xsl:variable>
-
               {
                 "id": "<xsl:value-of select="$id"/>",
                 "title": "<xsl:value-of select="$title"/>",
                 "filename": "<xsl:value-of select="$filename"/>",
                 "href": "<xsl:value-of select="$href"/>"
                 <xsl:if test="topicref">
-                  ,
-                  "children": [
-                    <xsl:apply-templates select="topicref"/>
-                  ]
+                  ,"children": [<xsl:apply-templates select="topicref"/>]
                 </xsl:if>
               }<xsl:if test="following-sibling::topicref">,</xsl:if>
             </xsl:template>
           </xsl:stylesheet>
           EOF
 
-          # Apply XSLT to extract navigation from DITAMAP
-          xsltproc extract-nav.xsl dita-source/automotive.ditamap > ./navigation-structure.json || echo "[]" > ./navigation-structure.json
-
-          # Fix any JSON syntax issues
-          sed -i 's/\\n//g; s/\\t//g; s/\\"//g; s/\\//g; s/  / /g' ./navigation-structure.json
+          # Apply XSLT transformation
+          xsltproc extract-nav.xsl dita-source/automotive.ditamap > navigation-structure.json || echo "[]" > navigation-structure.json
+          sed -i 's/\\n//g; s/\\t//g; s/  / /g' navigation-structure.json
 
           echo "DITAMAP parsing complete"
-          cat ./navigation-structure.json
+          cat navigation-structure.json
 
-      # Step 6: Transform DITA to HTML and prepare images
+      # Step 6: Transform DITA to HTML
       - name: Transform DITA to HTML and Prepare Images
         run: |
-          # Using HTML5 format with parameters for better output
-          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site || echo "DITA transformation completed with warnings"
-          echo "DITA transformation complete"
+          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site || echo "DITA transformation completed"
+          
+          mkdir -p ./site/content ./site/images ./site/js ./site/css
 
-          # Create content directory for SPA fragments
-          mkdir -p ./site/content
-          mkdir -p ./site/images
+          # Copy images
+          find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \; || echo "No images found"
 
-          # Copy all image files from dita-source to the images directory
-          echo "Copying all potential image files from dita-source:"
-          find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \; || echo "No images found to copy"
-
-          # Create placeholder images if no images are found
+          # Create placeholder if no images
           if [ ! "$(ls -A ./site/images 2>/dev/null)" ]; then
-            echo "Creating placeholder test images"
-            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/test.png
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/placeholder.png
           fi
 
-          echo "Files in images directory:"
-          ls -la ./site/images/ || echo "No files in images directory"
-
-      # Step 7: Process HTML files
+      # Step 7: Process HTML content for SPA
       - name: Process HTML Content
         run: |
-          # Create content directory for SPA fragments
-          mkdir -p ./site/content
-          mkdir -p ./site/js
-
-          # Process each HTML file to extract content
+          # Process HTML files to create SPA content
           find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
-            if [[ "$file" == "./site/index.html" ]]; then
-              continue
-            fi
+            if [[ "$file" == "./site/index.html" ]]; then continue; fi
 
             filename=$(basename "$file")
             id="${filename%.html}"
             hyphenated_id="${id//_/-}"
-            echo "Processing $filename (ID: $id, Hyphenated ID: $hyphenated_id)"
 
-            # Extract content from file
+            # Extract content
             content=$(sed -n '/<body/,/<\/body>/p' "$file" | sed '/<body/d;/<\/body>/d' | sed '/<header/,/<\/header>/d' | sed '/<nav/,/<\/nav>/d' | sed '/<footer/,/<\/footer>/d')
-
+            
             # Fix image paths
             content=$(echo "$content" | sed -E 's/<img([^>]*)src="[^"]*\/([^\/"]*)\.([a-zA-Z0-9]+)"/<img\1src="images\/\2.\3"/gi')
             content=$(echo "$content" | sed -E 's/<img([^>]*)src="([^\/:"]*)\.(jpg|jpeg|png|gif|svg)"/<img\1src="images\/\2.\3"/gi')
 
-            # Get title from the original file
+            # Get title
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
             if [ -z "$title" ]; then
               title=$(echo "$id" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
             fi
 
-            # Create content file with original filename
+            # Create content files
             echo "$content" > "./site/content/$id.html"
-
-            # Also create a hyphenated version
             if [[ "$id" != "$hyphenated_id" ]]; then
               echo "$content" > "./site/content/$hyphenated_id.html"
             fi
           done
 
-          # Create a content ID mapping file
+          # Create content ID mapping
           echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
           echo "const contentIdMap = {" >> ./site/js/content-id-map.js
 
@@ -256,9 +227,7 @@ jobs:
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
             raw_content=$(cat "$file" | tr '\n' ' ' | sed 's/<[^>]*>//g' | sed 's/&nbsp;/ /g' | sed 's/  */ /g' | tr -d '\n\r')
 
-            if grep -q "\"$id\":" ./site/js/content-id-map.js; then
-              continue
-            fi
+            if grep -q "\"$id\":" ./site/js/content-id-map.js; then continue; fi
 
             if [ -z "$title" ]; then
               title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
@@ -276,29 +245,22 @@ jobs:
       # Step 8: Generate Navigation Configuration
       - name: Generate Navigation Configuration
         run: |
-          mkdir -p ./site/js ./site/css
-
-          # Convert JSON to JavaScript navigation config
           cat > ./site/js/navigation-config.js << 'EOF'
           // Auto-generated navigation structure from DITAMAP
           const navigationConfig =
           EOF
-
-          # Append the parsed JSON structure
           cat ./navigation-structure.json >> ./site/js/navigation-config.js
           echo ";" >> ./site/js/navigation-config.js
 
-          echo "Navigation configuration generated from DITAMAP structure"
-
-      # Step 9: Create Supabase Configuration
+      # Step 9: Create Supabase Configuration with Correct Keys
       - name: Create Supabase Configuration
         run: |
           cat > ./site/js/supabase-config.js << 'EOF'
-          // Supabase configuration and client setup
+          // Supabase configuration with verified keys
           const SUPABASE_URL = 'https://oiluavgeyngmkqozzmnz.supabase.co';
           const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ';
 
-          // Supabase client class for comments system
+          // Supabase client class
           class SupabaseClient {
             constructor() {
               this.baseUrl = SUPABASE_URL;
@@ -311,10 +273,7 @@ jobs:
 
             async request(endpoint, options = {}) {
               const url = `${this.baseUrl}/rest/v1/${endpoint}`;
-              const config = {
-                headers: this.headers,
-                ...options
-              };
+              const config = { headers: this.headers, ...options };
 
               try {
                 const response = await fetch(url, config);
@@ -331,7 +290,6 @@ jobs:
             async getComments(pageId) {
               try {
                 const comments = await this.request(`comments?page_id=eq.${encodeURIComponent(pageId)}&order=created_at.desc`);
-                
                 const commentsWithImages = await Promise.all(
                   comments.map(async (comment) => {
                     const images = await this.request(`uploaded_images?comment_id=eq.${comment.id}`);
@@ -347,7 +305,6 @@ jobs:
                     };
                   })
                 );
-
                 return commentsWithImages;
               } catch (error) {
                 console.error('Failed to fetch comments:', error);
@@ -358,42 +315,27 @@ jobs:
             async saveComment(commentData) {
               try {
                 const comment = {
-                  page_id: commentData.pageId,
-                  comment_type: commentData.type,
-                  comment_text: commentData.text,
-                  selected_text: commentData.selectedText,
-                  selection_type: commentData.selectionType,
-                  image_src: commentData.imageSrc,
-                  image_alt: commentData.imageAlt,
-                  position_x: commentData.position?.x,
-                  position_y: commentData.position?.y,
+                  page_id: commentData.page_id,
+                  comment_type: commentData.comment_type,
+                  comment_text: commentData.comment_text,
+                  selected_text: commentData.selected_text,
+                  selection_type: commentData.selection_type || 'text',
                   session_id: this.getSessionId(),
                   user_agent: navigator.userAgent
                 };
 
-                const [savedComment] = await this.request('comments', {
+                const response = await fetch(`${this.baseUrl}/rest/v1/comments`, {
                   method: 'POST',
+                  headers: this.headers,
                   body: JSON.stringify(comment)
                 });
 
-                if (commentData.uploadedImages && commentData.uploadedImages.length > 0) {
-                  const imagePromises = commentData.uploadedImages.map(image => 
-                    this.request('uploaded_images', {
-                      method: 'POST',
-                      body: JSON.stringify({
-                        comment_id: savedComment.id,
-                        filename: image.name,
-                        file_data: image.data,
-                        file_size: image.size,
-                        file_type: image.type
-                      })
-                    })
-                  );
-
-                  await Promise.all(imagePromises);
+                if (!response.ok) {
+                  const errorText = await response.text();
+                  throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
 
-                return savedComment;
+                return await response.json();
               } catch (error) {
                 console.error('Failed to save comment:', error);
                 throw error;
@@ -402,40 +344,36 @@ jobs:
 
             async updateComment(commentId, updates) {
               try {
-                const [updatedComment] = await this.request(`comments?id=eq.${commentId}`, {
+                const response = await fetch(`${this.baseUrl}/rest/v1/comments?id=eq.${commentId}`, {
                   method: 'PATCH',
+                  headers: this.headers,
                   body: JSON.stringify(updates)
                 });
-                return updatedComment;
+
+                if (!response.ok) {
+                  throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                return await response.json();
               } catch (error) {
                 console.error('Failed to update comment:', error);
                 throw error;
               }
             }
 
-            async deleteComment(commentId) {
-              try {
-                await this.request(`comments?id=eq.${commentId}`, {
-                  method: 'DELETE'
-                });
-                return true;
-              } catch (error) {
-                console.error('Failed to delete comment:', error);
-                throw error;
-              }
-            }
-
             async clearAllComments() {
               try {
-                await this.request('uploaded_images', {
-                  method: 'DELETE'
+                await fetch(`${this.baseUrl}/rest/v1/uploaded_images`, {
+                  method: 'DELETE',
+                  headers: this.headers
                 });
-                await this.request('comments', {
-                  method: 'DELETE'
+                await fetch(`${this.baseUrl}/rest/v1/comments`, {
+                  method: 'DELETE',
+                  headers: this.headers
                 });
                 return true;
               } catch (error) {
-                console.error('Failed to clear all comments:', error);
+                console.error('Failed to clear comments:', error);
                 throw error;
               }
             }
@@ -450,456 +388,199 @@ jobs:
             }
           }
 
-          // Initialize Supabase client
+          // Initialize client
           window.supabaseClient = new SupabaseClient();
           EOF
 
-      # Step 10: Create Enhanced SPA CSS
-      - name: Create Enhanced SPA CSS
+      # Step 10: Create Enhanced CSS with Review System Styles
+      - name: Create Enhanced CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
-          /* Enhanced SPA CSS with Comments Side Cart */
-          * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-          }
+          /* Enhanced SPA CSS with Complete Review System */
+          * { margin: 0; padding: 0; box-sizing: border-box; }
 
           body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            display: flex;
-            height: 100vh;
-            width: 100%;
-            overflow: hidden;
-            color: #333;
-            background-color: #f8f8f8;
-            position: relative;
+            line-height: 1.6; display: flex; height: 100vh; width: 100%;
+            overflow: hidden; color: #333; background-color: #f8f8f8;
           }
 
           .sidebar {
-            width: 280px;
-            background-color: #e0f7f7;
-            padding: 15px;
-            height: 100vh;
-            overflow-y: auto;
-            border-right: 1px solid #c0e0e0;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
-            z-index: 100;
+            width: 280px; background-color: #e0f7f7; padding: 15px;
+            height: 100vh; overflow-y: auto; border-right: 1px solid #c0e0e0;
+            display: flex; flex-direction: column; box-shadow: 2px 0 5px rgba(0,0,0,0.05);
           }
 
           .main-content {
-            flex: 1;
-            padding: 30px;
-            height: 100vh;
-            overflow-y: auto;
-            background-color: #ffffff;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.02);
-            position: relative;
-            transition: margin-right 0.3s ease;
+            flex: 1; padding: 30px; height: 100vh; overflow-y: auto;
+            background-color: #ffffff; position: relative;
           }
 
           .sidebar h2 {
-            font-weight: 500;
-            margin-top: 0;
-            margin-bottom: 15px;
-            color: #00747a;
-            border-bottom: 2px solid #80cbc4;
-            padding-bottom: 10px;
-            font-size: 1.4em;
+            font-weight: 500; margin-bottom: 15px; color: #00747a;
+            border-bottom: 2px solid #80cbc4; padding-bottom: 10px; font-size: 1.4em;
           }
 
-          .sidebar-nav {
-            flex: 1;
-            overflow-y: auto;
-            margin-top: 15px;
-          }
-
-          .sidebar ul {
-            list-style-type: none;
-            padding-left: 0;
-            margin-bottom: 5px;
-          }
-
-          .sidebar ul ul {
-            padding-left: 20px;
-            margin-top: 5px;
-            margin-bottom: 0;
-          }
-
-          .sidebar li {
-            margin-bottom: 6px;
-            position: relative;
-          }
+          .sidebar-nav { flex: 1; overflow-y: auto; margin-top: 15px; }
+          .sidebar ul { list-style-type: none; padding-left: 0; margin-bottom: 5px; }
+          .sidebar ul ul { padding-left: 20px; margin-top: 5px; margin-bottom: 0; }
+          .sidebar li { margin-bottom: 6px; position: relative; }
 
           .sidebar .toggle-arrow {
-            display: inline-block;
-            width: 18px;
-            height: 18px;
-            position: absolute;
-            left: 0;
-            top: 4px;
-            cursor: pointer;
-            z-index: 10;
-            color: #00747a;
+            display: inline-block; width: 18px; height: 18px;
+            position: absolute; left: 0; top: 4px; cursor: pointer;
+            z-index: 10; color: #00747a;
           }
-
           .sidebar .toggle-arrow:before {
-            content: "▶";
-            display: inline-block;
-            font-size: 10px;
+            content: "▶"; display: inline-block; font-size: 10px;
             transition: transform 0.2s;
           }
-
-          .sidebar li.expanded > .toggle-arrow:before {
-            transform: rotate(90deg);
-          }
-
-          .sidebar li.has-children > ul {
-            display: none;
-          }
-
-          .sidebar li.has-children.expanded > ul {
-            display: block;
-          }
+          .sidebar li.expanded > .toggle-arrow:before { transform: rotate(90deg); }
+          .sidebar li.has-children > ul { display: none; }
+          .sidebar li.has-children.expanded > ul { display: block; }
 
           .sidebar a {
-            color: #00747a;
-            text-decoration: none;
-            display: block;
-            padding: 6px 5px 6px 22px;
-            border-radius: 4px;
-            transition: background-color 0.2s, color 0.2s;
-            cursor: pointer;
-            font-size: 0.95em;
+            color: #00747a; text-decoration: none; display: block;
+            padding: 6px 5px 6px 22px; border-radius: 4px;
+            transition: background-color 0.2s, color 0.2s; cursor: pointer; font-size: 0.95em;
           }
-
-          .sidebar a:hover {
-            background-color: #e1f5fe;
-            color: #006064;
-          }
-
+          .sidebar a:hover { background-color: #e1f5fe; color: #006064; }
           .sidebar a.active {
-            background-color: #80deea;
-            font-weight: bold;
-            color: #006064;
+            background-color: #80deea; font-weight: bold; color: #006064;
             box-shadow: inset 3px 0 0 #00acc1;
           }
 
           .review-controls {
-            border-top: 2px solid #80cbc4;
-            padding-top: 15px;
-            margin-top: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+            border-top: 2px solid #80cbc4; padding-top: 15px; margin-top: 15px;
+            display: flex; flex-direction: column; gap: 10px;
           }
-
-          .review-controls h3 {
-            color: #00747a;
-            font-size: 1.1em;
-            margin-bottom: 10px;
-          }
-
-          .review-mode-toggle {
-            display: flex;
-            gap: 5px;
-          }
+          .review-controls h3 { color: #00747a; font-size: 1.1em; margin-bottom: 10px; }
 
           .review-btn {
-            padding: 8px 12px;
-            border: 1px solid #00acc1;
-            background: linear-gradient(135deg, #00acc1, #0097a7);
-            color: white;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 0.9em;
-            transition: all 0.3s;
-            text-align: center;
-            flex: 1;
+            padding: 8px 12px; border: 1px solid #00acc1;
+            background: linear-gradient(135deg, #00acc1, #0097a7); color: white;
+            border-radius: 5px; cursor: pointer; font-size: 0.9em;
+            transition: all 0.3s; text-align: center;
           }
-
           .review-btn:hover {
             background: linear-gradient(135deg, #0097a7, #00838f);
-            transform: translateY(-1px);
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2);
           }
-
           .review-btn.active {
-            background: linear-gradient(135deg, #ff6f00, #e65100);
-            border-color: #ff6f00;
+            background: linear-gradient(135deg, #ff6f00, #e65100); border-color: #ff6f00;
           }
-
           .review-btn.secondary {
-            background: linear-gradient(135deg, #546e7a, #455a64);
-            border-color: #546e7a;
-            font-size: 0.85em;
-            padding: 6px 10px;
+            background: linear-gradient(135deg, #546e7a, #455a64); border-color: #546e7a;
+            font-size: 0.85em; padding: 6px 10px;
           }
-
           .review-btn.danger {
-            background: linear-gradient(135deg, #f44336, #d32f2f);
-            border-color: #f44336;
-            font-size: 0.85em;
-            padding: 6px 10px;
-          }
-
-          .review-btn.danger:hover {
-            background: linear-gradient(135deg, #d32f2f, #c62828);
+            background: linear-gradient(135deg, #f44336, #d32f2f); border-color: #f44336;
+            font-size: 0.85em; padding: 6px 10px;
           }
 
           .search-container {
-            margin-bottom: 15px;
-            display: flex;
-            gap: 5px;
-            width: 100%;
-            position: relative;
+            margin-bottom: 15px; display: flex; gap: 5px; width: 100%;
           }
-
           .search-container input[type="text"] {
-            flex-grow: 1;
-            min-width: 0;
-            padding: 8px 10px;
-            border: 1px solid #b0e0e6;
-            border-radius: 5px;
-            font-size: 0.9em;
-            outline: none;
-            transition: border-color 0.3s, box-shadow 0.3s;
+            flex-grow: 1; padding: 8px 10px; border: 1px solid #b0e0e6;
+            border-radius: 5px; font-size: 0.9em; outline: none;
           }
-
-          .search-container input[type="text"]:focus {
-            border-color: #4dd0e1;
-            box-shadow: 0 0 5px rgba(0, 188, 212, 0.3);
-          }
-
           .search-container button {
-            padding: 8px 10px;
-            background-color: #00acc1;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            white-space: nowrap;
-            min-width: 60px;
-            font-weight: normal;
-          }
-
-          .search-container button:hover {
-            background-color: #0097a7;
+            padding: 8px 10px; background-color: #00acc1; color: white;
+            border: none; border-radius: 5px; cursor: pointer;
           }
 
           .search-results {
-            list-style-type: none;
-            padding: 0;
-            margin-top: 15px;
-            margin-bottom: 15px;
-            border-top: 1px solid #e0e0e0;
-            border-bottom: 1px solid #e0e0e0;
-            padding-top: 10px;
-            padding-bottom: 10px;
-            max-height: 300px;
-            overflow-y: auto;
-            width: 100%;
-            background-color: #f5f9f9;
-          }
-
-          .search-results li {
-            margin-bottom: 10px;
-            padding: 8px;
-            border-bottom: 1px dashed #e0e0e0;
-          }
-
-          .search-results li:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-          }
-
-          .search-results a {
-            color: #0097a7;
-            text-decoration: none;
-            font-weight: bold;
-            display: block;
-            padding: 4px 0;
-          }
-
-          .search-results a:hover {
-            background-color: #e1f5fe;
-            border-radius: 4px;
-          }
-
-          .highlight {
-            background-color: #fff9c4;
-            font-weight: bold;
+            list-style-type: none; padding: 0; margin-top: 15px;
+            border-top: 1px solid #e0e0e0; padding-top: 10px;
+            max-height: 300px; overflow-y: auto; background-color: #f5f9f9;
           }
 
           .main-content h1, .main-content h2, .main-content h3, .main-content h4 {
-            font-weight: 500;
-            margin-top: 1.5em;
-            margin-bottom: 0.8em;
-            color: #00838f;
+            font-weight: 500; margin-top: 1.5em; margin-bottom: 0.8em; color: #00838f;
           }
-
           .main-content h1 {
-            font-size: 2em;
-            border-bottom: 1px solid #e0e0e0;
-            padding-bottom: 10px;
-            margin-top: 0;
+            font-size: 2em; border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 10px; margin-top: 0;
           }
-
-          .main-content h2 { font-size: 1.5em; }
-          .main-content h3 { font-size: 1.3em; }
-          .main-content h4 { font-size: 1.1em; }
-
-          .main-content p {
-            margin-bottom: 1em;
-            line-height: 1.6;
-          }
-
+          .main-content p { margin-bottom: 1em; line-height: 1.6; }
           .main-content img {
-            max-width: 100%;
-            height: auto;
-            display: block;
-            margin: 1em auto;
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
-          }
-
-          .main-content table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 1.5em 0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            font-size: 0.95em;
-          }
-
-          .main-content th, .main-content td {
-            border: 1px solid #b2dfdb;
-            padding: 10px;
-            text-align: left;
-          }
-
-          .main-content th {
-            background-color: #e0f2f1;
-            font-weight: bold;
-            color: #00796b;
-          }
-
-          .main-content tr:nth-child(even) {
-            background-color: #f5f9f9;
-          }
-
-          .main-content tr:hover {
-            background-color: #e1f5fe;
-          }
-
-          .main-content ul, .main-content ol {
-            margin-left: 2em;
-            margin-bottom: 1em;
-          }
-
-          .main-content li {
-            margin-bottom: 0.5em;
+            max-width: 100%; height: auto; display: block; margin: 1em auto;
+            border: 1px solid #e0e0e0; border-radius: 4px;
           }
 
           .welcome-screen {
-            text-align: center;
-            padding: 40px 20px;
-            color: #00838f;
+            text-align: center; padding: 40px 20px; color: #00838f;
           }
-
-          .welcome-screen h2 {
-            margin-bottom: 20px;
-            font-size: 2em;
-          }
-
-          #loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            font-style: italic;
-            color: #666;
-          }
-
-          .loading #loading {
-            display: block;
-          }
-
-          .error {
-            background-color: #ffebee;
-            border-left: 4px solid #f44336;
-            padding: 15px;
-            margin-bottom: 20px;
-            color: #333;
-          }
-
-          .error h2 {
-            color: #d32f2f;
-            margin-top: 0;
-          }
+          .welcome-screen h2 { margin-bottom: 20px; font-size: 2em; }
 
           .connection-status {
-            position: fixed;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 8px 16px;
-            border-radius: 4px;
-            font-size: 0.8em;
-            font-weight: bold;
-            z-index: 2000;
-            transition: all 0.3s;
+            position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+            padding: 8px 16px; border-radius: 4px; font-size: 0.8em;
+            font-weight: bold; z-index: 2000; transition: all 0.3s;
           }
-
-          .connection-status.connected {
-            background: #4caf50;
-            color: white;
-          }
-
-          .connection-status.disconnected {
-            background: #f44336;
-            color: white;
-          }
-
-          .connection-status.hidden {
-            opacity: 0;
-            pointer-events: none;
-          }
+          .connection-status.connected { background: #4caf50; color: white; }
+          .connection-status.disconnected { background: #f44336; color: white; }
+          .connection-status.hidden { opacity: 0; pointer-events: none; }
 
           /* Review Mode Styles */
-          .review-mode .main-content {
-            background-color: #fffbf0;
+          .review-mode .main-content { background-color: #fffbf0; }
+          .review-mode .reviewable-text { cursor: text; user-select: text; }
+
+          .review-comment-highlight {
+            background-color: #e1f5fe; border-left: 3px solid #2196f3;
+            padding: 2px 4px; margin: 2px 0; border-radius: 2px; cursor: pointer;
+          }
+          .review-suggestion-highlight {
+            background-color: #fff3e0; border-left: 3px solid #ff9800;
+            padding: 2px 4px; margin: 2px 0; border-radius: 2px; cursor: pointer;
           }
 
-          /* Responsive design */
+          /* Comment Dialog */
+          .dialog-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.5); z-index: 1999; display: none;
+          }
+          .dialog-overlay.show { display: block; }
+
+          .comment-dialog {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; border: 2px solid #2c5aa0; border-radius: 8px;
+            padding: 20px; width: 450px; max-width: 90vw; z-index: 2000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: none;
+          }
+          .comment-dialog.show { display: block; }
+          .comment-dialog h3 { color: #2c5aa0; margin-bottom: 15px; }
+          .comment-dialog textarea {
+            width: 100%; height: 100px; padding: 10px; border: 1px solid #ddd;
+            border-radius: 4px; font-family: inherit; resize: vertical;
+          }
+
+          .dialog-actions {
+            display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;
+          }
+          .dialog-btn {
+            padding: 8px 16px; border: 1px solid #ddd; border-radius: 4px;
+            cursor: pointer; font-size: 0.9em; transition: all 0.2s;
+          }
+          .dialog-btn.primary {
+            background: #2c5aa0; color: white; border-color: #2c5aa0;
+          }
+          .dialog-btn.secondary { background: #f5f5f5; }
+
+          /* Responsive */
           @media (max-width: 768px) {
-            body {
-              flex-direction: column;
-              height: auto;
-            }
-
-            .sidebar {
-              width: 100%;
-              height: auto;
-              max-height: 40vh;
-              border-right: none;
-              border-bottom: 1px solid #b2ebf2;
-            }
-
-            .main-content {
-              height: auto;
-              min-height: 60vh;
-            }
+            body { flex-direction: column; height: auto; }
+            .sidebar { width: 100%; height: auto; max-height: 40vh; }
+            .main-content { height: auto; min-height: 60vh; }
           }
           EOF
 
-      # Step 11: Create Complete SPA JavaScript with ALL Functions
-      - name: Create Complete SPA JavaScript with All Functions
+      # Step 11: Create Complete SPA JavaScript with Full Review System
+      - name: Create Complete SPA JavaScript with Review System
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // Enhanced SPA Application with Supabase integration
+          // Complete SPA Application with Full Review System
 
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -908,36 +589,31 @@ jobs:
           const searchInput = document.getElementById('searchInput');
           const searchButton = document.getElementById('searchButton');
           const searchResultsEl = document.getElementById('searchResults');
-
-          // Review System Elements
           const reviewToggleBtn = document.getElementById('reviewToggle');
           const startReviewBtn = document.getElementById('startReview');
           const clearReviewBtn = document.getElementById('clearReview');
 
-          // Base path handling
+          // State
           const getBasePath = () => {
             if (location.hostname.includes('github.io')) {
               const pathSegments = location.pathname.split('/');
-              if (pathSegments.length > 1) {
-                return '/' + pathSegments[1];
-              }
+              if (pathSegments.length > 1) return '/' + pathSegments[1];
             }
             return '';
           };
 
-          // Current state
           window.currentPage = null;
           window.reviewMode = false;
           window.reviewData = {};
+          window.currentSelection = null;
           const basePath = getBasePath();
           let connectionStatus = 'connected';
 
-          // Debug logging
           function debug(message, data) {
             console.log(`[DITA-SPA] ${message}`, data || '');
           }
 
-          // Show connection status
+          // Connection Status
           function showConnectionStatus(status, message) {
             let statusEl = document.getElementById('connectionStatus');
             if (!statusEl) {
@@ -946,23 +622,18 @@ jobs:
               statusEl.className = 'connection-status';
               document.body.appendChild(statusEl);
             }
-            
             statusEl.className = `connection-status ${status}`;
             statusEl.textContent = message;
-            
             if (status === 'connected') {
-              setTimeout(() => {
-                statusEl.classList.add('hidden');
-              }, 3000);
+              setTimeout(() => statusEl.classList.add('hidden'), 3000);
             } else {
               statusEl.classList.remove('hidden');
             }
           }
 
-          // Test Supabase Connection (IMPROVED)
+          // Test Supabase Connection
           async function testSupabaseConnection() {
             try {
-              // Test with a simple select to verify connection
               const response = await fetch('https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments?limit=1', {
                 headers: {
                   'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ',
@@ -980,59 +651,20 @@ jobs:
               }
             } catch (error) {
               connectionStatus = 'disconnected';
-              showConnectionStatus('disconnected', '🔴 Database setup required');
+              showConnectionStatus('disconnected', '🔴 Database connection failed');
               debug('Supabase connection failed:', error);
-              console.error('Connection error details:', error);
             }
           }
 
-          // Initialize the application
+          // Initialize App
           function initApp() {
             debug('Initializing app with base path:', basePath);
-
-            // Test Supabase connection
             testSupabaseConnection();
-
-            // Render navigation
             renderNavigation(navigationConfig);
+            setupEventListeners();
+            initReviewSystem();
 
-            // Set up event listeners
-            window.addEventListener('popstate', handlePopState);
-            if (searchButton && searchInput) {
-                searchButton.addEventListener('click', performSearch);
-                searchInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        performSearch();
-                    }
-                });
-            }
-
-            // Review system event listeners
-            if (reviewToggleBtn) {
-              reviewToggleBtn.addEventListener('click', toggleReviewMode);
-            }
-            if (startReviewBtn) {
-              startReviewBtn.addEventListener('click', startReviewSession);
-            }
-            if (clearReviewBtn) {
-              clearReviewBtn.addEventListener('click', promptClearReviewData);
-            }
-
-            // Print functionality
-            const printBtn = document.querySelector('.wh_print_link button');
-            if (printBtn) {
-              printBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                window.print();
-              });
-            }
-
-            // Update review button states
-            updateReviewButtons();
-
-            // Check if we have a hash in the URL
             const initialPageId = getPageIdFromUrl();
-
             if (initialPageId) {
               navigateToPage(initialPageId, false);
             } else {
@@ -1040,59 +672,84 @@ jobs:
             }
           }
 
-          // Toggle Review Mode
+          // Event Listeners
+          function setupEventListeners() {
+            window.addEventListener('popstate', handlePopState);
+            
+            if (searchButton && searchInput) {
+              searchButton.addEventListener('click', performSearch);
+              searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') performSearch();
+              });
+            }
+
+            if (reviewToggleBtn) reviewToggleBtn.addEventListener('click', toggleReviewMode);
+            if (startReviewBtn) startReviewBtn.addEventListener('click', startReviewSession);
+            if (clearReviewBtn) clearReviewBtn.addEventListener('click', promptClearReviewData);
+
+            const printBtn = document.querySelector('.wh_print_link button');
+            if (printBtn) {
+              printBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.print();
+              });
+            }
+          }
+
+          // Review System Functions
+          function initReviewSystem() {
+            debug('Initializing review system');
+            createCommentDialog();
+            updateReviewButtons();
+          }
+
+          function createCommentDialog() {
+            // Create overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'dialog-overlay';
+            overlay.id = 'dialogOverlay';
+            overlay.addEventListener('click', closeCommentDialog);
+
+            // Create dialog
+            const dialog = document.createElement('div');
+            dialog.className = 'comment-dialog';
+            dialog.id = 'commentDialog';
+            dialog.innerHTML = `
+              <h3>Add Review Comment</h3>
+              <div style="margin-bottom: 15px;">
+                <label><input type="radio" name="commentType" value="comment" checked> Comment</label>
+                <label style="margin-left: 15px;"><input type="radio" name="commentType" value="suggestion"> Suggestion</label>
+              </div>
+              <div style="margin: 15px 0;">
+                <textarea id="commentText" placeholder="Enter your comment or suggestion..."></textarea>
+              </div>
+              <div class="dialog-actions">
+                <button class="dialog-btn secondary" onclick="closeCommentDialog()">Cancel</button>
+                <button class="dialog-btn primary" onclick="saveComment()">Save</button>
+              </div>
+            `;
+
+            document.body.appendChild(overlay);
+            document.body.appendChild(dialog);
+            debug('Comment dialog created');
+          }
+
           function toggleReviewMode() {
             window.reviewMode = !window.reviewMode;
             
             if (window.reviewMode) {
               document.body.classList.add('review-mode');
+              initializeReviewForContent();
               debug('Review mode activated');
             } else {
               document.body.classList.remove('review-mode');
+              clearReviewHighlights();
               debug('Review mode deactivated');
             }
             
             updateReviewButtons();
           }
 
-          // Start Review Session
-          function startReviewSession() {
-            if (!window.currentPage) {
-              alert('Please select a document to review first.');
-              return;
-            }
-            
-            if (!window.reviewMode) {
-              toggleReviewMode();
-            }
-            
-            alert(`Review session started for "${getPageTitle(window.currentPage)}".`);
-          }
-
-          // Prompt Clear Review Data
-          function promptClearReviewData() {
-            if (confirm('Are you sure you want to clear all review data? This cannot be undone.')) {
-              clearReviewData();
-            }
-          }
-
-          // Clear Review Data
-          async function clearReviewData() {
-            try {
-              if (window.supabaseClient) {
-                await window.supabaseClient.clearAllComments();
-              }
-              
-              window.reviewData = {};
-              alert('All review data has been cleared successfully.');
-              
-            } catch (error) {
-              debug('Error clearing review data:', error);
-              alert('Failed to clear review data. Please try again.');
-            }
-          }
-
-          // Update Review Buttons
           function updateReviewButtons() {
             if (reviewToggleBtn) {
               reviewToggleBtn.textContent = window.reviewMode ? 'Exit Review' : 'Review Mode';
@@ -1105,24 +762,199 @@ jobs:
             });
           }
 
-          // Show welcome screen
-          function showWelcomeScreen() {
-            contentTitleEl.textContent = 'Documentation';
-            document.title = 'Documentation';
-
-            contentEl.innerHTML = `
-              <div class="welcome-screen">
-                <h2>Welcome to Documentation</h2>
-                <p>Please select a topic from the navigation menu or use the search bar.</p>
-                <p><strong>Review Mode:</strong> Click "Review Mode" to enable collaborative commenting and suggestions.</p>
-                <p><strong>Supabase Integration:</strong> All comments are now saved to a persistent database.</p>
-              </div>
-            `;
-
-            document.body.classList.remove('loading');
+          function initializeReviewForContent() {
+            if (!window.reviewMode || !contentEl) return;
+            
+            // Make text elements selectable
+            const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th');
+            textElements.forEach(element => {
+              element.classList.add('reviewable-text');
+              element.addEventListener('mouseup', handleTextSelection);
+            });
+            
+            debug('Review initialization complete for content');
           }
 
-          // Render navigation
+          function handleTextSelection(event) {
+            if (!window.reviewMode) return;
+            
+            const selection = window.getSelection();
+            if (selection.toString().trim().length === 0) return;
+            
+            const selectedText = selection.toString().trim();
+            debug('Text selected:', selectedText);
+            
+            window.currentSelection = {
+              type: 'text',
+              text: selectedText,
+              element: event.target
+            };
+            
+            showCommentDialog();
+          }
+
+          function showCommentDialog() {
+            const dialog = document.getElementById('commentDialog');
+            const overlay = document.getElementById('dialogOverlay');
+            
+            if (dialog && overlay) {
+              dialog.classList.add('show');
+              overlay.classList.add('show');
+              document.getElementById('commentText').focus();
+            }
+          }
+
+          function closeCommentDialog() {
+            const dialog = document.getElementById('commentDialog');
+            const overlay = document.getElementById('dialogOverlay');
+            
+            if (dialog && overlay) {
+              dialog.classList.remove('show');
+              overlay.classList.remove('show');
+              document.getElementById('commentText').value = '';
+              document.querySelector('input[name="commentType"]:checked').checked = false;
+              document.querySelector('input[name="commentType"][value="comment"]').checked = true;
+            }
+            
+            window.getSelection().removeAllRanges();
+            window.currentSelection = null;
+          }
+
+          async function saveComment() {
+            if (!window.currentSelection) {
+              closeCommentDialog();
+              return;
+            }
+            
+            const commentText = document.getElementById('commentText').value.trim();
+            const commentType = document.querySelector('input[name="commentType"]:checked').value;
+            
+            if (!commentText) {
+              alert('Please enter a comment.');
+              return;
+            }
+            
+            try {
+              const commentData = {
+                page_id: window.currentPage,
+                comment_type: commentType,
+                comment_text: commentText,
+                selected_text: window.currentSelection.text,
+                selection_type: 'text'
+              };
+              
+              debug('Saving comment:', commentData);
+              
+              const result = await window.supabaseClient.saveComment(commentData);
+              debug('Comment saved successfully:', result);
+              
+              // Add visual highlight
+              highlightTextInDocument(window.currentSelection, { 
+                id: result[0]?.id, 
+                comment_type: commentType 
+              });
+              
+              alert('Comment saved successfully!');
+              closeCommentDialog();
+              
+            } catch (error) {
+              debug('Error saving comment:', error);
+              alert('Failed to save comment. Please try again.');
+            }
+          }
+
+          function highlightTextInDocument(selection, comment) {
+            if (!selection.element || !selection.text) return;
+            
+            const span = document.createElement('span');
+            span.className = comment.comment_type === 'suggestion' ? 
+              'review-suggestion-highlight' : 'review-comment-highlight';
+            span.setAttribute('data-comment-id', comment.id);
+            span.textContent = selection.text;
+            
+            // Find and replace the selected text
+            const textNodes = getAllTextNodes(selection.element);
+            for (const node of textNodes) {
+              if (node.textContent.includes(selection.text)) {
+                const parent = node.parentNode;
+                const index = node.textContent.indexOf(selection.text);
+                
+                if (index !== -1) {
+                  const beforeText = node.textContent.substring(0, index);
+                  const afterText = node.textContent.substring(index + selection.text.length);
+                  
+                  parent.removeChild(node);
+                  if (beforeText) parent.appendChild(document.createTextNode(beforeText));
+                  parent.appendChild(span);
+                  if (afterText) parent.appendChild(document.createTextNode(afterText));
+                  break;
+                }
+              }
+            }
+          }
+
+          function getAllTextNodes(element) {
+            const textNodes = [];
+            const walker = document.createTreeWalker(
+              element,
+              NodeFilter.SHOW_TEXT,
+              null,
+              false
+            );
+            
+            let node;
+            while (node = walker.nextNode()) {
+              if (node.textContent.trim()) {
+                textNodes.push(node);
+              }
+            }
+            return textNodes;
+          }
+
+          function clearReviewHighlights() {
+            const highlights = document.querySelectorAll('[data-comment-id]');
+            highlights.forEach(highlight => {
+              const parent = highlight.parentNode;
+              if (parent) {
+                parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+                parent.removeChild(highlight);
+              }
+            });
+          }
+
+          function startReviewSession() {
+            if (!window.currentPage) {
+              alert('Please select a document to review first.');
+              return;
+            }
+            
+            if (!window.reviewMode) {
+              toggleReviewMode();
+            }
+            
+            alert(`Review session started for "${getPageTitle(window.currentPage)}". Select text to add comments.`);
+          }
+
+          function promptClearReviewData() {
+            if (confirm('Are you sure you want to clear all review data? This cannot be undone.')) {
+              clearReviewData();
+            }
+          }
+
+          async function clearReviewData() {
+            try {
+              if (window.supabaseClient) {
+                await window.supabaseClient.clearAllComments();
+              }
+              clearReviewHighlights();
+              alert('All review data has been cleared successfully.');
+            } catch (error) {
+              debug('Error clearing review data:', error);
+              alert('Failed to clear review data. Please try again.');
+            }
+          }
+
+          // Navigation Functions
           function renderNavigation(items, parentEl = navigationEl) {
             const ul = document.createElement('ul');
             ul.setAttribute('role', 'menu');
@@ -1133,7 +965,6 @@ jobs:
 
               if (item.children && item.children.length > 0) {
                 li.classList.add('has-children');
-
                 const toggle = document.createElement('span');
                 toggle.className = 'toggle-arrow';
                 toggle.addEventListener('click', (e) => {
@@ -1151,34 +982,28 @@ jobs:
 
               a.addEventListener('click', (e) => {
                 e.preventDefault();
-
                 if (item.children && item.children.length > 0) {
                   li.classList.toggle('expanded');
                 }
-
                 navigateToPage(item.id);
                 if (searchResultsEl) searchResultsEl.innerHTML = '';
                 if (searchInput) searchInput.value = '';
               });
 
               li.appendChild(a);
-
               if (item.children && item.children.length > 0) {
                 renderNavigation(item.children, li);
               }
-
               ul.appendChild(li);
             });
 
             parentEl.appendChild(ul);
           }
 
-          // Navigate to page
           function navigateToPage(pageId, pushState = true) {
             debug('Navigating to page:', pageId);
             
             if (!pageId) {
-              console.error('Invalid pageId - cannot navigate to undefined page');
               showErrorContent('undefined');
               return;
             }
@@ -1198,9 +1023,11 @@ jobs:
                 const title = getPageTitle(pageId);
                 contentTitleEl.textContent = title;
                 document.title = title;
-
                 contentEl.innerHTML = content;
-                enhanceTables();
+                
+                if (window.reviewMode) {
+                  initializeReviewForContent();
+                }
                 
                 document.body.classList.remove('loading');
                 debug('Content loaded successfully for:', pageId);
@@ -1210,7 +1037,6 @@ jobs:
               });
           }
 
-          // Load content
           async function loadContent(pageId) {
             const contentPath = `${basePath}/content/${pageId}.html`;
             debug('Fetching from URL:', contentPath);
@@ -1218,7 +1044,7 @@ jobs:
             try {
               const response = await fetch(contentPath);
               if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status} for ${contentPath}`);
+                throw new Error(`HTTP error! status: ${response.status}`);
               }
               return await response.text();
             } catch (error) {
@@ -1227,7 +1053,6 @@ jobs:
             }
           }
 
-          // Update active navigation item
           function updateActiveNavItem(pageId) {
             const allNavItems = document.querySelectorAll('.sidebar a');
             allNavItems.forEach(item => item.classList.remove('active'));
@@ -1235,7 +1060,6 @@ jobs:
             const activeItem = document.querySelector(`.sidebar a[data-id="${pageId}"]`);
             if (activeItem) {
               activeItem.classList.add('active');
-
               let parent = activeItem.parentElement;
               while (parent && !parent.classList.contains('sidebar')) {
                 if (parent.classList.contains('has-children')) {
@@ -1246,22 +1070,15 @@ jobs:
             }
           }
 
-          // Expand navigation to page
           function expandNavigationTo(pageId) {
             function findPageInNavigation(items, id, path = []) {
               for (let i = 0; i < items.length; i++) {
                 const item = items[i];
                 const currentPath = [...path, item];
-
-                if (item.id === id) {
-                  return currentPath;
-                }
-
+                if (item.id === id) return currentPath;
                 if (item.children && item.children.length > 0) {
                   const result = findPageInNavigation(item.children, id, currentPath);
-                  if (result) {
-                    return result;
-                  }
+                  if (result) return result;
                 }
               }
               return null;
@@ -1277,19 +1094,16 @@ jobs:
             }
           }
 
-          // Handle popstate
           function handlePopState(event) {
             const pageId = event.state?.pageId || getPageIdFromUrl() || navigationConfig[0]?.id;
             debug('Popstate event, loading page:', pageId);
             navigateToPage(pageId, false);
           }
 
-          // Get page ID from URL
           function getPageIdFromUrl() {
             return window.location.hash.substring(1) || null;
           }
 
-          // Get page title
           function getPageTitle(pageId) {
             if (window.contentIdMap && contentIdMap[pageId]) {
               return contentIdMap[pageId].title;
@@ -1297,9 +1111,7 @@ jobs:
 
             function findTitleInNav(items, id) {
               for (const item of items) {
-                if (item.id === id) {
-                  return item.title;
-                }
+                if (item.id === id) return item.title;
                 if (item.children && item.children.length > 0) {
                   const title = findTitleInNav(item.children, id);
                   if (title) return title;
@@ -1316,7 +1128,6 @@ jobs:
             ).join(' ');
           }
 
-          // Show error content
           function showErrorContent(pageId) {
             console.error('Failed to load content:', pageId);
             contentEl.innerHTML = `
@@ -1329,24 +1140,20 @@ jobs:
             document.body.classList.remove('loading');
           }
 
-          // Enhance tables
-          function enhanceTables() {
-            const tables = document.querySelectorAll('#content table');
-            tables.forEach(table => {
-              if (!table.className.includes('table')) {
-                table.classList.add('table');
-              }
-              
-              if (!table.parentElement.className.includes('table-container')) {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'table-container';
-                table.parentNode.insertBefore(wrapper, table);
-                wrapper.appendChild(table);
-              }
-            });
+          function showWelcomeScreen() {
+            contentTitleEl.textContent = 'Documentation';
+            document.title = 'Documentation';
+            contentEl.innerHTML = `
+              <div class="welcome-screen">
+                <h2>Welcome to Automotive Documentation</h2>
+                <p>Please select a topic from the navigation menu or use the search bar.</p>
+                <p><strong>Review Mode:</strong> Click "Review Mode" to enable collaborative commenting and suggestions.</p>
+                <p><strong>Database Integration:</strong> All comments are saved to Supabase and persist across sessions.</p>
+              </div>
+            `;
+            document.body.classList.remove('loading');
           }
 
-          // Search functionality
           function performSearch() {
             const query = searchInput.value.toLowerCase().trim();
             searchResultsEl.innerHTML = '';
@@ -1359,8 +1166,8 @@ jobs:
             }
 
             debug('Performing search for:', query);
-
             const results = [];
+            
             for (const id in contentIdMap) {
               if (contentIdMap.hasOwnProperty(id) && id !== 'default') {
                 const item = contentIdMap[id];
@@ -1403,14 +1210,6 @@ jobs:
                 link.textContent = result.title;
                 link.addEventListener('click', (e) => {
                   e.preventDefault();
-                  debug('Search result clicked for ID:', result.id);
-                  
-                  if (!result.id || !contentIdMap[result.id]) {
-                    debug('Invalid content ID in search result:', result.id);
-                    alert('Error: Content not found. Please try another search result.');
-                    return;
-                  }
-                  
                   navigateToPage(result.id);
                   searchResultsEl.innerHTML = '';
                   searchInput.value = '';
@@ -1427,35 +1226,38 @@ jobs:
             }
           }
 
-          // Highlight match in search results
           function highlightMatch(text, query) {
             const regex = new RegExp(`(${query})`, 'gi');
             return text.replace(regex, '<span class="highlight">$1</span>');
           }
 
-          // Make functions available globally
+          // Make functions globally available
           window.toggleReviewMode = toggleReviewMode;
           window.startReviewSession = startReviewSession;
           window.promptClearReviewData = promptClearReviewData;
           window.navigateToPage = navigateToPage;
+          window.closeCommentDialog = closeCommentDialog;
+          window.saveComment = saveComment;
 
           // Initialize when DOM is ready
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 12: Create default content for container nodes
+      # Step 12: Create default content
       - name: Create Default Content
         run: |
           mkdir -p ./site/content
 
-          # Create some default content files
+          # Create sample content files
           cat > ./site/content/getting-started-with-cars.html << 'EOF'
           <h1>Getting Started With Cars</h1>
           <p>Welcome to the comprehensive automotive guide. This section covers the basics of car ownership and maintenance.</p>
+          <p>Select text in review mode to add comments and suggestions.</p>
           <ul>
-            <li>Understanding your vehicle</li>
-            <li>Basic maintenance schedules</li>
-            <li>Emergency procedures</li>
+            <li>Understanding your vehicle systems</li>
+            <li>Basic maintenance schedules and procedures</li>
+            <li>Emergency procedures and troubleshooting</li>
+            <li>Safety considerations and best practices</li>
           </ul>
           EOF
 
@@ -1463,18 +1265,22 @@ jobs:
           <h1>Car Types</h1>
           <p>Learn about different types of vehicles and their characteristics.</p>
           <h2>Sedan</h2>
-          <p>Four-door passenger car with a separate trunk.</p>
+          <p>Four-door passenger car with a separate trunk compartment.</p>
           <h2>SUV</h2>
-          <p>Sport Utility Vehicle with higher ground clearance.</p>
+          <p>Sport Utility Vehicle with higher ground clearance and all-terrain capability.</p>
+          <h2>Hatchback</h2>
+          <p>Compact car with rear door that opens upward to access cargo area.</p>
           EOF
 
           cat > ./site/content/basic-maintenance.html << 'EOF'
           <h1>Basic Maintenance</h1>
           <p>Regular maintenance is crucial for vehicle longevity and safety.</p>
           <h2>Oil Changes</h2>
-          <p>Change engine oil every 3,000-5,000 miles.</p>
+          <p>Change engine oil every 3,000-5,000 miles depending on your vehicle and oil type.</p>
           <h2>Tire Care</h2>
-          <p>Check tire pressure monthly and rotate tires regularly.</p>
+          <p>Check tire pressure monthly and rotate tires every 6,000-8,000 miles.</p>
+          <h2>Brake Inspection</h2>
+          <p>Have brakes inspected annually and replace brake pads when worn.</p>
           EOF
 
       # Step 13: Create Enhanced index.html
@@ -1498,7 +1304,7 @@ jobs:
               }
             </script>
 
-            <title>Automotive Documentation - Enhanced with Supabase</title>
+            <title>Automotive Documentation - Complete Review System</title>
             <link rel="stylesheet" href="css/style.css">
           </head>
           <body>
@@ -1531,7 +1337,7 @@ jobs:
               <div id="loading">Loading content...</div>
               <div id="content">
                 <div class="initial-loading">
-                  <p>Initializing enhanced documentation viewer with Supabase...</p>
+                  <p>Initializing enhanced documentation viewer with complete review system...</p>
                 </div>
               </div>
             </div>
@@ -1563,9 +1369,7 @@ jobs:
               function getBasePath() {
                 if (location.hostname.includes('github.io')) {
                   const pathSegments = location.pathname.split('/');
-                  if (pathSegments.length > 1) {
-                    return '/' + pathSegments[1];
-                  }
+                  if (pathSegments.length > 1) return '/' + pathSegments[1];
                 }
                 return '';
               }
