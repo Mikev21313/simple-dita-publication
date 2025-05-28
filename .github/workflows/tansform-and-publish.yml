@@ -189,15 +189,15 @@ jobs:
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           BRANCH_NAME="${GITHUB_REF#refs/heads/}"
           
-          cat > ./site/js/staticman-config.js << JSEOF
+          cat > ./site/js/staticman-config.js << 'JSEOF'
           // Staticman configuration for GitHub repository integration
           window.staticmanConfig = {
             // Staticman API endpoint for this repository
-            endpoint: 'https://api.staticman.net/v3/entry/github/${REPO_OWNER}/${REPO_NAME}/${BRANCH_NAME}/comments',
+            endpoint: 'https://api.staticman.net/v3/entry/github/REPO_OWNER/REPO_NAME/BRANCH_NAME/comments',
             
             // Repository details
-            repository: '${REPO_OWNER}/${REPO_NAME}',
-            branch: '${BRANCH_NAME}',
+            repository: 'REPO_OWNER/REPO_NAME',
+            branch: 'BRANCH_NAME',
             
             // Configuration
             enabled: true,
@@ -205,14 +205,19 @@ jobs:
             
             // Helpful links for setup
             setup: {
-              inviteUrl: 'https://api.staticman.net/v3/connect/github/${REPO_OWNER}/${REPO_NAME}',
+              inviteUrl: 'https://api.staticman.net/v3/connect/github/REPO_OWNER/REPO_NAME',
               docsUrl: 'https://staticman.net/docs/',
-              repositoryUrl: 'https://github.com/${REPO_OWNER}/${REPO_NAME}'
+              repositoryUrl: 'https://github.com/REPO_OWNER/REPO_NAME'
             }
           };
           
-          console.log('Staticman configured for repository: ${REPO_OWNER}/${REPO_NAME}');
+          console.log('Staticman configured for repository: REPO_OWNER/REPO_NAME');
           JSEOF
+          
+          # Replace placeholders with actual values
+          sed -i "s/REPO_OWNER/$REPO_OWNER/g" ./site/js/staticman-config.js
+          sed -i "s/REPO_NAME/$REPO_NAME/g" ./site/js/staticman-config.js
+          sed -i "s/BRANCH_NAME/$BRANCH_NAME/g" ./site/js/staticman-config.js
 
       # Step 9: Create Comments Data Loader
       - name: Create Comments Data Loader
@@ -1455,6 +1460,10 @@ Moderation: ${this.config.moderation ? 'Enabled (Pull Requests)' : 'Disabled (Di
       # Step 15: Create HTML Structure
       - name: Create HTML Structure
         run: |
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          
           cat > ./site/index.html << 'HTMLEOF'
           <!DOCTYPE html>
           <html lang="en">
@@ -1463,10 +1472,6 @@ Moderation: ${this.config.moderation ? 'Enabled (Pull Requests)' : 'Disabled (Di
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Documentation with Staticman Comments</title>
             <meta name="description" content="Interactive documentation with collaborative commenting powered by Staticman">
-            
-            <!-- Staticman Integration Meta -->
-            <meta name="staticman-repository" content="${GITHUB_REPOSITORY}">
-            <meta name="staticman-branch" content="${GITHUB_REF#refs/heads/}">
             
             <link rel="stylesheet" href="css/styles.css">
           </head>
@@ -1553,7 +1558,7 @@ Moderation: ${this.config.moderation ? 'Enabled (Pull Requests)' : 'Disabled (Di
           </html>
           HTML404EOF
 
-      # Step 16: Copy Staticman Configuration to Site
+      # Step 16: Copy Configuration Files
       - name: Copy Configuration Files
         run: |
           # Copy staticman.yml to site root for GitHub Pages
@@ -1563,16 +1568,21 @@ Moderation: ${this.config.moderation ? 'Enabled (Pull Requests)' : 'Disabled (Di
           touch ./site/.nojekyll
           
           # Create robots.txt
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          
           cat > ./site/robots.txt << 'ROBOTSEOF'
           User-agent: *
           Allow: /
-          
-          Sitemap: https://${GITHUB_REPOSITORY%/*}.github.io/${GITHUB_REPOSITORY#*/}/sitemap.xml
           ROBOTSEOF
 
       # Step 17: Create Setup Documentation
       - name: Create Staticman Setup Documentation
         run: |
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          
           cat > ./site/STATICMAN_SETUP.md << 'SETUPEOF'
           # Staticman Setup for GitHub Repository Integration
           
@@ -1590,16 +1600,16 @@ Moderation: ${this.config.moderation ? 'Enabled (Pull Requests)' : 'Disabled (Di
           
           ## Repository Configuration
           
-          - **Repository:** ${GITHUB_REPOSITORY}
-          - **Branch:** ${GITHUB_REF#refs/heads/}
+          - **Repository:** REPO_OWNER/REPO_NAME
+          - **Branch:** BRANCH_NAME  
           - **Moderation:** Enabled (Pull Request workflow)
-          - **API Endpoint:** `https://api.staticman.net/v3/entry/github/${GITHUB_REPOSITORY}/${GITHUB_REF#refs/heads/}/comments`
+          - **API Endpoint:** `https://api.staticman.net/v3/entry/github/REPO_OWNER/REPO_NAME/BRANCH_NAME/comments`
           
           ## Setup Steps (Required for Comment Functionality)
           
           ### 1. Add Staticman as Repository Collaborator
           
-          1. Go to your repository settings: [${GITHUB_REPOSITORY}/settings/access](https://github.com/${GITHUB_REPOSITORY}/settings/access)
+          1. Go to your repository settings: [REPO_OWNER/REPO_NAME/settings/access](https://github.com/REPO_OWNER/REPO_NAME/settings/access)
           2. Click **"Invite a collaborator"**
           3. Add username: `staticmanapp`
           4. Send the invitation
@@ -1608,7 +1618,7 @@ Moderation: ${this.config.moderation ? 'Enabled (Pull Requests)' : 'Disabled (Di
           
           Visit this URL to connect Staticman to your repository:
           ```
-          https://api.staticman.net/v3/connect/github/${GITHUB_REPOSITORY}
+          https://api.staticman.net/v3/connect/github/REPO_OWNER/REPO_NAME
           ```
           
           This URL tells Staticman to accept the collaboration invitation and enables the API endpoint.
@@ -1732,6 +1742,11 @@ Moderation: ${this.config.moderation ? 'Enabled (Pull Requests)' : 'Disabled (Di
           
           **Note:** This setup creates a collaborative documentation experience where comments are permanently stored in your repository, version-controlled, and integrated with your development workflow.
           SETUPEOF
+          
+          # Replace placeholders in setup documentation
+          sed -i "s/REPO_OWNER/$REPO_OWNER/g" ./site/STATICMAN_SETUP.md
+          sed -i "s/REPO_NAME/$REPO_NAME/g" ./site/STATICMAN_SETUP.md
+          sed -i "s/BRANCH_NAME/$BRANCH_NAME/g" ./site/STATICMAN_SETUP.md
 
       # Step 18: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
