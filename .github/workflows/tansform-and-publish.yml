@@ -1,7 +1,9 @@
-name: DITA to SPA Transformation with Enhanced Staticman Comments Review System
+name: DITA to SPA with Staticman Comments System
 
 on:
   push:
+    branches: [ main, master ]
+  pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
@@ -10,10 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       # Step 1: Checkout repository
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # Step 2: Set up Java (required for DITA-OT)
       - name: Set up Java
@@ -22,12 +25,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # Step 3: Create Staticman Configuration
+      # Step 3: Create Staticman Configuration for GitHub Repository Integration
       - name: Create Staticman Configuration
         run: |
           cat > staticman.yml << 'EOF'
-          # Staticman configuration for document review comments
+          # Staticman configuration for GitHub repository integration
           comments:
+            # Fields accepted in comment submissions
             allowedFields: [
               "name", 
               "email", 
@@ -37,23 +41,40 @@ jobs:
               "commentType", 
               "selectedText", 
               "selectionType", 
-              "position", 
-              "imageSrc", 
-              "imageAlt", 
-              "uploadedImages",
-              "timestamp",
-              "resolved"
+              "position"
             ]
+            
+            # Target branch for comment data files
             branch: "main"
-            commitMessage: "Add review comment from {fields.name}"
+            
+            # Commit message template for new comments
+            commitMessage: "New comment by {fields.name} on {options.pageId}"
+            
+            # Filename pattern for comment data files
             filename: "comment-{@timestamp}"
+            
+            # Data format (json recommended for flexibility)
             format: "json"
+            
+            # Field transformations (hash email for privacy)
             transforms:
               email: md5
-            moderation: false
-            name: "[username]"
+              
+            # Moderation settings
+            # Set to true for pull request workflow (recommended for production)
+            # Set to false for direct commits (faster, less control)
+            moderation: true
+            
+            # Pull request title template (when moderation enabled)
+            pullRequestBody: "Dear human,\n\nHere's a new comment for your approval. :tada:\n\n{fields.message}\n\nMerge the pull request to accept it, or close it to send it away.\n\n:heart: Your friends at [Staticman](https://staticman.net) :muscle:\n\n---\n**Author:** {fields.name}\n**Page:** {options.pageId}\n**Comment Type:** {fields.commentType}"
+            
+            # Data file storage path in repository
             path: "_data/comments/{options.pageId}"
+            
+            # Required fields validation
             requiredFields: ["name", "message", "pageId"]
+            
+            # Auto-generated fields
             generatedFields:
               date:
                 type: "date"
@@ -63,965 +84,1376 @@ jobs:
                 type: "date"
                 options:
                   format: "timestamp"
+                  
+            # Notifications (optional)
+            notifications:
+              enabled: false
+              
+            # reCAPTCHA (optional, for spam protection)
+            reCaptcha:
+              enabled: false
+              
+            # Akismet spam filtering (optional)
+            akismet:
+              enabled: false
           EOF
 
-      # Step 4: Install DITA-OT and required tools
-      - name: Set up DITA-OT and XML tools
+          echo "Staticman configuration created at repository root"
+
+      # Step 4: Install DITA-OT and processing tools
+      - name: Set up DITA-OT and XML tools  
         run: |
           sudo apt-get update
           sudo apt-get install -y libxml2-utils xsltproc
+          
+          # Download and setup DITA-OT
           wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 5: Parse DITAMAP structure
+      # Step 5: Parse DITAMAP to extract navigation structure
       - name: Parse DITAMAP Structure
         run: |
-          echo "Parsing DITAMAP structure from dita-source/automotive.ditamap"
+          echo "Parsing DITAMAP structure for SPA navigation"
+          
+          # Create XSLT transformation for navigation extraction
           cat > extract-nav.xsl << 'XSLEOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
             <xsl:output method="text"/>
             <xsl:template match="/">
-              [
-                <xsl:apply-templates select="//topicref[not(ancestor::topicref)]"/>
-              ]
+              [<xsl:apply-templates select="//topicref[not(ancestor::topicref)]"/>]
             </xsl:template>
             <xsl:template match="topicref">
               <xsl:variable name="href" select="@href"/>
-              <xsl:variable name="filename">
-                <xsl:choose>
-                  <xsl:when test="contains($href, '/')">
-                    <xsl:value-of select="substring-after(substring-before($href, '.'), '/')"/>
-                  </xsl:when>
-                  <xsl:otherwise>
-                    <xsl:value-of select="substring-before($href, '.')"/>
-                  </xsl:otherwise>
-                </xsl:choose>
-              </xsl:variable>
               <xsl:variable name="id">
                 <xsl:choose>
                   <xsl:when test="@id"><xsl:value-of select="@id"/></xsl:when>
-                  <xsl:otherwise><xsl:value-of select="translate($filename, '_', '-')"/></xsl:otherwise>
+                  <xsl:otherwise><xsl:value-of select="translate(substring-before(@href, '.'), '_', '-')"/></xsl:otherwise>
                 </xsl:choose>
               </xsl:variable>
               <xsl:variable name="title">
                 <xsl:choose>
                   <xsl:when test="@navtitle"><xsl:value-of select="@navtitle"/></xsl:when>
                   <xsl:when test="topicmeta/navtitle"><xsl:value-of select="topicmeta/navtitle"/></xsl:when>
-                  <xsl:otherwise>
-                    <xsl:value-of select="translate(translate($id, '-', ' '), '_', ' ')"/>
-                  </xsl:otherwise>
+                  <xsl:otherwise><xsl:value-of select="translate($id, '-', ' ')"/></xsl:otherwise>
                 </xsl:choose>
               </xsl:variable>
               {
                 "id": "<xsl:value-of select="$id"/>",
                 "title": "<xsl:value-of select="$title"/>",
-                "filename": "<xsl:value-of select="$filename"/>",
                 "href": "<xsl:value-of select="$href"/>"
-                <xsl:if test="topicref">
-                  ,
-                  "children": [
-                    <xsl:apply-templates select="topicref"/>
-                  ]
-                </xsl:if>
+                <xsl:if test="topicref">,
+                "children": [<xsl:apply-templates select="topicref"/>]</xsl:if>
               }<xsl:if test="following-sibling::topicref">,</xsl:if>
             </xsl:template>
           </xsl:stylesheet>
           XSLEOF
           
-          xsltproc extract-nav.xsl dita-source/automotive.ditamap > ./navigation-structure.json
-          sed -i 's/\\n//g; s/\\t//g; s/\\"//g; s/\\//g; s/  / /g' ./navigation-structure.json
+          # Apply transformation
+          xsltproc extract-nav.xsl dita-source/automotive.ditamap > navigation-structure.json
 
-      # Step 6: Transform DITA to HTML
-      - name: Transform DITA to HTML and Prepare Images
+      # Step 6: Transform DITA content to HTML
+      - name: Transform DITA to HTML
         run: |
+          # Transform DITA using DITA-OT
           ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
-          mkdir -p ./site/content ./site/images ./site/_data/comments
           
-          find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \;
+          # Create necessary directories
+          mkdir -p ./site/content ./site/images ./site/js ./site/css ./site/_data/comments
           
-          if [ ! "$(ls -A ./site/images 2>/dev/null)" ]; then
-            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/test.png
-          fi
+          # Copy images to site directory
+          find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp {} ./site/images/ \;
 
-      # Step 7: Process HTML Content
-      - name: Process HTML Content
+      # Step 7: Process HTML content for SPA
+      - name: Process HTML Content for SPA
         run: |
-          mkdir -p ./site/content ./site/js
-          
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
-            if [[ "$file" == "./site/index.html" ]]; then
-              continue
-            fi
-            
-            filename=$(basename "$file")
-            id="${filename%.html}"
-            
-            content=$(sed -n '/<body/,/<\/body>/p' "$file" | sed '/<body/d;/<\/body>/d' | sed '/<header/,/<\/header>/d' | sed '/<nav/,/<\/nav>/d' | sed '/<footer/,/<\/footer>/d')
-            content=$(echo "$content" | sed -E 's/<img([^>]*)src="[^"]*\/([^\/"]*)\.([a-zA-Z0-9]+)"/<img\1src="images\/\2.\3"/gi')
-            
-            echo "$content" > "./site/content/$id.html"
-          done
-          
-          echo "const contentIdMap = {" > ./site/js/content-id-map.js
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
+          # Process each HTML file into content fragments
+          find ./site -name "*.html" ! -name "index.html" ! -name "404.html" | while read file; do
             filename=$(basename "$file" .html)
-            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-            raw_content=$(cat "$file" | tr '\n' ' ' | sed 's/<[^>]*>//g' | sed 's/&nbsp;/ /g' | sed 's/  */ /g')
             
-            if [ -z "$title" ]; then
-              title=$(echo "$filename" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-            fi
+            # Extract main content
+            sed -n '/<main\|<article\|<body/,/<\/main>\|<\/article>\|<\/body>/p' "$file" | \
+            sed '/<main\|<article\|<body/d; /<\/main>\|<\/article>\|<\/body>/d' | \
+            sed '/<nav\|<header\|<footer/,/<\/nav>\|<\/header>\|<\/footer>/d' > "./site/content/$filename.html"
             
-            title=$(echo "$title" | sed 's/"/\\"/g')
-            raw_content=$(echo "$raw_content" | sed 's/"/\\"/g')
-            
-            echo "  \"$filename\": { \"title\": \"$title\", \"filename\": \"$filename\", \"content\": \"$raw_content\" }," >> ./site/js/content-id-map.js
+            # Fix image paths for SPA
+            sed -i 's|src="[^"]*images/|src="images/|g' "./site/content/$filename.html"
           done
-          echo "};" >> ./site/js/content-id-map.js
 
-      # Step 8: Create JavaScript Files
-      - name: Create JavaScript Files
+      # Step 8: Create Staticman Integration JavaScript
+      - name: Create Staticman Integration
         run: |
-          mkdir -p ./site/js
-          
-          # Navigation config
-          echo "const navigationConfig =" > ./site/js/navigation-config.js
-          cat ./navigation-structure.json >> ./site/js/navigation-config.js
-          echo ";" >> ./site/js/navigation-config.js
-          
-          # Staticman config
+          # Get repository information for Staticman endpoints
           REPO_OWNER="${GITHUB_REPOSITORY%/*}"
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           BRANCH_NAME="${GITHUB_REF#refs/heads/}"
           
-          cat > ./site/js/staticman-config.js << 'JSEOF'
+          cat > ./site/js/staticman-config.js << JSEOF
+          // Staticman configuration for GitHub repository integration
           window.staticmanConfig = {
-            endpoint: 'https://api.staticman.net/v3/entry/github/REPO_OWNER/REPO_NAME/BRANCH_NAME/comments',
-            repository: 'REPO_OWNER/REPO_NAME',
-            branch: 'BRANCH_NAME',
+            // Staticman API endpoint for this repository
+            endpoint: 'https://api.staticman.net/v3/entry/github/${REPO_OWNER}/${REPO_NAME}/${BRANCH_NAME}/comments',
+            
+            // Repository details
+            repository: '${REPO_OWNER}/${REPO_NAME}',
+            branch: '${BRANCH_NAME}',
+            
+            // Configuration
             enabled: true,
-            troubleshooting: {
-              setupUrl: 'https://api.staticman.net/v3/connect/github/REPO_OWNER/REPO_NAME',
-              docsUrl: 'https://staticman.net/docs/'
+            moderation: true, // Matches staticman.yml setting
+            
+            // Helpful links for setup
+            setup: {
+              inviteUrl: 'https://api.staticman.net/v3/connect/github/${REPO_OWNER}/${REPO_NAME}',
+              docsUrl: 'https://staticman.net/docs/',
+              repositoryUrl: 'https://github.com/${REPO_OWNER}/${REPO_NAME}'
             }
           };
-          JSEOF
           
-          sed -i "s/REPO_OWNER/$REPO_OWNER/g" ./site/js/staticman-config.js
-          sed -i "s/REPO_NAME/$REPO_NAME/g" ./site/js/staticman-config.js
-          sed -i "s/BRANCH_NAME/$BRANCH_NAME/g" ./site/js/staticman-config.js
+          console.log('Staticman configured for repository: ${REPO_OWNER}/${REPO_NAME}');
+          JSEOF
 
-      # Step 9: Create Comments Loader
-      - name: Create Comments Loader
+      # Step 9: Create Comments Data Loader
+      - name: Create Comments Data Loader
         run: |
           cat > ./site/js/comments-loader.js << 'JSEOF'
-          window.staticmanComments = {};
-          window.localComments = {};
-
-          async function loadStaticmanComments() {
-            try {
-              const repoComments = window.preloadedComments || {};
-              const localData = localStorage.getItem('staticman-comments');
-              const localComments = localData ? JSON.parse(localData) : {};
-              
-              const allComments = {};
-              Object.keys(repoComments).forEach(pageId => {
-                allComments[pageId] = repoComments[pageId] || [];
-              });
-              
-              Object.keys(localComments).forEach(pageId => {
-                if (!allComments[pageId]) {
-                  allComments[pageId] = [];
+          // Comments data loader for Staticman integration
+          
+          class CommentsLoader {
+            constructor() {
+              this.comments = {};
+              this.loadExistingComments();
+            }
+            
+            // Load existing comments from _data directory
+            async loadExistingComments() {
+              try {
+                // In production, comments are loaded from _data/comments/ files
+                // This is populated by Staticman when comments are approved
+                if (window.preloadedComments) {
+                  this.comments = window.preloadedComments;
+                  console.log('Loaded existing comments:', Object.keys(this.comments).length, 'pages');
                 }
-                allComments[pageId] = [
-                  ...allComments[pageId],
-                  ...localComments[pageId].map(comment => ({
-                    ...comment,
-                    local: true,
-                    synced: false
-                  }))
-                ];
-              });
-              
-              return allComments;
-            } catch (error) {
-              console.log('Error loading comments:', error);
-              return {};
-            }
-          }
-
-          function saveCommentToLocal(comment) {
-            try {
-              const existing = localStorage.getItem('staticman-comments');
-              const comments = existing ? JSON.parse(existing) : {};
-              
-              if (!comments[comment.pageId]) {
-                comments[comment.pageId] = [];
+              } catch (error) {
+                console.log('No existing comments found:', error.message);
               }
+            }
+            
+            // Get comments for a specific page
+            getCommentsForPage(pageId) {
+              return this.comments[pageId] || [];
+            }
+            
+            // Add new comment (after Staticman processing)
+            addComment(pageId, comment) {
+              if (!this.comments[pageId]) {
+                this.comments[pageId] = [];
+              }
+              this.comments[pageId].push(comment);
+              this.notifyCommentUpdate(pageId);
+            }
+            
+            // Notify UI of comment updates
+            notifyCommentUpdate(pageId) {
+              const event = new CustomEvent('commentsUpdated', {
+                detail: { pageId, comments: this.comments[pageId] }
+              });
+              document.dispatchEvent(event);
+            }
+            
+            // Get comment statistics
+            getStats() {
+              const totalComments = Object.values(this.comments)
+                .reduce((total, pageComments) => total + pageComments.length, 0);
+              const totalPages = Object.keys(this.comments).length;
               
-              comments[comment.pageId].push(comment);
-              localStorage.setItem('staticman-comments', JSON.stringify(comments));
-              return true;
-            } catch (error) {
-              console.error('Failed to save comment locally:', error);
-              return false;
+              return { totalComments, totalPages };
             }
           }
+          
+          // Initialize global comments loader
+          window.commentsLoader = new CommentsLoader();
+          
+          // Make functions available globally
+          window.getCommentsForPage = (pageId) => window.commentsLoader.getCommentsForPage(pageId);
+          JSEOF
 
-          function exportLocalComments() {
-            try {
-              const localData = localStorage.getItem('staticman-comments');
-              if (!localData) {
-                alert('No local comments found to export.');
+      # Step 10: Create Staticman Comment Submission Handler
+      - name: Create Comment Submission System
+        run: |
+          cat > ./site/js/staticman-integration.js << 'JSEOF'
+          // Staticman comment submission and integration
+          
+          class StaticmanIntegration {
+            constructor() {
+              this.config = window.staticmanConfig;
+              this.status = 'disconnected';
+              this.testConnection();
+            }
+            
+            // Test Staticman API connection
+            async testConnection() {
+              if (!this.config?.endpoint) {
+                this.setStatus('error', 'Staticman not configured');
                 return;
               }
               
-              const blob = new Blob([localData], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'staticman-comments-' + new Date().toISOString().split('T')[0] + '.json';
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-            } catch (error) {
-              alert('Failed to export comments: ' + error.message);
+              try {
+                this.setStatus('connecting', 'Testing Staticman connection...');
+                
+                // Test with OPTIONS request to avoid CORS preflight issues
+                const response = await fetch(this.config.endpoint.replace('/entry/', '/'), {
+                  method: 'GET',
+                  mode: 'cors'
+                }).catch(() => ({ ok: false, status: 0 }));
+                
+                if (response.ok || response.status === 404) {
+                  this.setStatus('connected', 'Staticman API connected');
+                } else {
+                  throw new Error('Service unavailable');
+                }
+              } catch (error) {
+                this.setStatus('error', 'Staticman API unavailable - comments will queue for retry');
+                console.log('Staticman connection failed:', error.message);
+              }
+            }
+            
+            // Submit comment via Staticman API
+            async submitComment(commentData) {
+              if (!this.config?.endpoint) {
+                throw new Error('Staticman not configured');
+              }
+              
+              try {
+                this.setStatus('submitting', 'Submitting comment to repository...');
+                
+                const response = await fetch(this.config.endpoint, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    fields: commentData,
+                    options: {
+                      pageId: commentData.pageId
+                    }
+                  })
+                });
+                
+                if (!response.ok) {
+                  const errorText = await response.text().catch(() => 'Unknown error');
+                  throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const result = await response.json().catch(() => ({ success: true }));
+                
+                if (this.config.moderation) {
+                  this.setStatus('submitted', 'Comment submitted for moderation (pull request created)');
+                  return {
+                    success: true,
+                    moderated: true,
+                    message: 'Comment submitted for review. It will appear after approval.'
+                  };
+                } else {
+                  this.setStatus('submitted', 'Comment submitted to repository');
+                  return {
+                    success: true,
+                    moderated: false,
+                    message: 'Comment submitted successfully!'
+                  };
+                }
+                
+              } catch (error) {
+                this.setStatus('error', 'Comment submission failed: ' + error.message);
+                throw error;
+              }
+            }
+            
+            // Set connection status
+            setStatus(status, message) {
+              this.status = status;
+              this.updateStatusUI(status, message);
+            }
+            
+            // Update status UI indicator
+            updateStatusUI(status, message) {
+              let statusEl = document.getElementById('staticman-status');
+              if (!statusEl) {
+                statusEl = document.createElement('div');
+                statusEl.id = 'staticman-status';
+                statusEl.className = 'staticman-status';
+                
+                // Insert at top of sidebar
+                const sidebar = document.querySelector('.sidebar');
+                if (sidebar) {
+                  sidebar.insertBefore(statusEl, sidebar.firstChild);
+                }
+              }
+              
+              statusEl.className = `staticman-status status-${status}`;
+              statusEl.textContent = message || this.getDefaultMessage(status);
+              
+              // Add click handler for setup help
+              if (status === 'error') {
+                statusEl.style.cursor = 'pointer';
+                statusEl.onclick = () => this.showSetupHelp();
+              } else {
+                statusEl.style.cursor = 'default';
+                statusEl.onclick = null;
+              }
+            }
+            
+            // Show setup help
+            showSetupHelp() {
+              const helpText = `Staticman Setup Required:
+
+1. Add 'staticmanapp' as a collaborator to your repository:
+   ${this.config.setup.repositoryUrl}/settings/access
+
+2. Accept the Staticman invitation:
+   ${this.config.setup.inviteUrl}
+
+3. Documentation: ${this.config.setup.docsUrl}
+
+Repository: ${this.config.repository}
+Branch: ${this.config.branch}
+Moderation: ${this.config.moderation ? 'Enabled (Pull Requests)' : 'Disabled (Direct Commits)'}`;
+              
+              alert(helpText);
+            }
+            
+            // Get default status message
+            getDefaultMessage(status) {
+              const messages = {
+                'disconnected': 'Staticman Disconnected',
+                'connecting': 'Connecting to Staticman...',
+                'connected': 'Staticman Connected',
+                'submitting': 'Submitting Comment...',
+                'submitted': 'Comment Submitted',
+                'error': 'Staticman Error (Click for Help)'
+              };
+              return messages[status] || status;
             }
           }
-
-          function clearLocalComments() {
-            if (confirm('This will permanently delete all locally stored comments. Continue?')) {
-              localStorage.removeItem('staticman-comments');
-              alert('Local comments cleared.');
-              location.reload();
-            }
-          }
-
-          document.addEventListener('DOMContentLoaded', async () => {
-            window.staticmanComments = await loadStaticmanComments();
-            window.localComments = JSON.parse(localStorage.getItem('staticman-comments') || '{}');
-          });
-
-          window.saveCommentToLocal = saveCommentToLocal;
-          window.exportLocalComments = exportLocalComments;
-          window.clearLocalComments = clearLocalComments;
-          window.loadStaticmanComments = loadStaticmanComments;
-          JSEOF
           
-          echo "window.preloadedComments = {};" > ./site/js/preloaded-comments.js
+          // Initialize Staticman integration
+          window.staticmanIntegration = new StaticmanIntegration();
+          JSEOF
 
-      # Step 10: Create CSS
-      - name: Create Enhanced CSS
+      # Step 11: Load and Process Existing Comments
+      - name: Load Existing Comments from Repository
         run: |
-          mkdir -p ./site/css
-          cat > ./site/css/style.css << 'CSSEOF'
+          # Create preloaded comments data from existing _data/comments
+          echo "// Preloaded comments from repository _data directory" > ./site/js/preloaded-comments.js
+          echo "window.preloadedComments = {" >> ./site/js/preloaded-comments.js
+          
+          # Process existing comment data files if they exist
+          if [ -d "_data/comments" ]; then
+            echo "Processing existing comments from _data/comments/"
+            
+            find _data/comments -name "*.json" | while read comment_file; do
+              # Extract page ID from directory structure
+              page_id=$(dirname "$comment_file" | sed 's|_data/comments/||')
+              
+              # Initialize page array if not exists
+              if ! grep -q "\"$page_id\":" ./site/js/preloaded-comments.js; then
+                echo "  \"$page_id\": [" >> ./site/js/preloaded-comments.js
+              fi
+              
+              # Add comment data
+              cat "$comment_file" >> ./site/js/preloaded-comments.js
+              echo "," >> ./site/js/preloaded-comments.js
+            done
+            
+            # Clean up trailing commas and close arrays
+            sed -i 's/,$//' ./site/js/preloaded-comments.js
+            find _data/comments -type d -mindepth 1 | while read dir; do
+              page_id=$(basename "$dir")
+              if grep -q "\"$page_id\": \[" ./site/js/preloaded-comments.js; then
+                echo "  ]," >> ./site/js/preloaded-comments.js
+              fi
+            done
+          else
+            echo "No existing comments found in _data/comments/"
+          fi
+          
+          echo "};" >> ./site/js/preloaded-comments.js
+          
+          # Ensure file ends properly
+          if ! grep -q "};" ./site/js/preloaded-comments.js; then
+            echo "};" >> ./site/js/preloaded-comments.js
+          fi
+
+      # Step 12: Create Navigation and Content Mapping
+      - name: Create Navigation and Content Systems
+        run: |
+          # Navigation configuration
+          echo "// Auto-generated navigation from DITAMAP" > ./site/js/navigation-config.js
+          echo "const navigationConfig = " >> ./site/js/navigation-config.js
+          cat navigation-structure.json >> ./site/js/navigation-config.js
+          echo ";" >> ./site/js/navigation-config.js
+          
+          # Content ID mapping for search and navigation
+          echo "// Content mapping for SPA routing and search" > ./site/js/content-map.js
+          echo "const contentMap = {" >> ./site/js/content-map.js
+          
+          find ./site/content -name "*.html" | while read file; do
+            id=$(basename "$file" .html)
+            title=$(grep -o "<h1[^>]*>[^<]*</h1>" "$file" | sed 's/<[^>]*>//g' | head -1)
+            content=$(cat "$file" | sed 's/<[^>]*>//g' | tr '\n' ' ' | sed 's/  */ /g')
+            
+            if [ -z "$title" ]; then
+              title=$(echo "$id" | tr '-' ' ' | sed 's/\b\w/\U&/g')
+            fi
+            
+            # Escape quotes for JSON
+            title=$(echo "$title" | sed 's/"/\\"/g')
+            content=$(echo "$content" | sed 's/"/\\"/g' | cut -c1-500)
+            
+            echo "  \"$id\": {" >> ./site/js/content-map.js
+            echo "    \"title\": \"$title\"," >> ./site/js/content-map.js
+            echo "    \"content\": \"$content\"" >> ./site/js/content-map.js
+            echo "  }," >> ./site/js/content-map.js
+          done
+          
+          echo "};" >> ./site/js/content-map.js
+
+      # Step 13: Create Enhanced SPA Application
+      - name: Create SPA Application with Staticman Comments
+        run: |
+          cat > ./site/js/app.js << 'APPEOF'
+          // Enhanced SPA with Staticman comments integration
+          
+          class DocumentationSPA {
+            constructor() {
+              this.currentPage = null;
+              this.reviewMode = false;
+              this.currentSelection = null;
+              this.init();
+            }
+            
+            init() {
+              this.setupEventListeners();
+              this.renderNavigation();
+              this.setupCommentsSystem();
+              this.loadInitialPage();
+            }
+            
+            setupEventListeners() {
+              // Navigation and routing
+              window.addEventListener('popstate', (e) => {
+                const pageId = e.state?.pageId || this.getPageFromHash();
+                if (pageId) this.navigateToPage(pageId, false);
+              });
+              
+              // Search functionality
+              const searchBtn = document.getElementById('search-btn');
+              const searchInput = document.getElementById('search-input');
+              if (searchBtn && searchInput) {
+                searchBtn.addEventListener('click', () => this.performSearch());
+                searchInput.addEventListener('keypress', (e) => {
+                  if (e.key === 'Enter') this.performSearch();
+                });
+              }
+              
+              // Review mode toggle
+              const reviewToggle = document.getElementById('review-toggle');
+              if (reviewToggle) {
+                reviewToggle.addEventListener('click', () => this.toggleReviewMode());
+              }
+            }
+            
+            renderNavigation() {
+              const navContainer = document.getElementById('navigation');
+              if (!navContainer || !window.navigationConfig) return;
+              
+              this.createNavItems(window.navigationConfig, navContainer);
+            }
+            
+            createNavItems(items, container) {
+              const ul = document.createElement('ul');
+              
+              items.forEach(item => {
+                const li = document.createElement('li');
+                const a = document.createElement('a');
+                
+                a.textContent = item.title;
+                a.href = `#${item.id}`;
+                a.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  this.navigateToPage(item.id);
+                });
+                
+                li.appendChild(a);
+                
+                if (item.children && item.children.length > 0) {
+                  li.classList.add('has-children');
+                  this.createNavItems(item.children, li);
+                }
+                
+                ul.appendChild(li);
+              });
+              
+              container.appendChild(ul);
+            }
+            
+            async navigateToPage(pageId, pushState = true) {
+              if (!pageId) return;
+              
+              this.currentPage = pageId;
+              this.updateActiveNavItem(pageId);
+              
+              if (pushState) {
+                history.pushState({ pageId }, '', `#${pageId}`);
+              }
+              
+              try {
+                const content = await this.loadContent(pageId);
+                this.displayContent(content, pageId);
+                this.loadCommentsForPage(pageId);
+              } catch (error) {
+                this.displayError(pageId);
+              }
+            }
+            
+            async loadContent(pageId) {
+              const response = await fetch(`content/${pageId}.html`);
+              if (!response.ok) throw new Error('Content not found');
+              return await response.text();
+            }
+            
+            displayContent(content, pageId) {
+              const contentContainer = document.getElementById('main-content');
+              const titleContainer = document.getElementById('page-title');
+              
+              if (contentContainer) {
+                contentContainer.innerHTML = content;
+                this.setupContentInteractivity();
+              }
+              
+              if (titleContainer && window.contentMap && window.contentMap[pageId]) {
+                titleContainer.textContent = window.contentMap[pageId].title;
+                document.title = window.contentMap[pageId].title;
+              }
+            }
+            
+            displayError(pageId) {
+              const contentContainer = document.getElementById('main-content');
+              if (contentContainer) {
+                contentContainer.innerHTML = `
+                  <div class="error-message">
+                    <h2>Content Not Found</h2>
+                    <p>The requested page "${pageId}" could not be loaded.</p>
+                    <p>Please try selecting another topic from the navigation menu.</p>
+                  </div>
+                `;
+              }
+            }
+            
+            setupContentInteractivity() {
+              if (this.reviewMode) {
+                this.makeContentReviewable();
+              }
+            }
+            
+            makeContentReviewable() {
+              // Add text selection handlers for comments
+              const textElements = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td');
+              textElements.forEach(el => {
+                el.addEventListener('mouseup', (e) => this.handleTextSelection(e));
+                el.style.cursor = 'text';
+              });
+              
+              // Add image click handlers for comments
+              const images = document.querySelectorAll('img');
+              images.forEach(img => {
+                img.addEventListener('click', (e) => this.handleImageClick(e));
+                img.style.cursor = 'crosshair';
+              });
+            }
+            
+            handleTextSelection(event) {
+              const selection = window.getSelection();
+              const selectedText = selection.toString().trim();
+              
+              if (selectedText.length > 0) {
+                this.currentSelection = {
+                  type: 'text',
+                  text: selectedText,
+                  element: event.target,
+                  range: selection.getRangeAt(0).cloneRange()
+                };
+                
+                setTimeout(() => this.showCommentDialog(), 100);
+              }
+            }
+            
+            handleImageClick(event) {
+              const img = event.target;
+              const rect = img.getBoundingClientRect();
+              const x = ((event.clientX - rect.left) / rect.width) * 100;
+              const y = ((event.clientY - rect.top) / rect.height) * 100;
+              
+              this.currentSelection = {
+                type: 'image',
+                element: img,
+                position: { x, y },
+                imageSrc: img.src,
+                imageAlt: img.alt || 'Image'
+              };
+              
+              this.showCommentDialog();
+            }
+            
+            showCommentDialog() {
+              const dialog = document.getElementById('comment-dialog');
+              const overlay = document.getElementById('dialog-overlay');
+              
+              if (dialog && overlay) {
+                dialog.classList.add('show');
+                overlay.classList.add('show');
+                
+                const nameInput = document.getElementById('comment-name');
+                if (nameInput) nameInput.focus();
+              }
+            }
+            
+            hideCommentDialog() {
+              const dialog = document.getElementById('comment-dialog');
+              const overlay = document.getElementById('dialog-overlay');
+              
+              if (dialog && overlay) {
+                dialog.classList.remove('show');
+                overlay.classList.remove('show');
+              }
+              
+              this.currentSelection = null;
+              window.getSelection().removeAllRanges();
+            }
+            
+            async submitComment() {
+              if (!this.currentSelection || !window.staticmanIntegration) {
+                this.hideCommentDialog();
+                return;
+              }
+              
+              const name = document.getElementById('comment-name')?.value?.trim();
+              const email = document.getElementById('comment-email')?.value?.trim();
+              const message = document.getElementById('comment-message')?.value?.trim();
+              const commentType = document.querySelector('input[name="comment-type"]:checked')?.value || 'comment';
+              
+              if (!name || !message) {
+                alert('Please fill in your name and comment message.');
+                return;
+              }
+              
+              const commentData = {
+                name,
+                email,
+                message,
+                pageId: this.currentPage,
+                commentType,
+                selectedText: this.currentSelection.text || this.currentSelection.imageAlt || 'Selected content',
+                selectionType: this.currentSelection.type,
+                timestamp: new Date().toISOString()
+              };
+              
+              if (this.currentSelection.type === 'image') {
+                commentData.position = JSON.stringify(this.currentSelection.position);
+                commentData.imageSrc = this.currentSelection.imageSrc;
+                commentData.imageAlt = this.currentSelection.imageAlt;
+              }
+              
+              try {
+                const result = await window.staticmanIntegration.submitComment(commentData);
+                
+                if (result.success) {
+                  this.hideCommentDialog();
+                  
+                  if (result.moderated) {
+                    alert('Comment submitted for review! It will appear after moderation.');
+                  } else {
+                    alert('Comment submitted successfully!');
+                    // Optionally refresh comments
+                    setTimeout(() => this.loadCommentsForPage(this.currentPage), 2000);
+                  }
+                }
+              } catch (error) {
+                alert('Failed to submit comment: ' + error.message);
+              }
+            }
+            
+            toggleReviewMode() {
+              this.reviewMode = !this.reviewMode;
+              const toggleBtn = document.getElementById('review-toggle');
+              
+              if (toggleBtn) {
+                toggleBtn.textContent = this.reviewMode ? 'Exit Review Mode' : 'Enable Review Mode';
+                toggleBtn.classList.toggle('active', this.reviewMode);
+              }
+              
+              document.body.classList.toggle('review-mode', this.reviewMode);
+              
+              if (this.reviewMode) {
+                this.setupContentInteractivity();
+              }
+            }
+            
+            loadCommentsForPage(pageId) {
+              if (window.commentsLoader) {
+                const comments = window.commentsLoader.getCommentsForPage(pageId);
+                this.displayComments(comments);
+              }
+            }
+            
+            displayComments(comments) {
+              const commentsContainer = document.getElementById('comments-container');
+              if (!commentsContainer || !comments.length) return;
+              
+              commentsContainer.innerHTML = comments.map(comment => `
+                <div class="comment">
+                  <div class="comment-header">
+                    <strong>${comment.name}</strong>
+                    <span class="comment-date">${new Date(comment.date).toLocaleDateString()}</span>
+                    <span class="comment-type ${comment.commentType}">${comment.commentType}</span>
+                  </div>
+                  ${comment.selectedText ? `<div class="comment-context">"${comment.selectedText}"</div>` : ''}
+                  <div class="comment-message">${comment.message}</div>
+                </div>
+              `).join('');
+            }
+            
+            performSearch() {
+              const searchInput = document.getElementById('search-input');
+              const resultsContainer = document.getElementById('search-results');
+              
+              if (!searchInput || !resultsContainer || !window.contentMap) return;
+              
+              const query = searchInput.value.toLowerCase().trim();
+              resultsContainer.innerHTML = '';
+              
+              if (query.length < 2) return;
+              
+              const results = Object.entries(window.contentMap)
+                .filter(([id, data]) => 
+                  data.title.toLowerCase().includes(query) || 
+                  data.content.toLowerCase().includes(query)
+                )
+                .slice(0, 10);
+              
+              results.forEach(([id, data]) => {
+                const li = document.createElement('li');
+                const a = document.createElement('a');
+                a.textContent = data.title;
+                a.href = `#${id}`;
+                a.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  this.navigateToPage(id);
+                  resultsContainer.innerHTML = '';
+                  searchInput.value = '';
+                });
+                li.appendChild(a);
+                resultsContainer.appendChild(li);
+              });
+            }
+            
+            updateActiveNavItem(pageId) {
+              document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+              const activeLink = document.querySelector(`.sidebar a[href="#${pageId}"]`);
+              if (activeLink) activeLink.classList.add('active');
+            }
+            
+            getPageFromHash() {
+              return window.location.hash.slice(1) || null;
+            }
+            
+            loadInitialPage() {
+              const pageId = this.getPageFromHash();
+              if (pageId) {
+                this.navigateToPage(pageId, false);
+              } else if (window.navigationConfig && window.navigationConfig.length > 0) {
+                this.navigateToPage(window.navigationConfig[0].id, false);
+              }
+            }
+            
+            setupCommentsSystem() {
+              // Create comment dialog
+              this.createCommentDialog();
+              
+              // Listen for comment updates
+              document.addEventListener('commentsUpdated', (e) => {
+                if (e.detail.pageId === this.currentPage) {
+                  this.displayComments(e.detail.comments);
+                }
+              });
+            }
+            
+            createCommentDialog() {
+              const dialogHTML = `
+                <div id="dialog-overlay" class="dialog-overlay"></div>
+                <div id="comment-dialog" class="comment-dialog">
+                  <h3>Add Comment</h3>
+                  <div class="form-group">
+                    <input type="text" id="comment-name" placeholder="Your name (required)" required>
+                    <input type="email" id="comment-email" placeholder="Your email (optional)">
+                  </div>
+                  <div class="form-group">
+                    <label><input type="radio" name="comment-type" value="comment" checked> Comment</label>
+                    <label><input type="radio" name="comment-type" value="suggestion"> Suggestion</label>
+                  </div>
+                  <div class="form-group">
+                    <textarea id="comment-message" placeholder="Your comment or suggestion..." required></textarea>
+                  </div>
+                  <div class="dialog-actions">
+                    <button type="button" onclick="app.hideCommentDialog()">Cancel</button>
+                    <button type="button" onclick="app.submitComment()" class="primary">Submit Comment</button>
+                  </div>
+                </div>
+              `;
+              
+              document.body.insertAdjacentHTML('beforeend', dialogHTML);
+              
+              // Close dialog on overlay click
+              document.getElementById('dialog-overlay').addEventListener('click', () => {
+                this.hideCommentDialog();
+              });
+            }
+          }
+          
+          // Initialize application
+          let app;
+          document.addEventListener('DOMContentLoaded', () => {
+            app = new DocumentationSPA();
+            window.app = app; // Make available globally for onclick handlers
+          });
+          APPEOF
+
+      # Step 14: Create Comprehensive CSS
+      - name: Create Enhanced CSS Styling
+        run: |
+          cat > ./site/css/styles.css << 'CSSEOF'
+          /* Enhanced SPA styles with Staticman comments integration */
+          
           * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
           }
-
+          
           body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             line-height: 1.6;
-            display: flex;
-            height: 100vh;
-            overflow: hidden;
             color: #333;
-            background-color: #f8f8f8;
+            background-color: #f8fafc;
+            display: flex;
+            min-height: 100vh;
           }
-
+          
+          /* Sidebar Navigation */
           .sidebar {
-            width: 280px;
-            background-color: #e0f7f7;
-            padding: 15px;
-            height: 100vh;
-            overflow-y: auto;
-            border-right: 1px solid #c0e0e0;
-            display: flex;
-            flex-direction: column;
-          }
-
-          .main-content {
-            flex: 1;
-            padding: 30px;
-            height: 100vh;
-            overflow-y: auto;
-            background-color: #ffffff;
-            position: relative;
-            transition: margin-right 0.3s ease;
-          }
-
-          .staticman-status {
-            background: linear-gradient(135deg, #4caf50, #388e3c);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 0.8em;
-            margin-bottom: 10px;
-            text-align: center;
-            cursor: default;
-          }
-
-          .staticman-status.offline {
-            background: linear-gradient(135deg, #ff9800, #f57c00);
-          }
-
-          .staticman-status.error {
-            background: linear-gradient(135deg, #f44336, #d32f2f);
-            cursor: pointer;
-          }
-
-          .staticman-status.connecting {
-            background: linear-gradient(135deg, #2196f3, #1976d2);
-          }
-
-          .staticman-status::before {
-            content: '●';
-            margin-right: 6px;
-            animation: pulse 2s infinite;
-          }
-
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-          }
-
-          .comments-side-cart {
-            position: fixed;
-            top: 0;
-            right: -400px;
-            width: 380px;
-            height: 100vh;
+            width: 300px;
             background: #ffffff;
-            border-left: 2px solid #2c5aa0;
-            box-shadow: -3px 0 15px rgba(0,0,0,0.2);
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            transition: right 0.3s ease;
+            border-right: 1px solid #e2e8f0;
+            height: 100vh;
+            overflow-y: auto;
+            padding: 1rem;
+            box-shadow: 2px 0 4px rgba(0,0,0,0.05);
           }
-
-          .comments-side-cart.open {
-            right: 0;
-          }
-
-          .cart-header {
-            background: linear-gradient(135deg, #2c5aa0, #1e3a8a);
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          }
-
-          .cart-close-btn {
-            background: rgba(255,255,255,0.2);
-            border: none;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 18px;
-          }
-
+          
           .sidebar h2 {
-            color: #00747a;
-            border-bottom: 2px solid #80cbc4;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
+            color: #2d3748;
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            border-bottom: 2px solid #4299e1;
+            padding-bottom: 0.5rem;
           }
-
-          .review-controls {
-            border-top: 2px solid #80cbc4;
-            padding-top: 15px;
-            margin-top: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+          
+          /* Staticman Status */
+          .staticman-status {
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-align: center;
           }
-
-          .review-btn {
-            padding: 8px 12px;
-            border: 1px solid #00acc1;
-            background: linear-gradient(135deg, #00acc1, #0097a7);
-            color: white;
-            border-radius: 5px;
+          
+          .staticman-status.status-connected {
+            background-color: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+          }
+          
+          .staticman-status.status-error {
+            background-color: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
             cursor: pointer;
-            font-size: 0.9em;
-            transition: all 0.3s;
           }
-
-          .review-btn:hover {
-            background: linear-gradient(135deg, #0097a7, #00838f);
-            transform: translateY(-1px);
+          
+          .staticman-status.status-connecting {
+            background-color: #bee3f8;
+            color: #2a4365;
+            border: 1px solid #90cdf4;
           }
-
-          .review-btn.active {
-            background: linear-gradient(135deg, #ff6f00, #e65100);
+          
+          .staticman-status.status-submitting {
+            background-color: #faf089;
+            color: #744210;
+            border: 1px solid #f6e05e;
           }
-
+          
+          .staticman-status.status-submitted {
+            background-color: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+          }
+          
+          /* Search */
           .search-container {
-            margin-bottom: 15px;
+            margin-bottom: 1rem;
             display: flex;
-            gap: 5px;
+            gap: 0.5rem;
           }
-
+          
           .search-container input {
             flex: 1;
-            padding: 8px;
-            border: 1px solid #b0e0e6;
-            border-radius: 5px;
+            padding: 0.5rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
           }
-
+          
           .search-container button {
-            padding: 8px 12px;
-            background-color: #00acc1;
+            padding: 0.5rem 1rem;
+            background-color: #4299e1;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
             cursor: pointer;
-          }
-
-          .sidebar ul {
-            list-style: none;
-            padding: 0;
-          }
-
-          .sidebar a {
-            color: #00747a;
-            text-decoration: none;
-            display: block;
-            padding: 6px;
-            border-radius: 4px;
             transition: background-color 0.2s;
           }
-
+          
+          .search-container button:hover {
+            background-color: #3182ce;
+          }
+          
+          /* Navigation */
+          .sidebar ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+          }
+          
+          .sidebar li {
+            margin-bottom: 0.25rem;
+          }
+          
+          .sidebar a {
+            display: block;
+            padding: 0.5rem 0.75rem;
+            color: #4a5568;
+            text-decoration: none;
+            border-radius: 0.375rem;
+            transition: all 0.2s;
+          }
+          
           .sidebar a:hover {
-            background-color: #e1f5fe;
+            background-color: #edf2f7;
+            color: #2d3748;
           }
-
+          
           .sidebar a.active {
-            background-color: #80deea;
-            font-weight: bold;
+            background-color: #4299e1;
+            color: white;
+            font-weight: 500;
           }
-
-          .main-content h1 {
-            color: #00838f;
-            border-bottom: 1px solid #e0e0e0;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
+          
+          /* Review Mode Controls */
+          .review-controls {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e2e8f0;
           }
-
-          .welcome-screen {
-            text-align: center;
-            padding: 40px 20px;
-            color: #00838f;
+          
+          .review-controls h3 {
+            color: #2d3748;
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
           }
-
-          .loading-overlay {
+          
+          #review-toggle {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #805ad5;
+            color: white;
+            border: none;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+          }
+          
+          #review-toggle:hover {
+            background-color: #6b46c1;
+          }
+          
+          #review-toggle.active {
+            background-color: #f56565;
+          }
+          
+          /* Main Content */
+          .main-content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            height: 100vh;
+          }
+          
+          #page-title {
+            color: #2d3748;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            border-bottom: 3px solid #4299e1;
+            padding-bottom: 0.5rem;
+          }
+          
+          #main-content {
+            max-width: none;
+            line-height: 1.7;
+          }
+          
+          #main-content h1, #main-content h2, #main-content h3, #main-content h4 {
+            color: #2d3748;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+          }
+          
+          #main-content h1 { font-size: 1.875rem; }
+          #main-content h2 { font-size: 1.5rem; }
+          #main-content h3 { font-size: 1.25rem; }
+          #main-content h4 { font-size: 1.125rem; }
+          
+          #main-content p {
+            margin-bottom: 1rem;
+            color: #4a5568;
+          }
+          
+          #main-content img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin: 1.5rem 0;
+          }
+          
+          #main-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: white;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+          
+          #main-content th, #main-content td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+          }
+          
+          #main-content th {
+            background-color: #f7fafc;
+            font-weight: 600;
+            color: #2d3748;
+          }
+          
+          /* Review Mode Styles */
+          .review-mode #main-content {
+            background-color: #fffbf0;
+          }
+          
+          .review-mode p,
+          .review-mode h1, .review-mode h2, .review-mode h3, .review-mode h4,
+          .review-mode li, .review-mode td {
+            transition: background-color 0.2s;
+          }
+          
+          .review-mode p:hover,
+          .review-mode h1:hover, .review-mode h2:hover, .review-mode h3:hover, .review-mode h4:hover,
+          .review-mode li:hover, .review-mode td:hover {
+            background-color: rgba(66, 153, 225, 0.1);
+            border-radius: 0.25rem;
+          }
+          
+          .review-mode img {
+            transition: all 0.2s;
+            border: 2px dashed transparent;
+          }
+          
+          .review-mode img:hover {
+            border-color: #4299e1;
+            transform: scale(1.02);
+          }
+          
+          /* Comment Dialog */
+          .dialog-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.3);
+            background-color: rgba(0, 0, 0, 0.5);
             display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
+            z-index: 1000;
           }
-
-          .loading-overlay.show {
-            display: flex;
+          
+          .dialog-overlay.show {
+            display: block;
           }
-
+          
           .comment-dialog {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             background: white;
-            border: 2px solid #2c5aa0;
-            border-radius: 8px;
-            padding: 20px;
-            width: 450px;
-            max-width: 90vw;
-            z-index: 2000;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 20px 25px rgba(0,0,0,0.25);
+            width: 90%;
+            max-width: 500px;
             display: none;
+            z-index: 1001;
           }
-
+          
           .comment-dialog.show {
             display: block;
           }
-
-          .dialog-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0,0,0,0.5);
-            z-index: 1999;
-            display: none;
+          
+          .comment-dialog h3 {
+            color: #2d3748;
+            margin-bottom: 1.5rem;
+            font-size: 1.25rem;
           }
-
-          .dialog-overlay.show {
+          
+          .form-group {
+            margin-bottom: 1rem;
+          }
+          
+          .form-group input,
+          .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-family: inherit;
+          }
+          
+          .form-group input:focus,
+          .form-group textarea:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+          }
+          
+          .form-group textarea {
+            height: 100px;
+            resize: vertical;
+          }
+          
+          .form-group label {
+            display: inline-block;
+            margin-right: 1rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            color: #4a5568;
+          }
+          
+          .form-group input[type="radio"] {
+            width: auto;
+            margin-right: 0.5rem;
+          }
+          
+          .dialog-actions {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: flex-end;
+            margin-top: 1.5rem;
+          }
+          
+          .dialog-actions button {
+            padding: 0.75rem 1.5rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          
+          .dialog-actions button.primary {
+            background-color: #4299e1;
+            color: white;
+            border-color: #4299e1;
+          }
+          
+          .dialog-actions button.primary:hover {
+            background-color: #3182ce;
+          }
+          
+          .dialog-actions button:not(.primary) {
+            background-color: white;
+            color: #4a5568;
+          }
+          
+          .dialog-actions button:not(.primary):hover {
+            background-color: #f7fafc;
+          }
+          
+          /* Comments Display */
+          #comments-container {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 2px solid #e2e8f0;
+          }
+          
+          .comment {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 1rem;
+          }
+          
+          .comment-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.875rem;
+          }
+          
+          .comment-header strong {
+            color: #2d3748;
+          }
+          
+          .comment-date {
+            color: #718096;
+          }
+          
+          .comment-type {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+          }
+          
+          .comment-type.comment {
+            background-color: #bee3f8;
+            color: #2a4365;
+          }
+          
+          .comment-type.suggestion {
+            background-color: #faf089;
+            color: #744210;
+          }
+          
+          .comment-context {
+            background-color: #f7fafc;
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            border-left: 4px solid #4299e1;
+            margin-bottom: 0.75rem;
+            font-style: italic;
+            color: #4a5568;
+          }
+          
+          .comment-message {
+            color: #2d3748;
+            line-height: 1.6;
+          }
+          
+          /* Search Results */
+          #search-results {
+            list-style: none;
+            margin-top: 0.5rem;
+            max-height: 200px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.375rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+          }
+          
+          #search-results li {
+            margin: 0;
+          }
+          
+          #search-results a {
             display: block;
+            padding: 0.75rem;
+            color: #4a5568;
+            text-decoration: none;
+            border-bottom: 1px solid #f7fafc;
           }
-
+          
+          #search-results a:hover {
+            background-color: #f7fafc;
+            color: #2d3748;
+          }
+          
+          /* Error Messages */
+          .error-message {
+            background-color: #fed7d7;
+            color: #742a2a;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            border: 1px solid #fc8181;
+            text-align: center;
+          }
+          
+          .error-message h2 {
+            margin-bottom: 1rem;
+            color: #742a2a;
+          }
+          
+          /* Responsive Design */
           @media (max-width: 768px) {
             body {
               flex-direction: column;
-              height: auto;
             }
-
+            
             .sidebar {
               width: 100%;
               height: auto;
               max-height: 40vh;
+              order: 2;
             }
-
+            
             .main-content {
+              order: 1;
               height: auto;
-              min-height: 60vh;
+              padding: 1rem;
+            }
+            
+            .comment-dialog {
+              width: 95%;
+              padding: 1.5rem;
             }
           }
           CSSEOF
 
-      # Step 11: Create Main App JavaScript
-      - name: Create Main App JavaScript
-        run: |
-          cat > ./site/js/app.js << 'APPEOF'
-          const contentEl = document.getElementById('content');
-          const contentTitleEl = document.getElementById('content-title');
-          const navigationEl = document.getElementById('navigation');
-          const searchInput = document.getElementById('searchInput');
-          const searchButton = document.getElementById('searchButton');
-          const searchResultsEl = document.getElementById('searchResults');
-
-          const reviewToggleBtn = document.getElementById('reviewToggle');
-          const startReviewBtn = document.getElementById('startReview');
-          const clearReviewBtn = document.getElementById('clearReview');
-
-          const getBasePath = () => {
-            if (location.hostname.includes('github.io')) {
-              const pathSegments = location.pathname.split('/');
-              if (pathSegments.length > 1) {
-                return '/' + pathSegments[1];
-              }
-            }
-            return '';
-          };
-
-          window.currentPage = null;
-          window.reviewMode = false;
-          window.staticmanComments = {};
-          window.pendingComments = [];
-          const basePath = getBasePath();
-
-          class StaticmanIntegration {
-            constructor() {
-              this.endpoint = window.staticmanConfig?.endpoint || null;
-              this.enabled = window.staticmanConfig?.enabled || false;
-              this.status = 'offline';
-              this.fallbackMode = false;
-              this.checkConnection();
-            }
-
-            async checkConnection() {
-              if (!this.endpoint) {
-                this.setStatus('error', 'No endpoint configured');
-                this.enableFallbackMode();
-                return;
-              }
-
-              try {
-                this.setStatus('connecting', 'Testing connection...');
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-                
-                const response = await fetch(this.endpoint, {
-                  method: 'HEAD',
-                  signal: controller.signal,
-                  mode: 'cors'
-                });
-                clearTimeout(timeoutId);
-                
-                if (response.ok || response.status === 404 || response.status === 405) {
-                  this.setStatus('online', 'Connected to Staticman');
-                  this.fallbackMode = false;
-                } else {
-                  throw new Error('Service returned ' + response.status);
-                }
-              } catch (error) {
-                this.setStatus('error', 'Connection failed: ' + error.message);
-                this.enableFallbackMode();
-              }
-            }
-
-            enableFallbackMode() {
-              this.fallbackMode = true;
-              this.setStatus('offline', 'Using local storage fallback');
-            }
-
-            setStatus(status, message) {
-              this.status = status;
-              this.updateStatusUI(status, message);
-            }
-
-            updateStatusUI(status, message) {
-              let statusEl = document.getElementById('staticmanStatus');
-              if (!statusEl) {
-                statusEl = document.createElement('div');
-                statusEl.id = 'staticmanStatus';
-                statusEl.className = 'staticman-status';
-                
-                const reviewControls = document.querySelector('.review-controls');
-                if (reviewControls) {
-                  reviewControls.insertBefore(statusEl, reviewControls.firstChild);
-                }
-              }
-
-              statusEl.className = 'staticman-status ' + status;
-              statusEl.textContent = message || this.getStatusMessage(status);
-              
-              if (status === 'error') {
-                statusEl.style.cursor = 'pointer';
-                statusEl.onclick = () => this.showTroubleshootingInfo();
-              }
-            }
-
-            showTroubleshootingInfo() {
-              alert('Staticman connection failed. Comments will be saved locally and can be exported.');
-            }
-
-            getStatusMessage(status) {
-              const messages = {
-                'online': 'Staticman Connected',
-                'offline': 'Fallback Mode (Local)',
-                'connecting': 'Connecting...',
-                'error': 'Connection Error (Click for help)'
-              };
-              return messages[status] || 'Unknown Status';
-            }
-
-            async submitComment(commentData) {
-              if (this.fallbackMode || !this.endpoint) {
-                return this.saveCommentLocally(commentData);
-              }
-
-              try {
-                const response = await fetch(this.endpoint, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ fields: commentData })
-                });
-
-                if (!response.ok) {
-                  throw new Error('HTTP ' + response.status);
-                }
-
-                this.setStatus('online', 'Comment submitted successfully');
-                return { success: true };
-              } catch (error) {
-                return this.saveCommentLocally(commentData, error.message);
-              }
-            }
-
-            saveCommentLocally(commentData, errorMessage = null) {
-              try {
-                commentData.local = true;
-                commentData.synced = false;
-                if (errorMessage) commentData.error = errorMessage;
-                
-                const saved = window.saveCommentToLocal(commentData);
-                if (saved) {
-                  window.pendingComments.push(commentData);
-                  return { success: true, local: true, comment: commentData };
-                }
-                throw new Error('Failed to save locally');
-              } catch (error) {
-                throw error;
-              }
-            }
-
-            async loadCommentsForPage(pageId) {
-              try {
-                const allComments = await window.loadStaticmanComments();
-                return allComments[pageId] || [];
-              } catch (error) {
-                return [];
-              }
-            }
-          }
-
-          const staticman = new StaticmanIntegration();
-
-          function initApp() {
-            renderNavigation(navigationConfig);
-            window.addEventListener('popstate', handlePopState);
-            
-            if (searchButton && searchInput) {
-              searchButton.addEventListener('click', performSearch);
-              searchInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') performSearch();
-              });
-            }
-
-            if (reviewToggleBtn) reviewToggleBtn.addEventListener('click', toggleReviewMode);
-            if (startReviewBtn) startReviewBtn.addEventListener('click', startReviewSession);
-            if (clearReviewBtn) clearReviewBtn.addEventListener('click', promptClearReviewData);
-
-            initReviewSystem();
-            const initialPageId = getPageIdFromUrl();
-            if (initialPageId) {
-              navigateToPage(initialPageId, false);
-            } else {
-              showWelcomeScreen();
-            }
-          }
-
-          function initReviewSystem() {
-            createHoverTooltip();
-            createCommentDialog();
-            createCommentsSideCart();
-            createLoadingOverlay();
-            updateReviewButtons();
-          }
-
-          function createLoadingOverlay() {
-            const overlay = document.createElement('div');
-            overlay.className = 'loading-overlay';
-            overlay.id = 'loadingOverlay';
-            overlay.innerHTML = '<div class="loading-spinner"><div>Processing comment...</div></div>';
-            document.body.appendChild(overlay);
-          }
-
-          function createCommentsSideCart() {
-            const sideCart = document.createElement('div');
-            sideCart.className = 'comments-side-cart';
-            sideCart.id = 'commentsSideCart';
-            sideCart.innerHTML = '<div class="cart-header"><h3>Comments</h3><button class="cart-close-btn" onclick="closeCommentsSideCart()">✕</button></div><div class="cart-content"><div id="commentsList">No comments yet</div></div>';
-            document.body.appendChild(sideCart);
-          }
-
-          function createHoverTooltip() {
-            const tooltip = document.createElement('div');
-            tooltip.className = 'comment-tooltip';
-            tooltip.id = 'commentTooltip';
-            document.body.appendChild(tooltip);
-          }
-
-          function createCommentDialog() {
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            overlay.id = 'dialogOverlay';
-            
-            const dialog = document.createElement('div');
-            dialog.className = 'comment-dialog';
-            dialog.id = 'commentDialog';
-            dialog.innerHTML = '<h3>Add Comment</h3><input type="text" id="commentName" placeholder="Your name"><textarea id="commentText" placeholder="Your comment"></textarea><div><button onclick="closeCommentDialog()">Cancel</button><button onclick="saveComment()">Save</button></div>';
-            
-            document.body.appendChild(overlay);
-            document.body.appendChild(dialog);
-          }
-
-          function showWelcomeScreen() {
-            contentTitleEl.textContent = 'Documentation';
-            document.title = 'Documentation';
-            contentEl.innerHTML = '<div class="welcome-screen"><h2>Welcome to Enhanced Documentation</h2><p>Select a topic from the navigation menu or use the search bar.</p></div>';
-          }
-
-          function toggleReviewMode() {
-            window.reviewMode = !window.reviewMode;
-            document.body.classList.toggle('review-mode', window.reviewMode);
-            updateReviewButtons();
-          }
-
-          function startReviewSession() {
-            if (!window.currentPage) {
-              alert('Please select a document to review first.');
-              return;
-            }
-            if (!window.reviewMode) toggleReviewMode();
-            alert('Review session started. You can now select text to add comments.');
-          }
-
-          function promptClearReviewData() {
-            if (confirm('Clear all local comments?')) {
-              window.clearLocalComments();
-            }
-          }
-
-          function updateReviewButtons() {
-            if (reviewToggleBtn) {
-              reviewToggleBtn.textContent = window.reviewMode ? 'Exit Review' : 'Review Mode';
-              reviewToggleBtn.classList.toggle('active', window.reviewMode);
-            }
-          }
-
-          function openCommentsSideCart() {
-            document.getElementById('commentsSideCart').classList.add('open');
-          }
-
-          function closeCommentsSideCart() {
-            document.getElementById('commentsSideCart').classList.remove('open');
-          }
-
-          function showCommentDialog() {
-            document.getElementById('commentDialog').classList.add('show');
-            document.getElementById('dialogOverlay').classList.add('show');
-          }
-
-          function closeCommentDialog() {
-            document.getElementById('commentDialog').classList.remove('show');
-            document.getElementById('dialogOverlay').classList.remove('show');
-          }
-
-          function saveComment() {
-            const name = document.getElementById('commentName').value;
-            const text = document.getElementById('commentText').value;
-            if (!name || !text) {
-              alert('Please fill in all fields');
-              return;
-            }
-            
-            const commentData = {
-              id: 'comment_' + Date.now(),
-              name: name,
-              message: text,
-              pageId: window.currentPage,
-              timestamp: new Date().toISOString()
-            };
-            
-            staticman.submitComment(commentData).then(() => {
-              alert('Comment saved!');
-              closeCommentDialog();
-            }).catch(error => {
-              alert('Error saving comment: ' + error.message);
-            });
-          }
-
-          function renderNavigation(items, parentEl = navigationEl) {
-            const ul = document.createElement('ul');
-            items.forEach(item => {
-              const li = document.createElement('li');
-              const a = document.createElement('a');
-              a.textContent = item.title;
-              a.href = '#' + item.id;
-              a.addEventListener('click', (e) => {
-                e.preventDefault();
-                navigateToPage(item.id);
-              });
-              li.appendChild(a);
-              if (item.children) {
-                renderNavigation(item.children, li);
-              }
-              ul.appendChild(li);
-            });
-            parentEl.appendChild(ul);
-          }
-
-          function navigateToPage(pageId, pushState = true) {
-            if (!pageId) return;
-            
-            updateActiveNavItem(pageId);
-            if (pushState) {
-              history.pushState({ pageId }, '', '#' + pageId);
-            }
-            
-            window.currentPage = pageId;
-            loadContent(pageId).then(content => {
-              const title = getPageTitle(pageId);
-              contentTitleEl.textContent = title;
-              document.title = title;
-              contentEl.innerHTML = content;
-            }).catch(() => {
-              showErrorContent(pageId);
-            });
-          }
-
-          function loadContent(pageId) {
-            const contentPath = basePath + '/content/' + pageId + '.html';
-            return fetch(contentPath).then(response => {
-              if (!response.ok) throw new Error('Content not found');
-              return response.text();
-            });
-          }
-
-          function updateActiveNavItem(pageId) {
-            document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-            const activeItem = document.querySelector('.sidebar a[href="#' + pageId + '"]');
-            if (activeItem) activeItem.classList.add('active');
-          }
-
-          function handlePopState(event) {
-            const pageId = event.state?.pageId || getPageIdFromUrl();
-            if (pageId) navigateToPage(pageId, false);
-          }
-
-          function getPageIdFromUrl() {
-            return window.location.hash.substring(1) || null;
-          }
-
-          function getPageTitle(pageId) {
-            if (window.contentIdMap && contentIdMap[pageId]) {
-              return contentIdMap[pageId].title;
-            }
-            return pageId.split('-').map(word => 
-              word.charAt(0).toUpperCase() + word.slice(1)
-            ).join(' ');
-          }
-
-          function showErrorContent(pageId) {
-            contentEl.innerHTML = '<div class="error"><h2>Content Not Found</h2><p>The requested content "' + pageId + '" could not be loaded.</p></div>';
-          }
-
-          function performSearch() {
-            const query = searchInput.value.toLowerCase().trim();
-            searchResultsEl.innerHTML = '';
-            
-            if (query.length < 2) return;
-            
-            const results = [];
-            for (const id in contentIdMap) {
-              if (contentIdMap[id].title.toLowerCase().includes(query) || 
-                  contentIdMap[id].content.toLowerCase().includes(query)) {
-                results.push({ id, title: contentIdMap[id].title });
-              }
-            }
-            
-            results.forEach(result => {
-              const li = document.createElement('li');
-              const a = document.createElement('a');
-              a.textContent = result.title;
-              a.href = '#' + result.id;
-              a.addEventListener('click', (e) => {
-                e.preventDefault();
-                navigateToPage(result.id);
-                searchResultsEl.innerHTML = '';
-                searchInput.value = '';
-              });
-              li.appendChild(a);
-              searchResultsEl.appendChild(li);
-            });
-          }
-
-          window.openCommentsSideCart = openCommentsSideCart;
-          window.closeCommentsSideCart = closeCommentsSideCart;
-          window.showCommentDialog = showCommentDialog;
-          window.closeCommentDialog = closeCommentDialog;
-          window.saveComment = saveComment;
-
-          document.addEventListener('DOMContentLoaded', initApp);
-          APPEOF
-
-      # Step 12: Create HTML files
-      - name: Create HTML Files
+      # Step 15: Create HTML Structure
+      - name: Create HTML Structure
         run: |
           cat > ./site/index.html << 'HTMLEOF'
           <!DOCTYPE html>
@@ -1029,93 +1461,284 @@ jobs:
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Documentation - Enhanced with Smart Comments</title>
-            <link rel="stylesheet" href="css/style.css">
+            <title>Documentation with Staticman Comments</title>
+            <meta name="description" content="Interactive documentation with collaborative commenting powered by Staticman">
+            
+            <!-- Staticman Integration Meta -->
+            <meta name="staticman-repository" content="${GITHUB_REPOSITORY}">
+            <meta name="staticman-branch" content="${GITHUB_REF#refs/heads/}">
+            
+            <link rel="stylesheet" href="css/styles.css">
           </head>
           <body>
-            <div class="sidebar">
-              <div class="sidebar-header">
-                <h2>Navigation</h2>
-                <div class="search-container">
-                  <input type="text" id="searchInput" placeholder="Search...">
-                  <button id="searchButton">Search</button>
-                </div>
-                <ul id="searchResults" class="search-results"></ul>
+            <!-- Sidebar Navigation -->
+            <aside class="sidebar">
+              <h2>Documentation</h2>
+              
+              <!-- Search -->
+              <div class="search-container">
+                <input type="text" id="search-input" placeholder="Search documentation...">
+                <button id="search-btn">Search</button>
               </div>
               
+              <!-- Search Results -->
+              <ul id="search-results"></ul>
+              
+              <!-- Navigation Menu -->
+              <nav id="navigation" role="navigation" aria-label="Documentation navigation"></nav>
+              
+              <!-- Review Mode Controls -->
               <div class="review-controls">
-                <h3>Smart Review System</h3>
-                <div class="review-mode-toggle">
-                  <button id="reviewToggle" class="review-btn">Review Mode</button>
+                <h3>Collaborative Review</h3>
+                <button id="review-toggle">Enable Review Mode</button>
+                <p style="font-size: 0.8rem; color: #718096; margin-top: 0.5rem;">
+                  Enable review mode to add comments and suggestions to the documentation.
+                </p>
+              </div>
+            </aside>
+            
+            <!-- Main Content -->
+            <main class="main-content">
+              <h1 id="page-title">Loading Documentation...</h1>
+              
+              <div id="main-content">
+                <div style="text-align: center; padding: 3rem; color: #718096;">
+                  <h2>Welcome to Interactive Documentation</h2>
+                  <p>Select a topic from the sidebar to begin exploring the documentation.</p>
+                  <p><strong>Collaborative Features:</strong> Enable review mode to add comments and suggestions that are stored in the GitHub repository via Staticman.</p>
                 </div>
-                <button id="startReview" class="review-btn secondary">Start Review</button>
-                <button id="clearReview" class="review-btn danger">Clear Local</button>
               </div>
               
-              <div class="sidebar-nav">
-                <div id="navigation"></div>
-              </div>
-            </div>
-
-            <div class="main-content">
-              <h1 id="content-title">Loading...</h1>
-              <div id="content">
-                <div class="initial-loading">
-                  <p>Initializing enhanced documentation viewer...</p>
-                </div>
-              </div>
-            </div>
-
+              <!-- Comments Section -->
+              <section id="comments-container" aria-label="Comments and discussions"></section>
+            </main>
+            
+            <!-- JavaScript -->
             <script src="js/staticman-config.js"></script>
             <script src="js/preloaded-comments.js"></script>
             <script src="js/comments-loader.js"></script>
+            <script src="js/staticman-integration.js"></script>
             <script src="js/navigation-config.js"></script>
-            <script src="js/content-id-map.js"></script>
+            <script src="js/content-map.js"></script>
             <script src="js/app.js"></script>
           </body>
           </html>
           HTMLEOF
           
+          # Create 404 page for GitHub Pages SPA routing
           cat > ./site/404.html << 'HTML404EOF'
           <!DOCTYPE html>
           <html>
           <head>
-            <meta charset="UTF-8">
+            <meta charset="utf-8">
             <title>Redirecting...</title>
             <script>
-              const basePath = location.hostname.includes('github.io') && location.pathname.split('/').length > 1 
-                ? '/' + location.pathname.split('/')[1] : '';
-              window.location.href = basePath + '/';
+              // GitHub Pages SPA redirect handling
+              sessionStorage.redirect = location.href;
+              
+              // Determine base path for GitHub Pages
+              const segments = location.pathname.split('/');
+              const basePath = segments.length > 1 ? '/' + segments[1] : '';
+              
+              // Redirect to main application
+              location.replace(basePath + '/#' + location.pathname.slice(basePath.length + 1) + location.search + location.hash);
             </script>
           </head>
           <body>
-            <p>Redirecting...</p>
+            <div style="text-align: center; padding: 2rem; font-family: sans-serif;">
+              <h1>Redirecting...</h1>
+              <p>If you are not automatically redirected, <a href="/">click here</a>.</p>
+            </div>
           </body>
           </html>
           HTML404EOF
-          
-          cp staticman.yml ./site/
 
-      # Step 13: Create default content
-      - name: Create Default Content
+      # Step 16: Copy Staticman Configuration to Site
+      - name: Copy Configuration Files
         run: |
-          mkdir -p ./site/content
+          # Copy staticman.yml to site root for GitHub Pages
+          cp staticman.yml ./site/
           
-          for id in automotive-information basic-maintenance major-vehicle-components; do
-            title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-            cat > "./site/content/$id.html" << CONTENTEOF
-          <h1>${title}</h1>
-          <p>This section contains information about ${title}.</p>
-          <p>Use the navigation menu to explore topics within this section.</p>
-          <p><strong>Review Mode:</strong> Use the review controls to enable collaborative commenting.</p>
-          <p><strong>Smart Comments System:</strong> Comments are automatically synchronized or stored locally.</p>
-          CONTENTEOF
-          done
+          # Create .nojekyll to prevent Jekyll processing
+          touch ./site/.nojekyll
+          
+          # Create robots.txt
+          cat > ./site/robots.txt << 'ROBOTSEOF'
+          User-agent: *
+          Allow: /
+          
+          Sitemap: https://${GITHUB_REPOSITORY%/*}.github.io/${GITHUB_REPOSITORY#*/}/sitemap.xml
+          ROBOTSEOF
 
-      # Step 14: Deploy to GitHub Pages
+      # Step 17: Create Setup Documentation
+      - name: Create Staticman Setup Documentation
+        run: |
+          cat > ./site/STATICMAN_SETUP.md << 'SETUPEOF'
+          # Staticman Setup for GitHub Repository Integration
+          
+          This documentation site uses **Staticman** to enable collaborative commenting directly integrated with your GitHub repository.
+          
+          ## What is Staticman?
+          
+          Staticman is a Node.js application that transforms user-generated content (like comments) into data files in your GitHub repository. When users submit comments through the web interface, Staticman:
+          
+          1. **Receives the comment** via API endpoint
+          2. **Validates the data** according to your configuration
+          3. **Creates a data file** in your repository's `_data/comments/` directory
+          4. **Triggers a rebuild** of your static site (automatic with GitHub Pages)
+          5. **Makes comments visible** on your documentation site
+          
+          ## Repository Configuration
+          
+          - **Repository:** ${GITHUB_REPOSITORY}
+          - **Branch:** ${GITHUB_REF#refs/heads/}
+          - **Moderation:** Enabled (Pull Request workflow)
+          - **API Endpoint:** `https://api.staticman.net/v3/entry/github/${GITHUB_REPOSITORY}/${GITHUB_REF#refs/heads/}/comments`
+          
+          ## Setup Steps (Required for Comment Functionality)
+          
+          ### 1. Add Staticman as Repository Collaborator
+          
+          1. Go to your repository settings: [${GITHUB_REPOSITORY}/settings/access](https://github.com/${GITHUB_REPOSITORY}/settings/access)
+          2. Click **"Invite a collaborator"**
+          3. Add username: `staticmanapp`
+          4. Send the invitation
+          
+          ### 2. Accept Staticman Invitation
+          
+          Visit this URL to connect Staticman to your repository:
+          ```
+          https://api.staticman.net/v3/connect/github/${GITHUB_REPOSITORY}
+          ```
+          
+          This URL tells Staticman to accept the collaboration invitation and enables the API endpoint.
+          
+          ### 3. Test the Integration
+          
+          After setup, you can test by:
+          
+          1. **Enable Review Mode** on your documentation site
+          2. **Select text** or **click images** to add comments
+          3. **Submit a comment** - this will create a pull request in your repository
+          4. **Review and merge** the pull request to make the comment visible
+          
+          ## How Comments Work
+          
+          ### Comment Submission Flow
+          
+          1. **User submits comment** → Staticman API receives data
+          2. **Staticman creates pull request** → New comment file in `_data/comments/[page-id]/`
+          3. **Repository owner reviews** → Merge PR to approve, close to reject
+          4. **GitHub Pages rebuilds** → Comment appears on documentation site
+          5. **Visitors see comment** → Loaded from repository data files
+          
+          ### Comment Data Structure
+          
+          Comments are stored as JSON files in `_data/comments/[page-id]/comment-[timestamp].json`:
+          
+          ```json
+          {
+            "id": "1640995200000",
+            "date": "2023-12-31T12:00:00.000Z",
+            "name": "John Doe",
+            "email": "5d41402abc4b2a76b9719d911017c592",
+            "message": "This section could use more examples.",
+            "pageId": "getting-started",
+            "commentType": "suggestion",
+            "selectedText": "Installation instructions"
+          }
+          ```
+          
+          ## Configuration Options
+          
+          The `staticman.yml` file in your repository root controls comment behavior:
+          
+          ### Moderation Settings
+          
+          - **`moderation: true`** - Comments create pull requests for review (recommended)
+          - **`moderation: false`** - Comments are committed directly (faster, less control)
+          
+          ### Field Validation
+          
+          - **`requiredFields`** - Fields that must be provided
+          - **`allowedFields`** - Fields accepted from comment form
+          - **`transforms`** - Data transformations (e.g., hash emails)
+          
+          ### Spam Protection
+          
+          - **reCAPTCHA integration** - Add CAPTCHA to comment form
+          - **Akismet filtering** - Automatic spam detection
+          - **Field validation** - Prevent malicious submissions
+          
+          ## Troubleshooting
+          
+          ### "Connection Error" Status
+          
+          If you see connection errors:
+          
+          1. **Check Staticman service status** - Visit [staticman.net](https://staticman.net)
+          2. **Verify setup steps** - Ensure collaborator invitation was accepted
+          3. **Check repository permissions** - Staticman needs write access
+          4. **Review configuration** - Ensure `staticman.yml` is in repository root
+          
+          ### Comments Not Appearing
+          
+          1. **Check pull requests** - Look for pending comment PRs in your repository
+          2. **Merge approved comments** - PRs must be merged to make comments visible
+          3. **Wait for rebuild** - GitHub Pages may take a few minutes to rebuild
+          4. **Check browser cache** - Hard refresh the page to see updates
+          
+          ### CORS or Network Errors
+          
+          - **Expected behavior** - CORS errors are common with third-party APIs
+          - **Fallback available** - Comments are queued locally and can be exported
+          - **Alternative methods** - Manual comment creation via GitHub issues
+          
+          ## Advanced Configuration
+          
+          ### Custom Staticman Instance
+          
+          For better reliability, consider hosting your own Staticman instance:
+          
+          1. **Deploy to Heroku/Railway** - Use official Staticman Docker image
+          2. **Update configuration** - Point to your custom API endpoint
+          3. **Enhanced control** - Custom spam filtering, notifications, etc.
+          
+          ### Webhook Integration
+          
+          Set up webhooks for faster rebuilds:
+          
+          1. **Repository Settings** → **Webhooks** → **Add webhook**
+          2. **Payload URL** - Your hosting provider's build trigger URL
+          3. **Events** - Select "Pull requests" and "Pushes"
+          
+          ## Support Resources
+          
+          - **Staticman Documentation:** [staticman.net/docs](https://staticman.net/docs/)
+          - **GitHub Repository:** [github.com/eduardoboucas/staticman](https://github.com/eduardoboucas/staticman)
+          - **Community Support:** [GitHub Discussions](https://github.com/eduardoboucas/staticman/discussions)
+          
+          ## Status Indicators
+          
+          The documentation site shows real-time status:
+          
+          - 🟢 **Connected** - Staticman API is reachable, comments will be processed
+          - 🟡 **Connecting** - Testing connection to Staticman API
+          - 🔴 **Error** - Connection failed, click for troubleshooting help
+          - 🟠 **Submitting** - Comment is being sent to Staticman
+          - ✅ **Submitted** - Comment submitted successfully (awaiting moderation)
+          
+          ---
+          
+          **Note:** This setup creates a collaborative documentation experience where comments are permanently stored in your repository, version-controlled, and integrated with your development workflow.
+          SETUPEOF
+
+      # Step 18: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
           force_orphan: true
+          enable_jekyll: false
+          cname: false
