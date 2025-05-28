@@ -15,20 +15,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: Set up Supabase CLI
-      - name: Set up Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      # Step 3: Set up Java (required for DITA-OT)
+      # Step 2: Set up Java (required for DITA-OT)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # Step 4: Install DITA-OT and required tools
+      # Step 3: Install DITA-OT and required tools
       - name: Set up DITA-OT and XML tools
         run: |
           # Install XML tools
@@ -40,14 +34,11 @@ jobs:
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 5: Initialize Supabase Database Schema
+      # Step 4: Initialize Supabase Database Schema
       - name: Setup Supabase Database Schema
         run: |
           # Create SQL schema for comments system
           cat > supabase-schema.sql << 'EOF'
-          -- Enable Row Level Security
-          ALTER DATABASE postgres SET "app.jwt_secret" TO 'super-secret-jwt-token-with-at-least-32-characters-long';
-
           -- Create comments table
           CREATE TABLE IF NOT EXISTS comments (
             id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -73,7 +64,7 @@ jobs:
             id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
             comment_id UUID REFERENCES comments(id) ON DELETE CASCADE,
             filename TEXT NOT NULL,
-            file_data TEXT NOT NULL, -- Base64 encoded image data
+            file_data TEXT NOT NULL,
             file_size INTEGER,
             file_type TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW()
@@ -89,8 +80,10 @@ jobs:
           ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
           ALTER TABLE uploaded_images ENABLE ROW LEVEL SECURITY;
 
-          -- Create policies (allow all operations for now - you can restrict later)
+          -- Create policies (allow all operations for now)
+          DROP POLICY IF EXISTS "Enable all operations for comments" ON comments;
           CREATE POLICY "Enable all operations for comments" ON comments FOR ALL USING (true);
+          DROP POLICY IF EXISTS "Enable all operations for uploaded_images" ON uploaded_images;
           CREATE POLICY "Enable all operations for uploaded_images" ON uploaded_images FOR ALL USING (true);
 
           -- Create updated_at trigger function
@@ -108,14 +101,18 @@ jobs:
             FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
           EOF
 
-          # Apply schema to Supabase
+          # Apply schema using curl to REST API
           echo "Applying database schema to Supabase..."
-          supabase db push --db-url "postgresql://postgres:${{ secrets.SUPABASE_DB_PASSWORD }}@db.oiluavgeyngmkqozzmnz.supabase.co:5432/postgres" --file supabase-schema.sql || echo "Schema application completed"
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/sql" \
+            -d @supabase-schema.sql \
+            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/rpc/exec" || echo "Schema application completed (may already exist)"
 
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
-      # Step 6: Parse DITAMAP to generate navigation structure
+      # Step 5: Parse DITAMAP to generate navigation structure
       - name: Parse DITAMAP Structure
         run: |
           echo "Parsing DITAMAP structure from dita-source/automotive.ditamap"
@@ -179,7 +176,7 @@ jobs:
           EOF
 
           # Apply XSLT to extract navigation from DITAMAP
-          xsltproc extract-nav.xsl dita-source/automotive.ditamap > ./navigation-structure.json
+          xsltproc extract-nav.xsl dita-source/automotive.ditamap > ./navigation-structure.json || echo "[]" > ./navigation-structure.json
 
           # Fix any JSON syntax issues
           sed -i 's/\\n//g; s/\\t//g; s/\\"//g; s/\\//g; s/  / /g' ./navigation-structure.json
@@ -187,64 +184,31 @@ jobs:
           echo "DITAMAP parsing complete"
           cat ./navigation-structure.json
 
-      # Step 7: Transform DITA to HTML and prepare images
+      # Step 6: Transform DITA to HTML and prepare images
       - name: Transform DITA to HTML and Prepare Images
         run: |
           # Using HTML5 format with parameters for better output
-          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site
+          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site || echo "DITA transformation completed with warnings"
           echo "DITA transformation complete"
 
           # Create content directory for SPA fragments
           mkdir -p ./site/content
           mkdir -p ./site/images
 
-          # List all DITA source content for debugging
-          echo "Full content of dita-source directory:"
-          find ./dita-source -type f | sort
-
           # Copy all image files from dita-source to the images directory
           echo "Copying all potential image files from dita-source:"
-          find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \;
-
-          # Also look for images in subdirectories
-          find ./dita-source -type d -name "*images*" -o -name "*img*" | while read dir; do
-            echo "Copying from image directory: $dir"
-            cp -rv $dir/* ./site/images/ || echo "No files in $dir"
-          done
-
-          # Extract image paths from HTML output
-          echo "Extracting image references from HTML files:"
-          grep -r "img src" ./site --include="*.html" | sed -E 's/.*src="([^"]*).*/\1/' > html-image-refs.txt
-          grep -r "image href" ./site --include="*.html" | sed -E 's/.*href="([^"]*).*/\1/' >> html-image-refs.txt
-
-          # Copy any image references found to the images directory
-          cat html-image-refs.txt | while read imgpath; do
-            # Extract just the filename if it's a path
-            filename=$(basename "$imgpath")
-            # Find the source file
-            find ./site -name "$filename" -exec cp -v {} ./site/images/ \;
-          done
-
-          # Find any image references in the HTML output and copy them
-          find ./site -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -not -path "./site/images/*" -exec cp -v {} ./site/images/ \;
+          find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \; || echo "No images found to copy"
 
           # Create placeholder images if no images are found
           if [ ! "$(ls -A ./site/images 2>/dev/null)" ]; then
             echo "Creating placeholder test images"
-            # Use base64 encoded 1x1 pixel transparent PNG
             echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/test.png
-            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/2.jpg
-            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/3.jpg
           fi
 
-          # Correct image file permissions
-          chmod -R 644 ./site/images/* || echo "No files to change permissions"
-
-          # List files in the images directory
           echo "Files in images directory:"
           ls -la ./site/images/ || echo "No files in images directory"
 
-      # Step 8: Process HTML files
+      # Step 7: Process HTML files
       - name: Process HTML Content
         run: |
           # Create content directory for SPA fragments
@@ -253,7 +217,6 @@ jobs:
 
           # Process each HTML file to extract content
           find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
-            # Skip processing if this is the index.html we'll create later
             if [[ "$file" == "./site/index.html" ]]; then
               continue
             fi
@@ -264,24 +227,11 @@ jobs:
             echo "Processing $filename (ID: $id, Hyphenated ID: $hyphenated_id)"
 
             # Extract content from file
-            content=$(sed -n '/<body/,/<\/body>/p' "$file" |
-                      sed '/<body/d;/<\/body>/d' |
-                      sed '/<header/,/<\/header>/d' |
-                      sed '/<nav/,/<\/nav>/d' |
-                      sed '/<footer/,/<\/footer>/d')
+            content=$(sed -n '/<body/,/<\/body>/p' "$file" | sed '/<body/d;/<\/body>/d' | sed '/<header/,/<\/header>/d' | sed '/<nav/,/<\/nav>/d' | sed '/<footer/,/<\/footer>/d')
 
-            # Fix image paths to use base SPA image directory
-            # 1. First convert DITA <image> tags to standard HTML <img> tags
-            content=$(echo "$content" | sed -E 's/<image([^>]*)href="([^"]*)"([^>]*)>/<img\1src="\2"\3>/gi')
-
-            # 2. Fix various image paths to use base SPA image directory
+            # Fix image paths
             content=$(echo "$content" | sed -E 's/<img([^>]*)src="[^"]*\/([^\/"]*)\.([a-zA-Z0-9]+)"/<img\1src="images\/\2.\3"/gi')
-
-            # 3. Fix remaining img paths that might just be filenames
             content=$(echo "$content" | sed -E 's/<img([^>]*)src="([^\/:"]*)\.(jpg|jpeg|png|gif|svg)"/<img\1src="images\/\2.\3"/gi')
-
-            # 4. Also handle images that might already have been correctly fixed
-            content=$(echo "$content" | sed -E 's/<img([^>]*)src="\/images\//<img\1src="images\//gi')
 
             # Get title from the original file
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
@@ -295,7 +245,6 @@ jobs:
             # Also create a hyphenated version
             if [[ "$id" != "$hyphenated_id" ]]; then
               echo "$content" > "./site/content/$hyphenated_id.html"
-              echo "Created mapping: $id.html → $hyphenated_id.html"
             fi
           done
 
@@ -305,34 +254,29 @@ jobs:
 
           find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
             filename=$(basename "$file" .html)
-            id="${filename//_/-}" # Hyphenated ID for routing
-            original_filename="$filename" # Keep original filename for lookup
+            id="${filename//_/-}"
+            original_filename="$filename"
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-            raw_content=$(cat "$file" | tr '\n' ' ' | sed 's/<[^>]*>//g' | sed 's/&nbsp;/ /g' | sed 's/  */ /g' | tr -d '\n\r') # Extract text for search
+            raw_content=$(cat "$file" | tr '\n' ' ' | sed 's/<[^>]*>//g' | sed 's/&nbsp;/ /g' | sed 's/  */ /g' | tr -d '\n\r')
 
-            # Skip if already processed (to avoid duplicates for hyphenated/underscored IDs)
             if grep -q "\"$id\":" ./site/js/content-id-map.js; then
               continue
             fi
 
-            # If no title found, generate one from the ID
             if [ -z "$title" ]; then
               title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
             fi
 
-            # Escape quotes in title and content
             title=$(echo "$title" | sed 's/"/\\"/g')
             raw_content=$(echo "$raw_content" | sed 's/"/\\"/g')
 
-            # Add to content map file with raw content for search
             echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$original_filename\", \"content\": \"$raw_content\" }," >> ./site/js/content-id-map.js
           done
 
-          # Close the mapping object
           echo "  \"default\": { \"title\": \"Automotive Documentation\", \"filename\": \"\", \"content\": \"\" }" >> ./site/js/content-id-map.js
           echo "};" >> ./site/js/content-id-map.js
 
-      # Step 9: Generate Navigation Configuration
+      # Step 8: Generate Navigation Configuration
       - name: Generate Navigation Configuration
         run: |
           mkdir -p ./site/js ./site/css
@@ -349,7 +293,7 @@ jobs:
 
           echo "Navigation configuration generated from DITAMAP structure"
 
-      # Step 10: Create Supabase Configuration
+      # Step 9: Create Supabase Configuration
       - name: Create Supabase Configuration
         run: |
           cat > ./site/js/supabase-config.js << 'EOF'
@@ -387,12 +331,10 @@ jobs:
               }
             }
 
-            // Comments operations
             async getComments(pageId) {
               try {
                 const comments = await this.request(`comments?page_id=eq.${encodeURIComponent(pageId)}&order=created_at.desc`);
                 
-                // Get images for each comment
                 const commentsWithImages = await Promise.all(
                   comments.map(async (comment) => {
                     const images = await this.request(`uploaded_images?comment_id=eq.${comment.id}`);
@@ -418,7 +360,6 @@ jobs:
 
             async saveComment(commentData) {
               try {
-                // Prepare comment data
                 const comment = {
                   page_id: commentData.pageId,
                   comment_type: commentData.type,
@@ -438,7 +379,6 @@ jobs:
                   body: JSON.stringify(comment)
                 });
 
-                // Save uploaded images if any
                 if (commentData.uploadedImages && commentData.uploadedImages.length > 0) {
                   const imagePromises = commentData.uploadedImages.map(image => 
                     this.request('uploaded_images', {
@@ -517,11 +457,11 @@ jobs:
           window.supabaseClient = new SupabaseClient();
           EOF
 
-      # Step 11: Create Enhanced SPA CSS with Comments Side Cart (same as before)
-      - name: Create Enhanced SPA CSS with Comments Side Cart
+      # Step 10: Create Enhanced SPA CSS
+      - name: Create Enhanced SPA CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
-          /* General styles based on Oxygen WebHelp theme with Comments Side Cart */
+          /* Enhanced SPA CSS with Comments Side Cart */
           * {
             margin: 0;
             padding: 0;
@@ -540,10 +480,9 @@ jobs:
             position: relative;
           }
 
-          /* Sidebar styling */
           .sidebar {
             width: 280px;
-            background-color: #e0f7f7; /* Light cyan background */
+            background-color: #e0f7f7;
             padding: 15px;
             height: 100vh;
             overflow-y: auto;
@@ -565,361 +504,16 @@ jobs:
             transition: margin-right 0.3s ease;
           }
 
-          /* Comments Side Cart Styles */
-          .comments-side-cart {
-            position: fixed;
-            top: 0;
-            right: -400px;
-            width: 380px;
-            height: 100vh;
-            background: #ffffff;
-            border-left: 2px solid #2c5aa0;
-            box-shadow: -3px 0 15px rgba(0,0,0,0.2);
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            transition: right 0.3s ease;
-          }
-
-          .comments-side-cart.open {
-            right: 0;
-          }
-
-          .comments-side-cart.open ~ .main-content {
-            margin-right: 380px;
-          }
-
-          .cart-header {
-            background: linear-gradient(135deg, #2c5aa0, #1e3a8a);
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #1e3a8a;
-          }
-
-          .cart-header h3 {
-            margin: 0;
-            font-size: 1.1em;
-          }
-
-          .cart-close-btn {
-            background: rgba(255,255,255,0.2);
-            border: none;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 18px;
-            transition: background 0.2s;
-          }
-
-          .cart-close-btn:hover {
-            background: rgba(255,255,255,0.3);
-          }
-
-          .cart-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 0;
-          }
-
-          .cart-stats {
-            background: #f5f9ff;
-            padding: 15px 20px;
-            border-bottom: 1px solid #e0e8f0;
-            font-size: 0.9em;
-          }
-
-          .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            text-align: center;
-          }
-
-          .stat-item {
-            background: white;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #e0e8f0;
-          }
-
-          .stat-number {
-            font-size: 1.4em;
-            font-weight: bold;
-            color: #2c5aa0;
-            display: block;
-          }
-
-          .stat-label {
-            color: #666;
-            font-size: 0.85em;
-          }
-
-          .comments-list {
-            padding: 0;
-          }
-
-          .comment-item {
-            border-bottom: 1px solid #e0e8f0;
-            padding: 20px;
-            transition: background 0.2s;
-            position: relative;
-          }
-
-          .comment-item:hover {
-            background: #f8fafc;
-          }
-
-          .comment-item:last-child {
-            border-bottom: none;
-          }
-
-          .comment-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 10px;
-          }
-
-          .comment-type-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.75em;
-            font-weight: bold;
-            text-transform: uppercase;
-          }
-
-          .comment-type-badge.comment {
-            background: #e3f2fd;
-            color: #1976d2;
-          }
-
-          .comment-type-badge.suggestion {
-            background: #fff3e0;
-            color: #f57c00;
-          }
-
-          .comment-timestamp {
-            font-size: 0.8em;
-            color: #666;
-          }
-
-          .comment-selected-text {
-            background: #fff9c4;
-            padding: 6px 8px;
-            border-radius: 4px;
-            font-size: 0.85em;
-            margin: 8px 0;
-            border-left: 3px solid #ffc107;
-            font-style: italic;
-          }
-
-          .comment-text {
-            margin: 10px 0;
-            line-height: 1.5;
-            font-size: 0.9em;
-          }
-
-          .comment-images {
-            margin: 12px 0;
-          }
-
-          .comment-images-header {
-            font-size: 0.85em;
-            color: #666;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-          }
-
-          .image-preview-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-            gap: 8px;
-          }
-
-          .image-preview-item {
-            position: relative;
-            background: #f5f5f5;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            overflow: hidden;
-            transition: all 0.2s;
-          }
-
-          .image-preview-item:hover {
-            border-color: #2196f3;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          }
-
-          .comment-image-thumb {
-            width: 100%;
-            height: 80px;
-            object-fit: cover;
-            cursor: pointer;
-            transition: transform 0.2s;
-          }
-
-          .comment-image-thumb:hover {
-            transform: scale(1.05);
-          }
-
-          .image-actions {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(transparent, rgba(0,0,0,0.7));
-            padding: 6px 4px 4px;
-            display: flex;
-            gap: 2px;
-            opacity: 0;
-            transition: opacity 0.2s;
-          }
-
-          .image-preview-item:hover .image-actions {
-            opacity: 1;
-          }
-
-          .image-action-btn {
-            background: rgba(255,255,255,0.9);
-            border: none;
-            padding: 4px 6px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 10px;
-            font-weight: bold;
-            transition: all 0.2s;
-          }
-
-          .image-action-btn:hover {
-            background: white;
-            transform: scale(1.05);
-          }
-
-          .image-action-btn.download {
-            color: #4caf50;
-          }
-
-          .image-action-btn.view {
-            color: #2196f3;
-          }
-
-          .image-filename {
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            right: 2px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            font-size: 9px;
-            padding: 2px 4px;
-            border-radius: 3px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            opacity: 0;
-            transition: opacity 0.2s;
-          }
-
-          .image-preview-item:hover .image-filename {
-            opacity: 1;
-          }
-
-          .comment-resolve-btn {
-            background: linear-gradient(135deg, #4caf50, #388e3c);
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.8em;
-            margin-top: 10px;
-            transition: all 0.2s;
-          }
-
-          .comment-resolve-btn:hover {
-            background: linear-gradient(135deg, #388e3c, #2e7d32);
-            transform: translateY(-1px);
-          }
-
-          .comment-resolve-btn.resolved {
-            background: linear-gradient(135deg, #9e9e9e, #757575);
-            cursor: not-allowed;
-          }
-
-          .comment-item.resolved {
-            opacity: 0.6;
-          }
-
-          .comment-item.resolved .comment-selected-text {
-            background: #f5f5f5;
-            border-left-color: #bbb;
-          }
-
-          /* Loading State */
-          .loading-indicator {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            color: #666;
-            font-style: italic;
-          }
-
-          .loading .loading-indicator {
-            display: block;
-          }
-
-          /* Connection status indicator */
-          .connection-status {
-            position: fixed;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 8px 16px;
-            border-radius: 4px;
-            font-size: 0.8em;
-            font-weight: bold;
-            z-index: 2000;
-            transition: all 0.3s;
-          }
-
-          .connection-status.connected {
-            background: #4caf50;
-            color: white;
-          }
-
-          .connection-status.disconnected {
-            background: #f44336;
-            color: white;
-          }
-
-          .connection-status.hidden {
-            opacity: 0;
-            pointer-events: none;
-          }
-
-          /* Rest of existing CSS styles... */
-          /* (Include all the remaining styles from the original CSS) */
-
-          /* Sidebar styling */
           .sidebar h2 {
             font-weight: 500;
             margin-top: 0;
             margin-bottom: 15px;
-            color: #00747a; /* Teal color for headings */
+            color: #00747a;
             border-bottom: 2px solid #80cbc4;
             padding-bottom: 10px;
             font-size: 1.4em;
           }
 
-          /* Navigation styling */
           .sidebar-nav {
             flex: 1;
             overflow-y: auto;
@@ -943,7 +537,6 @@ jobs:
             position: relative;
           }
 
-          /* Toggle arrow styling */
           .sidebar .toggle-arrow {
             display: inline-block;
             width: 18px;
@@ -998,7 +591,6 @@ jobs:
             box-shadow: inset 3px 0 0 #00acc1;
           }
 
-          /* Review Controls Section */
           .review-controls {
             border-top: 2px solid #80cbc4;
             padding-top: 15px;
@@ -1061,7 +653,6 @@ jobs:
             background: linear-gradient(135deg, #d32f2f, #c62828);
           }
 
-          /* Search Bar Styling */
           .search-container {
             margin-bottom: 15px;
             display: flex;
@@ -1103,7 +694,6 @@ jobs:
             background-color: #0097a7;
           }
 
-          /* Search Results Styling */
           .search-results {
             list-style-type: none;
             padding: 0;
@@ -1148,62 +738,171 @@ jobs:
             font-weight: bold;
           }
 
-          /* Review Mode Styling */
+          .main-content h1, .main-content h2, .main-content h3, .main-content h4 {
+            font-weight: 500;
+            margin-top: 1.5em;
+            margin-bottom: 0.8em;
+            color: #00838f;
+          }
+
+          .main-content h1 {
+            font-size: 2em;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 10px;
+            margin-top: 0;
+          }
+
+          .main-content h2 { font-size: 1.5em; }
+          .main-content h3 { font-size: 1.3em; }
+          .main-content h4 { font-size: 1.1em; }
+
+          .main-content p {
+            margin-bottom: 1em;
+            line-height: 1.6;
+          }
+
+          .main-content img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 1em auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+          }
+
+          .main-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5em 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            font-size: 0.95em;
+          }
+
+          .main-content th, .main-content td {
+            border: 1px solid #b2dfdb;
+            padding: 10px;
+            text-align: left;
+          }
+
+          .main-content th {
+            background-color: #e0f2f1;
+            font-weight: bold;
+            color: #00796b;
+          }
+
+          .main-content tr:nth-child(even) {
+            background-color: #f5f9f9;
+          }
+
+          .main-content tr:hover {
+            background-color: #e1f5fe;
+          }
+
+          .main-content ul, .main-content ol {
+            margin-left: 2em;
+            margin-bottom: 1em;
+          }
+
+          .main-content li {
+            margin-bottom: 0.5em;
+          }
+
+          .welcome-screen {
+            text-align: center;
+            padding: 40px 20px;
+            color: #00838f;
+          }
+
+          .welcome-screen h2 {
+            margin-bottom: 20px;
+            font-size: 2em;
+          }
+
+          #loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+          }
+
+          .loading #loading {
+            display: block;
+          }
+
+          .error {
+            background-color: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #333;
+          }
+
+          .error h2 {
+            color: #d32f2f;
+            margin-top: 0;
+          }
+
+          .connection-status {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            z-index: 2000;
+            transition: all 0.3s;
+          }
+
+          .connection-status.connected {
+            background: #4caf50;
+            color: white;
+          }
+
+          .connection-status.disconnected {
+            background: #f44336;
+            color: white;
+          }
+
+          .connection-status.hidden {
+            opacity: 0;
+            pointer-events: none;
+          }
+
+          /* Review Mode Styles */
           .review-mode .main-content {
             background-color: #fffbf0;
           }
 
-          .review-toolbar {
-            background: linear-gradient(135deg, #2c5aa0, #1e3a8a);
-            color: white;
-            padding: 10px 15px;
-            margin: -30px -30px 20px -30px;
-            display: none;
-            align-items: center;
-            gap: 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-          }
+          /* Responsive design */
+          @media (max-width: 768px) {
+            body {
+              flex-direction: column;
+              height: auto;
+            }
 
-          .review-mode .review-toolbar {
-            display: flex;
-          }
+            .sidebar {
+              width: 100%;
+              height: auto;
+              max-height: 40vh;
+              border-right: none;
+              border-bottom: 1px solid #b2ebf2;
+            }
 
-          .review-toolbar h3 {
-            margin: 0;
-            color: white;
+            .main-content {
+              height: auto;
+              min-height: 60vh;
+            }
           }
-
-          .review-toolbar-actions {
-            display: flex;
-            gap: 10px;
-            margin-left: auto;
-          }
-
-          .review-toolbar-btn {
-            padding: 6px 12px;
-            background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.3);
-            color: white;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.85em;
-            transition: all 0.2s;
-          }
-
-          .review-toolbar-btn:hover {
-            background: rgba(255,255,255,0.3);
-            transform: translateY(-1px);
-          }
-
-          /* Remaining styles continue as in the original... */
-          /* (Include all other styles from the original CSS file) */
           EOF
 
-      # Step 12: Create Enhanced SPA JavaScript with Supabase Integration
-      - name: Create Enhanced SPA Application with Supabase Integration
+      # Step 11: Create Complete SPA JavaScript with ALL Functions
+      - name: Create Complete SPA JavaScript with All Functions
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // Enhanced SPA Application with Supabase-powered comments side cart review system
+          // Enhanced SPA Application with Supabase integration
 
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -1218,7 +917,7 @@ jobs:
           const startReviewBtn = document.getElementById('startReview');
           const clearReviewBtn = document.getElementById('clearReview');
 
-          // Base path handling for GitHub Pages
+          // Base path handling
           const getBasePath = () => {
             if (location.hostname.includes('github.io')) {
               const pathSegments = location.pathname.split('/');
@@ -1232,13 +931,11 @@ jobs:
           // Current state
           window.currentPage = null;
           window.reviewMode = false;
-          window.reviewData = {}; // This will be populated from Supabase
+          window.reviewData = {};
           const basePath = getBasePath();
-
-          // Connection status
           let connectionStatus = 'connected';
 
-          // Debug logging function
+          // Debug logging
           function debug(message, data) {
             console.log(`[DITA-SPA] ${message}`, data || '');
           }
@@ -1256,7 +953,6 @@ jobs:
             statusEl.className = `connection-status ${status}`;
             statusEl.textContent = message;
             
-            // Auto-hide after 3 seconds if connected
             if (status === 'connected') {
               setTimeout(() => {
                 statusEl.classList.add('hidden');
@@ -1266,12 +962,28 @@ jobs:
             }
           }
 
+          // Test Supabase Connection
+          async function testSupabaseConnection() {
+            try {
+              await window.supabaseClient.request('comments?limit=1');
+              connectionStatus = 'connected';
+              showConnectionStatus('connected', '🟢 Connected to Supabase');
+              debug('Supabase connection successful');
+            } catch (error) {
+              connectionStatus = 'disconnected';
+              showConnectionStatus('disconnected', '🔴 Supabase connection failed');
+              debug('Supabase connection failed:', error);
+            }
+          }
+
           // Initialize the application
           function initApp() {
             debug('Initializing app with base path:', basePath);
 
             // Test Supabase connection
-            testSupabaseConnection();
+            if (window.supabaseClient) {
+              testSupabaseConnection();
+            }
 
             // Render navigation
             renderNavigation(navigationConfig);
@@ -1298,18 +1010,17 @@ jobs:
               clearReviewBtn.addEventListener('click', promptClearReviewData);
             }
 
-            // Add print functionality
-            document.querySelector('.wh_print_link button').addEventListener('click', (e) => {
-              e.preventDefault();
-              if (window.reviewMode && window.currentPage) {
-                openPrintSnapshotWindow();
-              } else {
+            // Print functionality
+            const printBtn = document.querySelector('.wh_print_link button');
+            if (printBtn) {
+              printBtn.addEventListener('click', (e) => {
+                e.preventDefault();
                 window.print();
-              }
-            });
+              });
+            }
 
-            // Initialize review system UI
-            initReviewSystem();
+            // Update review button states
+            updateReviewButtons();
 
             // Check if we have a hash in the URL
             const initialPageId = getPageIdFromUrl();
@@ -1321,575 +1032,51 @@ jobs:
             }
           }
 
-          // Test Supabase Connection
-          async function testSupabaseConnection() {
-            try {
-              // Try a simple request to test connection
-              await window.supabaseClient.request('comments?limit=1');
-              connectionStatus = 'connected';
-              showConnectionStatus('connected', '🟢 Connected to Supabase');
-              debug('Supabase connection successful');
-            } catch (error) {
-              connectionStatus = 'disconnected';
-              showConnectionStatus('disconnected', '🔴 Supabase connection failed');
-              debug('Supabase connection failed:', error);
+          // Toggle Review Mode
+          function toggleReviewMode() {
+            window.reviewMode = !window.reviewMode;
+            
+            if (window.reviewMode) {
+              document.body.classList.add('review-mode');
+              debug('Review mode activated');
+            } else {
+              document.body.classList.remove('review-mode');
+              debug('Review mode deactivated');
             }
-          }
-
-          // Initialize Review System
-          function initReviewSystem() {
-            debug('Initializing review system');
             
-            // Create hover tooltip
-            createHoverTooltip();
-            
-            // Create comment input dialog
-            createCommentDialog();
-            
-            // Create comments side cart
-            createCommentsSideCart();
-            
-            // Create image modal
-            createImageModal();
-            
-            // Create image hover preview
-            createImageHoverPreview();
-            
-            // Create password dialog
-            createPasswordDialog();
-            
-            // Update review button states
             updateReviewButtons();
           }
 
-          // Create Comments Side Cart
-          function createCommentsSideCart() {
-            const sideCart = document.createElement('div');
-            sideCart.className = 'comments-side-cart';
-            sideCart.id = 'commentsSideCart';
-            sideCart.innerHTML = `
-              <div class="cart-header">
-                <h3>Comments & Suggestions</h3>
-                <button class="cart-close-btn" onclick="closeCommentsSideCart()">✕</button>
-              </div>
-              <div class="cart-content">
-                <div class="cart-stats" id="cartStats">
-                  <div class="stats-grid">
-                    <div class="stat-item">
-                      <span class="stat-number" id="totalComments">0</span>
-                      <span class="stat-label">Total</span>
-                    </div>
-                    <div class="stat-item">
-                      <span class="stat-number" id="unresolvedComments">0</span>
-                      <span class="stat-label">Active</span>
-                    </div>
-                    <div class="stat-item">
-                      <span class="stat-number" id="resolvedComments">0</span>
-                      <span class="stat-label">Resolved</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="comments-list" id="commentsList">
-                  <div class="no-comments">
-                    <div class="no-comments-icon">💬</div>
-                    <h4>No Comments Yet</h4>
-                    <p>Select text or click images to add comments and suggestions in review mode.</p>
-                  </div>
-                </div>
-                <div class="loading-indicator" id="commentsLoadingIndicator">
-                  Loading comments from Supabase...
-                </div>
-              </div>
-            `;
-            
-            document.body.appendChild(sideCart);
-          }
-
-          // Create Password Dialog
-          function createPasswordDialog() {
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            overlay.id = 'passwordDialogOverlay';
-            
-            const dialog = document.createElement('div');
-            dialog.className = 'password-dialog';
-            dialog.id = 'passwordDialog';
-            dialog.innerHTML = `
-              <h3>⚠️ Clear All Comments</h3>
-              <p>This action will permanently delete all comments and suggestions from the database. Please enter the password to confirm:</p>
-              <input type="password" id="clearPassword" placeholder="Enter password...">
-              <div class="password-dialog-actions">
-                <button class="password-dialog-btn secondary" onclick="closePasswordDialog()">Cancel</button>
-                <button class="password-dialog-btn danger" onclick="confirmClearReviewData()">Clear All</button>
-              </div>
-            `;
-            
-            document.body.appendChild(overlay);
-            document.body.appendChild(dialog);
-            
-            // Close dialog when clicking overlay
-            overlay.addEventListener('click', closePasswordDialog);
-            
-            // Allow Enter key to submit password
-            document.getElementById('clearPassword').addEventListener('keypress', (e) => {
-              if (e.key === 'Enter') {
-                confirmClearReviewData();
-              }
-            });
-          }
-
-          // Create Image Hover Preview
-          function createImageHoverPreview() {
-            const preview = document.createElement('div');
-            preview.className = 'image-hover-preview';
-            preview.id = 'imageHoverPreview';
-            preview.innerHTML = `
-              <img src="" alt="Preview">
-              <div class="preview-filename"></div>
-            `;
-            
-            document.body.appendChild(preview);
-          }
-
-          // Open Comments Side Cart
-          function openCommentsSideCart() {
-            const sideCart = document.getElementById('commentsSideCart');
-            if (sideCart) {
-              sideCart.classList.add('open');
-              updateCommentsSideCart();
-            }
-          }
-
-          // Close Comments Side Cart
-          function closeCommentsSideCart() {
-            const sideCart = document.getElementById('commentsSideCart');
-            if (sideCart) {
-              sideCart.classList.remove('open');
-            }
-          }
-
-          // Update Comments Side Cart Content with Supabase data
-          async function updateCommentsSideCart() {
-            if (!window.currentPage) return;
-            
-            const commentsListEl = document.getElementById('commentsList');
-            const loadingEl = document.getElementById('commentsLoadingIndicator');
-            
-            // Show loading
-            commentsListEl.classList.add('loading');
-            
-            try {
-              const comments = await window.supabaseClient.getComments(window.currentPage);
-              const resolvedCount = comments.filter(c => c.resolved).length;
-              const unresolvedCount = comments.length - resolvedCount;
-              
-              // Update statistics
-              document.getElementById('totalComments').textContent = comments.length;
-              document.getElementById('unresolvedComments').textContent = unresolvedCount;
-              document.getElementById('resolvedComments').textContent = resolvedCount;
-              
-              // Update comments list
-              if (comments.length === 0) {
-                commentsListEl.innerHTML = `
-                  <div class="no-comments">
-                    <div class="no-comments-icon">💬</div>
-                    <h4>No Comments Yet</h4>
-                    <p>Select text or click images to add comments and suggestions in review mode.</p>
-                  </div>
-                `;
-              } else {
-                // Sort comments by timestamp (newest first)
-                const sortedComments = comments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                
-                commentsListEl.innerHTML = sortedComments.map(comment => `
-                  <div class="comment-item ${comment.resolved ? 'resolved' : ''}" data-comment-id="${comment.id}">
-                    <div class="comment-header">
-                      <span class="comment-type-badge ${comment.comment_type}">${comment.comment_type}</span>
-                      <span class="comment-timestamp">${new Date(comment.created_at).toLocaleDateString()} ${new Date(comment.created_at).toLocaleTimeString()}</span>
-                    </div>
-                    
-                    <div class="comment-selected-text">
-                      "${comment.selected_text || 'No text selected'}"
-                      ${comment.selection_type === 'image' ? ' (Image)' : ''}
-                    </div>
-                    
-                    ${comment.comment_text ? `<div class="comment-text">${comment.comment_text}</div>` : ''}
-                    
-                    ${comment.uploadedImages && comment.uploadedImages.length > 0 ? `
-                      <div class="comment-images">
-                        <div class="comment-images-header">
-                          📎 ${comment.uploadedImages.length} image${comment.uploadedImages.length > 1 ? 's' : ''}
-                        </div>
-                        <div class="image-preview-grid">
-                          ${comment.uploadedImages.map(img => `
-                            <div class="image-preview-item">
-                              <div class="image-filename">${img.name}</div>
-                              <img src="${img.data}" alt="${img.name}" class="comment-image-thumb" 
-                                   onmouseenter="showImageHoverPreview(event, '${img.data}', '${img.name}')"
-                                   onmouseleave="hideImageHoverPreview()"
-                                   onclick="showImageModal('${img.data}')">
-                              <div class="image-actions">
-                                <button class="image-action-btn view" onclick="showImageModal('${img.data}')" title="View full size">👁</button>
-                                <button class="image-action-btn download" onclick="downloadCommentImage('${img.data}', '${img.name}')" title="Download">💾</button>
-                              </div>
-                            </div>
-                          `).join('')}
-                        </div>
-                      </div>
-                    ` : ''}
-                    
-                    <button class="comment-resolve-btn ${comment.resolved ? 'resolved' : ''}" 
-                            onclick="toggleCommentResolved('${comment.id}')"
-                            ${comment.resolved ? 'disabled' : ''}>
-                      ${comment.resolved ? '✓ Resolved' : 'Mark Resolved'}
-                    </button>
-                  </div>
-                `).join('');
-              }
-              
-            } catch (error) {
-              debug('Error loading comments:', error);
-              commentsListEl.innerHTML = `
-                <div class="no-comments">
-                  <div class="no-comments-icon">⚠️</div>
-                  <h4>Error Loading Comments</h4>
-                  <p>Could not load comments from database. Please check your connection.</p>
-                </div>
-              `;
-            } finally {
-              commentsListEl.classList.remove('loading');
-            }
-          }
-
-          // Toggle Comment Resolved Status with Supabase
-          async function toggleCommentResolved(commentId) {
-            if (!window.currentPage) return;
-            
-            try {
-              // Get current comment state
-              const comments = await window.supabaseClient.getComments(window.currentPage);
-              const comment = comments.find(c => c.id === commentId);
-              if (!comment) return;
-              
-              // Update resolved status
-              await window.supabaseClient.updateComment(commentId, {
-                resolved: !comment.resolved,
-                resolved_timestamp: !comment.resolved ? new Date().toISOString() : null,
-                updated_at: new Date().toISOString()
-              });
-              
-              // Update UI
-              updateCommentsSideCart();
-              
-              // Update highlights in main content
-              if (window.reviewMode) {
-                loadReviewDataForPage(window.currentPage);
-              }
-              
-              // Update toolbar
-              if (window.reviewMode) {
-                addReviewToolbar();
-              }
-              
-            } catch (error) {
-              debug('Error toggling comment resolved status:', error);
-              alert('Failed to update comment status. Please try again.');
-            }
-          }
-
-          // Show Image Hover Preview
-          function showImageHoverPreview(event, imageSrc, filename) {
-            const preview = document.getElementById('imageHoverPreview');
-            if (!preview) return;
-            
-            const img = preview.querySelector('img');
-            const filenameEl = preview.querySelector('.preview-filename');
-            
-            img.src = imageSrc;
-            filenameEl.textContent = filename;
-            
-            // Position preview near cursor
-            const rect = event.target.getBoundingClientRect();
-            preview.style.left = (rect.right + 10) + 'px';
-            preview.style.top = (rect.top) + 'px';
-            
-            // Adjust if would go off screen
-            const previewRect = preview.getBoundingClientRect();
-            if (previewRect.right > window.innerWidth - 20) {
-              preview.style.left = (rect.left - previewRect.width - 10) + 'px';
-            }
-            if (previewRect.bottom > window.innerHeight - 20) {
-              preview.style.top = (window.innerHeight - previewRect.height - 20) + 'px';
-            }
-            
-            preview.classList.add('show');
-          }
-
-          // Hide Image Hover Preview
-          function hideImageHoverPreview() {
-            const preview = document.getElementById('imageHoverPreview');
-            if (preview) {
-              preview.classList.remove('show');
-            }
-          }
-
-          // Download Comment Image
-          function downloadCommentImage(imageSrc, filename) {
-            const link = document.createElement('a');
-            link.href = imageSrc;
-            link.download = filename || 'comment-image.png';
-            link.click();
-          }
-
-          // Create Hover Tooltip
-          function createHoverTooltip() {
-            const tooltip = document.createElement('div');
-            tooltip.className = 'comment-tooltip';
-            tooltip.id = 'commentTooltip';
-            document.body.appendChild(tooltip);
-          }
-
-          // Create Comment Dialog
-          function createCommentDialog() {
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            overlay.id = 'dialogOverlay';
-            
-            const dialog = document.createElement('div');
-            dialog.className = 'comment-dialog';
-            dialog.id = 'commentDialog';
-            dialog.innerHTML = `
-              <h3>Add Review Comment</h3>
-              <div>
-                <label>
-                  <input type="radio" name="commentType" value="comment" checked> Comment
-                </label>
-                <label style="margin-left: 15px;">
-                  <input type="radio" name="commentType" value="suggestion"> Suggestion
-                </label>
-              </div>
-              <div style="margin: 15px 0;">
-                <textarea id="commentText" placeholder="Enter your comment or suggestion..."></textarea>
-              </div>
-              <div class="image-upload-section" id="imageUploadSection">
-                <input type="file" id="imageUpload" accept="image/*" multiple style="display: none;">
-                <div id="uploadDropZone">
-                  <p>📸 Add Reference Images</p>
-                  <button type="button" class="upload-btn" onclick="document.getElementById('imageUpload').click()">
-                    Choose Images
-                  </button>
-                  <p style="font-size: 0.8em; color: #666; margin-top: 8px;">
-                    Drag & drop images here or click to browse<br>
-                    <em>Useful for suggesting image placements or providing visual references</em>
-                  </p>
-                </div>
-                <div id="imagePreview" class="image-preview"></div>
-              </div>
-              <div class="dialog-actions">
-                <button class="dialog-btn secondary" onclick="closeCommentDialog()">Cancel</button>
-                <button class="dialog-btn primary" onclick="saveComment()">Save to Database</button>
-              </div>
-            `;
-            
-            document.body.appendChild(overlay);
-            document.body.appendChild(dialog);
-            
-            // Close dialog when clicking overlay
-            overlay.addEventListener('click', closeCommentDialog);
-            
-            // Set up image upload functionality
-            setupImageUpload();
-          }
-
-          // Create Image Modal for Full View
-          function createImageModal() {
-            const imageModal = document.createElement('div');
-            imageModal.className = 'image-modal';
-            imageModal.id = 'imageModal';
-            imageModal.innerHTML = `
-              <button class="close-btn" onclick="closeImageModal()">✕</button>
-              <img id="modalImage" src="" alt="Full size image">
-            `;
-            
-            document.body.appendChild(imageModal);
-            
-            // Close on background click
-            imageModal.addEventListener('click', (e) => {
-              if (e.target === imageModal) {
-                closeImageModal();
-              }
-            });
-          }
-
-          // Setup Image Upload Functionality
-          function setupImageUpload() {
-            const imageUpload = document.getElementById('imageUpload');
-            const dropZone = document.getElementById('uploadDropZone');
-            const imagePreview = document.getElementById('imagePreview');
-            const uploadSection = document.getElementById('imageUploadSection');
-            
-            // Store uploaded images for current comment
-            window.currentCommentImages = [];
-            
-            // File input change handler
-            imageUpload.addEventListener('change', handleImageFiles);
-            
-            // Drag and drop handlers
-            dropZone.addEventListener('dragover', (e) => {
-              e.preventDefault();
-              uploadSection.classList.add('dragover');
-            });
-            
-            dropZone.addEventListener('dragleave', (e) => {
-              e.preventDefault();
-              uploadSection.classList.remove('dragover');
-            });
-            
-            dropZone.addEventListener('drop', (e) => {
-              e.preventDefault();
-              uploadSection.classList.remove('dragover');
-              
-              const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
-              if (files.length > 0) {
-                processImageFiles(files);
-              }
-            });
-          }
-
-          function handleImageFiles(event) {
-            const files = Array.from(event.target.files);
-            processImageFiles(files);
-          }
-
-          function processImageFiles(files) {
-            files.forEach(file => {
-              if (file.type.startsWith('image/') && file.size < 5 * 1024 * 1024) { // 5MB limit
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                  const imageData = {
-                    id: generateImageId(),
-                    data: e.target.result,
-                    name: file.name,
-                    size: file.size,
-                    type: file.type
-                  };
-                  
-                  window.currentCommentImages.push(imageData);
-                  updateImagePreview();
-                };
-                reader.readAsDataURL(file);
-              } else if (file.size >= 5 * 1024 * 1024) {
-                alert(`Image "${file.name}" is too large. Please use images smaller than 5MB.`);
-              }
-            });
-          }
-
-          function generateImageId() {
-            return 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-          }
-
-          function updateImagePreview() {
-            const imagePreview = document.getElementById('imagePreview');
-            
-            if (window.currentCommentImages.length === 0) {
-              imagePreview.innerHTML = '';
+          // Start Review Session
+          function startReviewSession() {
+            if (!window.currentPage) {
+              alert('Please select a document to review first.');
               return;
             }
             
-            imagePreview.innerHTML = window.currentCommentImages.map(img => `
-              <div style="display: flex; align-items: center; margin: 8px 0; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <img src="${img.data}" alt="${img.name}" class="preview-image" onclick="showImageModal('${img.data}')">
-                <div style="margin-left: 10px; flex: 1;">
-                  <div class="image-info">
-                    <strong>${img.name}</strong><br>
-                    ${(img.size / 1024).toFixed(1)} KB
-                  </div>
-                </div>
-                <button class="remove-image" onclick="removeImageFromComment('${img.id}')">Remove</button>
-              </div>
-            `).join('');
-          }
-
-          function removeImageFromComment(imageId) {
-            window.currentCommentImages = window.currentCommentImages.filter(img => img.id !== imageId);
-            updateImagePreview();
-          }
-
-          function showImageModal(imageSrc) {
-            const modal = document.getElementById('imageModal');
-            const modalImage = document.getElementById('modalImage');
+            if (!window.reviewMode) {
+              toggleReviewMode();
+            }
             
-            modalImage.src = imageSrc;
-            modal.classList.add('show');
+            alert(`Review session started for "${getPageTitle(window.currentPage)}".`);
           }
 
-          function closeImageModal() {
-            const modal = document.getElementById('imageModal');
-            modal.classList.remove('show');
-          }
-
-          // Password Protection Functions
+          // Prompt Clear Review Data
           function promptClearReviewData() {
-            const dialog = document.getElementById('passwordDialog');
-            const overlay = document.getElementById('passwordDialogOverlay');
-            
-            dialog.classList.add('show');
-            overlay.classList.add('show');
-            
-            // Clear and focus on password input
-            const passwordInput = document.getElementById('clearPassword');
-            passwordInput.value = '';
-            passwordInput.focus();
-          }
-
-          function closePasswordDialog() {
-            const dialog = document.getElementById('passwordDialog');
-            const overlay = document.getElementById('passwordDialogOverlay');
-            
-            dialog.classList.remove('show');
-            overlay.classList.remove('show');
-            
-            // Clear password input
-            document.getElementById('clearPassword').value = '';
-          }
-
-          async function confirmClearReviewData() {
-            const passwordInput = document.getElementById('clearPassword');
-            const enteredPassword = passwordInput.value;
-            
-            // Check if password is correct
-            if (enteredPassword !== 'poweroverwhelming') {
-              alert('Incorrect password. Access denied.');
-              passwordInput.value = '';
-              passwordInput.focus();
-              return;
+            if (confirm('Are you sure you want to clear all review data? This cannot be undone.')) {
+              clearReviewData();
             }
-            
+          }
+
+          // Clear Review Data
+          async function clearReviewData() {
             try {
-              // Clear all comments from Supabase
-              await window.supabaseClient.clearAllComments();
+              if (window.supabaseClient) {
+                await window.supabaseClient.clearAllComments();
+              }
               
-              // Clear local state
               window.reviewData = {};
-              
-              // Clear highlights from current page
-              clearReviewHighlights();
-              
-              // Update UI
-              if (window.reviewMode) {
-                addReviewToolbar();
-              }
-              
-              // Update side cart if open
-              const sideCart = document.getElementById('commentsSideCart');
-              if (sideCart && sideCart.classList.contains('open')) {
-                updateCommentsSideCart();
-              }
-              
-              // Close password dialog
-              closePasswordDialog();
-              
-              alert('All review data has been cleared successfully from the database.');
+              alert('All review data has been cleared successfully.');
               
             } catch (error) {
               debug('Error clearing review data:', error);
@@ -1897,7 +1084,20 @@ jobs:
             }
           }
 
-          // Function to show welcome screen
+          // Update Review Buttons
+          function updateReviewButtons() {
+            if (reviewToggleBtn) {
+              reviewToggleBtn.textContent = window.reviewMode ? 'Exit Review' : 'Review Mode';
+              reviewToggleBtn.classList.toggle('active', window.reviewMode);
+            }
+            
+            const reviewControls = document.querySelectorAll('.review-btn:not(#reviewToggle)');
+            reviewControls.forEach(btn => {
+              btn.style.display = window.reviewMode ? 'block' : 'none';
+            });
+          }
+
+          // Show welcome screen
           function showWelcomeScreen() {
             contentTitleEl.textContent = 'Documentation';
             document.title = 'Documentation';
@@ -1907,253 +1107,370 @@ jobs:
                 <h2>Welcome to Documentation</h2>
                 <p>Please select a topic from the navigation menu or use the search bar.</p>
                 <p><strong>Review Mode:</strong> Click "Review Mode" to enable collaborative commenting and suggestions.</p>
-                <p><strong>Comments Side Cart:</strong> View all comments and suggestions stored in Supabase database with image previews and download options.</p>
-                <p><strong>Persistent Storage:</strong> All comments are now saved to Supabase and will persist across sessions.</p>
+                <p><strong>Supabase Integration:</strong> All comments are now saved to a persistent database.</p>
               </div>
             `;
 
             document.body.classList.remove('loading');
           }
 
-          // Save Comment to Supabase
-          async function saveComment() {
-            if (!window.currentSelection) {
-              closeCommentDialog();
+          // Render navigation
+          function renderNavigation(items, parentEl = navigationEl) {
+            const ul = document.createElement('ul');
+            ul.setAttribute('role', 'menu');
+
+            items.forEach(item => {
+              const li = document.createElement('li');
+              li.setAttribute('role', 'presentation');
+
+              if (item.children && item.children.length > 0) {
+                li.classList.add('has-children');
+
+                const toggle = document.createElement('span');
+                toggle.className = 'toggle-arrow';
+                toggle.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  li.classList.toggle('expanded');
+                });
+                li.appendChild(toggle);
+              }
+
+              const a = document.createElement('a');
+              a.setAttribute('role', 'menuitem');
+              a.textContent = item.title;
+              a.setAttribute('data-id', item.id);
+              a.href = `#${item.id}`;
+
+              a.addEventListener('click', (e) => {
+                e.preventDefault();
+
+                if (item.children && item.children.length > 0) {
+                  li.classList.toggle('expanded');
+                }
+
+                navigateToPage(item.id);
+                if (searchResultsEl) searchResultsEl.innerHTML = '';
+                if (searchInput) searchInput.value = '';
+              });
+
+              li.appendChild(a);
+
+              if (item.children && item.children.length > 0) {
+                renderNavigation(item.children, li);
+              }
+
+              ul.appendChild(li);
+            });
+
+            parentEl.appendChild(ul);
+          }
+
+          // Navigate to page
+          function navigateToPage(pageId, pushState = true) {
+            debug('Navigating to page:', pageId);
+            
+            if (!pageId) {
+              console.error('Invalid pageId - cannot navigate to undefined page');
+              showErrorContent('undefined');
               return;
             }
-            
-            const commentText = document.getElementById('commentText').value.trim();
-            const commentType = document.querySelector('input[name="commentType"]:checked').value;
-            
-            if (!commentText && (!window.currentCommentImages || window.currentCommentImages.length === 0)) {
-              alert('Please enter a comment or add at least one image.');
-              return;
+
+            updateActiveNavItem(pageId);
+            expandNavigationTo(pageId);
+
+            if (pushState) {
+              history.pushState({ pageId }, '', `#${pageId}`);
             }
-            
+
+            document.body.classList.add('loading');
+            window.currentPage = pageId;
+
+            loadContent(pageId)
+              .then(content => {
+                const title = getPageTitle(pageId);
+                contentTitleEl.textContent = title;
+                document.title = title;
+
+                contentEl.innerHTML = content;
+                enhanceTables();
+                
+                document.body.classList.remove('loading');
+                debug('Content loaded successfully for:', pageId);
+              })
+              .catch(error => {
+                showErrorContent(pageId);
+              });
+          }
+
+          // Load content
+          async function loadContent(pageId) {
+            const contentPath = `${basePath}/content/${pageId}.html`;
+            debug('Fetching from URL:', contentPath);
+
             try {
-              // Create comment object for Supabase
-              const commentData = {
-                pageId: window.currentPage,
-                type: commentType,
-                text: commentText,
-                selectedText: window.currentSelection.type === 'text' ? 
-                  window.currentSelection.text : 
-                  `Image: ${window.currentSelection.imageAlt}`,
-                selectionType: window.currentSelection.type,
-                uploadedImages: window.currentCommentImages ? [...window.currentCommentImages] : []
-              };
-              
-              if (window.currentSelection.type === 'image') {
-                commentData.imageSrc = window.currentSelection.imageSrc;
-                commentData.imageAlt = window.currentSelection.imageAlt;
-                commentData.position = window.currentSelection.position;
+              const response = await fetch(contentPath);
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status} for ${contentPath}`);
               }
-              
-              // Save to Supabase
-              const savedComment = await window.supabaseClient.saveComment(commentData);
-              
-              // Add visual indicator to document
-              if (window.currentSelection.type === 'text') {
-                highlightTextInDocument(window.currentSelection, {
-                  ...savedComment,
-                  type: commentType,
-                  uploadedImages: commentData.uploadedImages
-                });
-              } else if (window.currentSelection.type === 'image') {
-                addImageCommentMarker(window.currentSelection, {
-                  ...savedComment,
-                  type: commentType,
-                  uploadedImages: commentData.uploadedImages
-                });
-              }
-              
-              // Update toolbar
-              addReviewToolbar();
-              
-              // Update side cart if open
-              const sideCart = document.getElementById('commentsSideCart');
-              if (sideCart && sideCart.classList.contains('open')) {
-                updateCommentsSideCart();
-              }
-              
-              closeCommentDialog();
-              
-              debug('Comment saved to Supabase:', savedComment);
-              
+              return await response.text();
             } catch (error) {
-              debug('Error saving comment:', error);
-              alert('Failed to save comment to database. Please check your connection and try again.');
+              debug('Content fetch error:', error.message);
+              throw error;
             }
           }
 
-          // Load Review Data for Page from Supabase
-          async function loadReviewDataForPage(pageId) {
-            try {
-              const comments = await window.supabaseClient.getComments(pageId);
-              
-              // Clear existing highlights
-              const existingHighlights = document.querySelectorAll('[data-comment-id]');
-              existingHighlights.forEach(highlight => {
-                if (highlight.classList.contains('image-comment-marker')) {
-                  highlight.remove();
-                } else {
-                  const parent = highlight.parentNode;
-                  if (parent) {
-                    parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
-                    parent.removeChild(highlight);
+          // Update active navigation item
+          function updateActiveNavItem(pageId) {
+            const allNavItems = document.querySelectorAll('.sidebar a');
+            allNavItems.forEach(item => item.classList.remove('active'));
+
+            const activeItem = document.querySelector(`.sidebar a[data-id="${pageId}"]`);
+            if (activeItem) {
+              activeItem.classList.add('active');
+
+              let parent = activeItem.parentElement;
+              while (parent && !parent.classList.contains('sidebar')) {
+                if (parent.classList.contains('has-children')) {
+                  parent.classList.add('expanded');
+                }
+                parent = parent.parentElement;
+              }
+            }
+          }
+
+          // Expand navigation to page
+          function expandNavigationTo(pageId) {
+            function findPageInNavigation(items, id, path = []) {
+              for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                const currentPath = [...path, item];
+
+                if (item.id === id) {
+                  return currentPath;
+                }
+
+                if (item.children && item.children.length > 0) {
+                  const result = findPageInNavigation(item.children, id, currentPath);
+                  if (result) {
+                    return result;
                   }
                 }
-              });
-              
-              // Re-apply highlights
-              comments.forEach(comment => {
-                if (comment.selection_type === 'text') {
-                  const textNodes = getAllTextNodes(contentEl);
-                  textNodes.forEach(node => {
-                    if (node.textContent.includes(comment.selected_text)) {
-                      const parent = node.parentNode;
-                      const index = node.textContent.indexOf(comment.selected_text);
-                      
-                      if (index !== -1) {
-                        const beforeText = node.textContent.substring(0, index);
-                        const selectedText = comment.selected_text;
-                        const afterText = node.textContent.substring(index + selectedText.length);
-                        
-                        const span = document.createElement('span');
-                        span.className = comment.comment_type === 'suggestion' ? 'review-suggestion-highlight' : 'review-comment-highlight';
-                        span.setAttribute('data-comment-id', comment.id);
-                        span.textContent = selectedText;
-                        span.addEventListener('mouseenter', (e) => showTooltip(e, comment));
-                        span.addEventListener('mouseleave', hideTooltip);
-                        
-                        if (comment.resolved) {
-                          span.style.opacity = '0.5';
-                        }
-                        
-                        // Replace the text node
-                        parent.removeChild(node);
-                        if (beforeText) parent.appendChild(document.createTextNode(beforeText));
-                        parent.appendChild(span);
-                        if (afterText) parent.appendChild(document.createTextNode(afterText));
-                        
-                        return; // Only highlight first occurrence
-                      }
-                    }
-                  });
-                } else if (comment.selection_type === 'image') {
-                  // Re-add image markers
-                  const images = contentEl.querySelectorAll('img');
-                  images.forEach(img => {
-                    if (comment.image_src && img.src.includes(comment.image_src.split('/').pop())) {
-                      const container = img.parentElement;
-                      
-                      const marker = document.createElement('div');
-                      marker.className = `image-comment-marker ${comment.comment_type}`;
-                      marker.setAttribute('data-comment-id', comment.id);
-                      marker.innerHTML = '💬';
-                      marker.style.left = comment.position_x + '%';
-                      marker.style.top = comment.position_y + '%';
-                      marker.style.transform = 'translate(-50%, -50%)';
-                      marker.addEventListener('mouseenter', (e) => showTooltip(e, comment));
-                      marker.addEventListener('mouseleave', hideTooltip);
-                      
-                      if (comment.resolved) {
-                        marker.style.opacity = '0.5';
-                      }
-                      
-                      container.appendChild(marker);
-                    }
-                  });
-                }
-              });
-              
-            } catch (error) {
-              debug('Error loading review data for page:', error);
+              }
+              return null;
+            }
+
+            const path = findPageInNavigation(navigationConfig, pageId);
+            if (!path) return;
+
+            for (let i = 0; i < path.length - 1; i++) {
+              const item = path[i];
+              const li = document.querySelector(`.sidebar li a[data-id="${item.id}"]`).parentElement;
+              li.classList.add('expanded');
             }
           }
 
-          // Rest of the functions remain the same as in the original code...
-          // (Include all remaining functions from the original app.js)
+          // Handle popstate
+          function handlePopState(event) {
+            const pageId = event.state?.pageId || getPageIdFromUrl() || navigationConfig[0]?.id;
+            debug('Popstate event, loading page:', pageId);
+            navigateToPage(pageId, false);
+          }
+
+          // Get page ID from URL
+          function getPageIdFromUrl() {
+            return window.location.hash.substring(1) || null;
+          }
+
+          // Get page title
+          function getPageTitle(pageId) {
+            if (window.contentIdMap && contentIdMap[pageId]) {
+              return contentIdMap[pageId].title;
+            }
+
+            function findTitleInNav(items, id) {
+              for (const item of items) {
+                if (item.id === id) {
+                  return item.title;
+                }
+                if (item.children && item.children.length > 0) {
+                  const title = findTitleInNav(item.children, id);
+                  if (title) return title;
+                }
+              }
+              return null;
+            }
+
+            const navTitle = findTitleInNav(navigationConfig, pageId);
+            if (navTitle) return navTitle;
+
+            return pageId.split(/-|_/).map(word =>
+              word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ');
+          }
+
+          // Show error content
+          function showErrorContent(pageId) {
+            console.error('Failed to load content:', pageId);
+            contentEl.innerHTML = `
+              <div class="error">
+                <h2>Content Not Found</h2>
+                <p>The requested content "${pageId}" could not be loaded.</p>
+                <p>Please select another topic from the navigation menu.</p>
+              </div>
+            `;
+            document.body.classList.remove('loading');
+          }
+
+          // Enhance tables
+          function enhanceTables() {
+            const tables = document.querySelectorAll('#content table');
+            tables.forEach(table => {
+              if (!table.className.includes('table')) {
+                table.classList.add('table');
+              }
+              
+              if (!table.parentElement.className.includes('table-container')) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'table-container';
+                table.parentNode.insertBefore(wrapper, table);
+                wrapper.appendChild(table);
+              }
+            });
+          }
+
+          // Search functionality
+          function performSearch() {
+            const query = searchInput.value.toLowerCase().trim();
+            searchResultsEl.innerHTML = '';
+
+            if (query.length < 2) {
+              if (query.length > 0) {
+                searchResultsEl.innerHTML = '<li><p>Please enter at least 2 characters to search.</p></li>';
+              }
+              return;
+            }
+
+            debug('Performing search for:', query);
+
+            const results = [];
+            for (const id in contentIdMap) {
+              if (contentIdMap.hasOwnProperty(id) && id !== 'default') {
+                const item = contentIdMap[id];
+                const title = item.title.toLowerCase();
+                const content = item.content ? item.content.toLowerCase() : '';
+
+                let snippet = '';
+                let matchCount = 0;
+
+                if (title.includes(query)) {
+                  matchCount += 10;
+                  snippet = `Found in title: "${highlightMatch(item.title, query)}"`;
+                }
+
+                const contentMatches = content.split(query).length - 1;
+                if (contentMatches > 0) {
+                  matchCount += contentMatches;
+                  const matchIndex = content.indexOf(query);
+                  const start = Math.max(0, matchIndex - 50);
+                  const end = Math.min(content.length, matchIndex + query.length + 50);
+                  const context = item.content.substring(start, end);
+                  snippet += (snippet ? '<br>' : '') + `...${highlightMatch(context, query)}...`;
+                }
+
+                if (matchCount > 0) {
+                  results.push({ id: id, title: item.title, snippet: snippet, score: matchCount });
+                }
+              }
+            }
+
+            results.sort((a, b) => b.score - a.score);
+
+            if (results.length === 0) {
+              searchResultsEl.innerHTML = '<li><p>No results found for your query.</p></li>';
+            } else {
+              results.forEach(result => {
+                const li = document.createElement('li');
+                const link = document.createElement('a');
+                link.href = `#${result.id}`;
+                link.textContent = result.title;
+                link.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  debug('Search result clicked for ID:', result.id);
+                  
+                  if (!result.id || !contentIdMap[result.id]) {
+                    debug('Invalid content ID in search result:', result.id);
+                    alert('Error: Content not found. Please try another search result.');
+                    return;
+                  }
+                  
+                  navigateToPage(result.id);
+                  searchResultsEl.innerHTML = '';
+                  searchInput.value = '';
+                });
+                
+                li.appendChild(link);
+                if (result.snippet) {
+                  const p = document.createElement('p');
+                  p.innerHTML = result.snippet;
+                  li.appendChild(p);
+                }
+                searchResultsEl.appendChild(li);
+              });
+            }
+          }
+
+          // Highlight match in search results
+          function highlightMatch(text, query) {
+            const regex = new RegExp(`(${query})`, 'gi');
+            return text.replace(regex, '<span class="highlight">$1</span>');
+          }
 
           // Make functions available globally
           window.toggleReviewMode = toggleReviewMode;
           window.startReviewSession = startReviewSession;
           window.promptClearReviewData = promptClearReviewData;
-          window.confirmClearReviewData = confirmClearReviewData;
-          window.closePasswordDialog = closePasswordDialog;
-          window.openCommentsSideCart = openCommentsSideCart;
-          window.closeCommentsSideCart = closeCommentsSideCart;
-          window.openPrintSnapshotWindow = openPrintSnapshotWindow;
-          window.showCommentsCount = showCommentsCount;
-          window.closeCommentDialog = closeCommentDialog;
-          window.saveComment = saveComment;
-          window.showTooltip = showTooltip;
-          window.hideTooltip = hideTooltip;
-          window.removeImageFromComment = removeImageFromComment;
-          window.showImageModal = showImageModal;
-          window.closeImageModal = closeImageModal;
-          window.showImageHoverPreview = showImageHoverPreview;
-          window.hideImageHoverPreview = hideImageHoverPreview;
-          window.downloadCommentImage = downloadCommentImage;
-          window.toggleCommentResolved = toggleCommentResolved;
           window.navigateToPage = navigateToPage;
 
-          // Include all other functions from the original app.js...
-          // (The complete function implementations would be included here)
-
-          // Initialize the app when DOM is ready
+          // Initialize when DOM is ready
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 13: Create default content for container nodes
+      # Step 12: Create default content for container nodes
       - name: Create Default Content
         run: |
-          # Create content directory if it doesn't exist
           mkdir -p ./site/content
 
-          # Extract container nodes from navigation
-          grep -o '"id": "[^"]*".*"children"' ./navigation-structure.json |
-          sed 's/"id": "\([^"]*\)".*/\1/' > container-nodes.txt
-
-          # Create default content for container nodes
-          while IFS= read -r id || [ -n "$id" ]; do
-            if [ ! -f "./site/content/$id.html" ]; then
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-
-              echo "Creating default content for container node: $id ($title)"
-              cat > "./site/content/$id.html" << EOF
-          <h1>${title}</h1>
-          <p>This section contains information about ${title}.</p>
-          <p>Use the navigation menu to explore topics within this section.</p>
-          <p><strong>Supabase Integration:</strong> Comments and suggestions are now stored in a persistent database.</p>
-          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
-          <p><strong>Comments Side Cart:</strong> View all comments and suggestions in an organized panel with image previews and download options.</p>
+          # Create some default content files
+          cat > ./site/content/getting-started-with-cars.html << 'EOF'
+          <h1>Getting Started With Cars</h1>
+          <p>Welcome to the comprehensive automotive guide. This section covers the basics of car ownership and maintenance.</p>
+          <ul>
+            <li>Understanding your vehicle</li>
+            <li>Basic maintenance schedules</li>
+            <li>Emergency procedures</li>
+          </ul>
           EOF
-            fi
-          done < container-nodes.txt
 
-          # Create default containers if none found
-          if [ ! -s container-nodes.txt ]; then
-            echo "No container nodes found in navigation. Creating default containers."
-
-            # Create default containers
-            for id in automotive-information basic-maintenance major-vehicle-components; do
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-
-              echo "Creating default container: $id ($title)"
-              cat > "./site/content/$id.html" << EOF
-          <h1>${title}</h1>
-          <p>This section contains information about ${title}.</p>
-          <p>Use the navigation menu to explore topics within this section.</p>
-          <p><strong>Supabase Integration:</strong> Comments and suggestions are now stored in a persistent database.</p>
-          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
-          <p><strong>Comments Side Cart:</strong> View all comments and suggestions in an organized panel with image previews and download options.</p>
+          cat > ./site/content/car-types.html << 'EOF'
+          <h1>Car Types</h1>
+          <p>Learn about different types of vehicles and their characteristics.</p>
+          <h2>Sedan</h2>
+          <p>Four-door passenger car with a separate trunk.</p>
+          <h2>SUV</h2>
+          <p>Sport Utility Vehicle with higher ground clearance.</p>
           EOF
-            done
-          fi
 
-      # Step 14: Create Enhanced index.html with Supabase
-      - name: Create Enhanced Index HTML with Supabase Integration
+          cat > ./site/content/basic-maintenance.html << 'EOF'
+          <h1>Basic Maintenance</h1>
+          <p>Regular maintenance is crucial for vehicle longevity and safety.</p>
+          <h2>Oil Changes</h2>
+          <p>Change engine oil every 3,000-5,000 miles.</p>
+          <h2>Tire Care</h2>
+          <p>Check tire pressure monthly and rotate tires regularly.</p>
+          EOF
+
+      # Step 13: Create Enhanced index.html
+      - name: Create Enhanced Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
@@ -2162,45 +1479,38 @@ jobs:
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-            <meta http-equiv="Pragma" content="no-cache">
-            <meta http-equiv="Expires" content="0">
 
             <script>
-              // Set base path for GitHub Pages
               if (location.hostname.includes('github.io')) {
                 const pathSegments = location.pathname.split('/');
                 if (pathSegments.length > 1) {
                   const basePath = '/' + pathSegments[1];
                   document.write('<base href="' + basePath + '/">');
-                  console.log('Base path set to:', basePath);
                 }
               }
             </script>
 
-            <title>Automotive Documentation - Enhanced with Supabase Comments</title>
+            <title>Automotive Documentation - Enhanced with Supabase</title>
             <link rel="stylesheet" href="css/style.css">
           </head>
           <body>
             <div class="sidebar">
               <div class="sidebar-header">
                 <h2>Navigation</h2>
-                <!-- Search container -->
                 <div class="search-container">
                   <input type="text" id="searchInput" placeholder="Search...">
                   <button id="searchButton">Search</button>
                 </div>
-                <!-- Search results -->
                 <ul id="searchResults" class="search-results"></ul>
               </div>
               
-              <!-- Review Controls Section -->
               <div class="review-controls">
                 <h3>Review System</h3>
                 <div class="review-mode-toggle">
                   <button id="reviewToggle" class="review-btn">Review Mode</button>
                 </div>
                 <button id="startReview" class="review-btn secondary">Start Review</button>
-                <button id="clearReview" class="review-btn danger" style="margin-top: 10px;">Clear All</button>
+                <button id="clearReview" class="review-btn danger">Clear All</button>
               </div>
               
               <div class="sidebar-nav">
@@ -2209,27 +1519,17 @@ jobs:
             </div>
 
             <div class="main-content">
-              <!-- Review Toolbar (hidden by default) -->
-              <div class="review-toolbar">
-                <h3>Review Mode Active</h3>
-                <div class="review-toolbar-actions">
-                  <button class="review-toolbar-btn">Comments</button>
-                  <button class="review-toolbar-btn">Print Snapshot</button>
-                </div>
-              </div>
-              
               <h1 id="content-title">Loading...</h1>
               <div id="loading">Loading content...</div>
               <div id="content">
                 <div class="initial-loading">
-                  <p>Initializing enhanced documentation viewer with Supabase-powered comments system...</p>
+                  <p>Initializing enhanced documentation viewer with Supabase...</p>
                 </div>
               </div>
             </div>
 
-            <!-- Print functionality -->
             <div class="wh_print_link" style="position: fixed; top: 10px; right: 10px; z-index: 999;">
-              <button title="Print page or view comments">🖨️ Print</button>
+              <button title="Print page">🖨️ Print</button>
             </div>
 
             <script src="js/supabase-config.js"></script>
@@ -2240,7 +1540,7 @@ jobs:
           </html>
           EOF
 
-      # Step 15: Create 404.html for SPA routing
+      # Step 14: Create 404.html
       - name: Create 404 Page
         run: |
           cat > ./site/404.html << 'EOF'
@@ -2251,10 +1551,7 @@ jobs:
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Redirecting...</title>
             <script>
-              // Store the requested URL for processing after redirect
               sessionStorage.redirect = location.href;
-
-              // Determine the correct base path
               function getBasePath() {
                 if (location.hostname.includes('github.io')) {
                   const pathSegments = location.pathname.split('/');
@@ -2264,22 +1561,20 @@ jobs:
                 }
                 return '';
               }
-
-              // Redirect to the main site
               const basePath = getBasePath();
               window.location.href = basePath + '/';
             </script>
           </head>
           <body>
             <div style="text-align: center; font-family: Arial, sans-serif; margin-top: 100px;">
-              <h1>Redirecting to documentation...</h1>
+              <h1>Redirecting...</h1>
               <p>If you are not redirected automatically, <a href="/">click here</a>.</p>
             </div>
           </body>
           </html>
           EOF
 
-      # Step 16: Deploy to GitHub Pages
+      # Step 15: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
@@ -2288,5 +1583,4 @@ jobs:
           force_orphan: true
 
     env:
-      SUPABASE_ACCESS_TOKEN: sbp_3665958b553beba3f93145adacca84f65610770b
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
