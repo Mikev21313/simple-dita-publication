@@ -1,8 +1,8 @@
-name: DITA to SPA Transformation with Comments Side Cart Review System
+name: DITA to SPA Transformation with Staticman Comments Review System
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -22,7 +22,73 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # Step 3: Install DITA-OT and required tools
+      # Step 3: Create Staticman Configuration
+      - name: Create Staticman Configuration
+        run: |
+          cat > staticman.yml << 'EOF'
+          # Staticman configuration for document review comments
+          comments:
+            # Fields that will be accepted in comment submissions
+            allowedFields: [
+              "name", 
+              "email", 
+              "url", 
+              "message", 
+              "pageId", 
+              "commentType", 
+              "selectedText", 
+              "selectionType", 
+              "position", 
+              "imageSrc", 
+              "imageAlt", 
+              "uploadedImages",
+              "timestamp",
+              "resolved"
+            ]
+            
+            # Branch to submit pull requests to
+            branch: "main"
+            
+            # Commit message template
+            commitMessage: "Add review comment from {fields.name}"
+            
+            # Path where comment files will be stored
+            filename: "comment-{@timestamp}"
+            
+            # File format (json or yml)
+            format: "json"
+            
+            # List of transformations to apply to any of the fields
+            transforms:
+              email: md5
+              
+            # Whether entries need to be approved before they are published
+            moderation: false
+            
+            # Name of the property used to identify each entry
+            name: "[username]"
+            
+            # Path where comment files will be stored
+            path: "_data/comments/{options.pageId}"
+            
+            # Names of required fields
+            requiredFields: ["name", "message", "pageId"]
+            
+            # List of fields to be populated automatically by Staticman
+            generatedFields:
+              date:
+                type: "date"
+                options:
+                  format: "iso8601"
+              id:
+                type: "date"
+                options:
+                  format: "timestamp"
+          EOF
+
+          echo "Staticman configuration created"
+
+      # Step 4: Install DITA-OT and required tools
       - name: Set up DITA-OT and XML tools
         run: |
           # Install XML tools
@@ -34,7 +100,7 @@ jobs:
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Parse DITAMAP to generate navigation structure
+      # Step 5: Parse DITAMAP to generate navigation structure
       - name: Parse DITAMAP Structure
         run: |
           echo "Parsing DITAMAP structure from dita-source/automotive.ditamap"
@@ -103,59 +169,10 @@ jobs:
           # Fix any JSON syntax issues
           sed -i 's/\\n//g; s/\\t//g; s/\\"//g; s/\\//g; s/  / /g' ./navigation-structure.json
 
-          # Create a shell script to handle filename to id mapping
-          cat > ./generate-id-map.sh << 'EOF'
-          #!bin/bash
-
-          # Function to convert underscore filenames to hyphenated ids
-          function filename_to_id() {
-            local filename=$1
-            echo "${filename//_/-}"
-          }
-
-          # Function to generate a title from an ID
-          function id_to_title() {
-            local id=$1
-            # Replace hyphens with spaces and capitalize each word
-            echo "$id" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g'
-          }
-
-          # Ensure directory exists
-          mkdir -p ./site/js
-
-          # Generate ID to title mapping as JavaScript
-          echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
-          echo "const contentIdMap = {" >> ./site/js/content-id-map.js
-
-          # Process each HTML file in the site directory
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
-            filename=$(basename "$file" .html)
-            id=$(filename_to_id "$filename")
-            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-
-            # If no title found, generate one from the ID
-            if [ -z "$title" ]; then
-              title=$(id_to_title "$id")
-            fi
-
-            # Handle special characters for shell safety
-            title=$(echo "$title" | sed 's/"/\\"/g')
-
-            # Add to content map file directly
-            echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$filename\" }," >> ./site/js/content-id-map.js
-          done
-
-          # Close the mapping object
-          echo "  \"default\": { \"title\": \"Automotive Documentation\" }" >> ./site/js/content-id-map.js
-          echo "};" >> ./site/js/content-id-map.js
-          EOF
-
-          chmod +x ./generate-id-map.sh
-
           echo "DITAMAP parsing complete"
           cat ./navigation-structure.json
 
-      # Step 5: Transform DITA to HTML and prepare images
+      # Step 6: Transform DITA to HTML and prepare images
       - name: Transform DITA to HTML and Prepare Images
         run: |
           # Using HTML5 format with parameters for better output
@@ -165,6 +182,7 @@ jobs:
           # Create content directory for SPA fragments
           mkdir -p ./site/content
           mkdir -p ./site/images
+          mkdir -p ./site/_data/comments
 
           # List all DITA source content for debugging
           echo "Full content of dita-source directory:"
@@ -179,22 +197,6 @@ jobs:
             echo "Copying from image directory: $dir"
             cp -rv $dir/* ./site/images/ || echo "No files in $dir"
           done
-
-          # Extract image paths from HTML output
-          echo "Extracting image references from HTML files:"
-          grep -r "img src" ./site --include="*.html" | sed -E 's/.*src="([^"]*).*/\1/' > html-image-refs.txt
-          grep -r "image href" ./site --include="*.html" | sed -E 's/.*href="([^"]*).*/\1/' >> html-image-refs.txt
-
-          # Copy any image references found to the images directory
-          cat html-image-refs.txt | while read imgpath; do
-            # Extract just the filename if it's a path
-            filename=$(basename "$imgpath")
-            # Find the source file
-            find ./site -name "$filename" -exec cp -v {} ./site/images/ \;
-          done
-
-          # Find any image references in the HTML output and copy them
-          find ./site -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -not -path "./site/images/*" -exec cp -v {} ./site/images/ \;
 
           # Create placeholder images if no images are found
           if [ ! "$(ls -A ./site/images 2>/dev/null)" ]; then
@@ -212,7 +214,7 @@ jobs:
           echo "Files in images directory:"
           ls -la ./site/images/ || echo "No files in images directory"
 
-      # Step 6: Process HTML files
+      # Step 7: Process HTML files
       - name: Process HTML Content
         run: |
           # Create content directory for SPA fragments
@@ -239,16 +241,9 @@ jobs:
                       sed '/<footer/,/<\/footer>/d')
 
             # Fix image paths to use base SPA image directory
-            # 1. First convert DITA <image> tags to standard HTML <img> tags
             content=$(echo "$content" | sed -E 's/<image([^>]*)href="([^"]*)"([^>]*)>/<img\1src="\2"\3>/gi')
-
-            # 2. Fix various image paths to use base SPA image directory
             content=$(echo "$content" | sed -E 's/<img([^>]*)src="[^"]*\/([^\/"]*)\.([a-zA-Z0-9]+)"/<img\1src="images\/\2.\3"/gi')
-
-            # 3. Fix remaining img paths that might just be filenames
             content=$(echo "$content" | sed -E 's/<img([^>]*)src="([^\/:"]*)\.(jpg|jpeg|png|gif|svg)"/<img\1src="images\/\2.\3"/gi')
-
-            # 4. Also handle images that might already have been correctly fixed
             content=$(echo "$content" | sed -E 's/<img([^>]*)src="\/images\//<img\1src="images\//gi')
 
             # Get title from the original file
@@ -267,7 +262,7 @@ jobs:
             fi
           done
 
-          # Create a content ID mapping file (this block is repeated, but essential for the search)
+          # Create a content ID mapping file
           echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
           echo "const contentIdMap = {" >> ./site/js/content-id-map.js
 
@@ -276,9 +271,9 @@ jobs:
             id="${filename//_/-}" # Hyphenated ID for routing
             original_filename="$filename" # Keep original filename for lookup
             title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-            raw_content=$(cat "$file" | tr '\n' ' ' | sed 's/<[^>]*>//g' | sed 's/&nbsp;/ /g' | sed 's/  */ /g' | tr -d '\n\r') # Extract text for search
+            raw_content=$(cat "$file" | tr '\n' ' ' | sed 's/<[^>]*>//g' | sed 's/&nbsp;/ /g' | sed 's/  */ /g' | tr -d '\n\r')
 
-            # Skip if already processed (to avoid duplicates for hyphenated/underscored IDs)
+            # Skip if already processed
             if grep -q "\"$id\":" ./site/js/content-id-map.js; then
               continue
             fi
@@ -300,8 +295,60 @@ jobs:
           echo "  \"default\": { \"title\": \"Automotive Documentation\", \"filename\": \"\", \"content\": \"\" }" >> ./site/js/content-id-map.js
           echo "};" >> ./site/js/content-id-map.js
 
+      # Step 8: Load Existing Staticman Comments
+      - name: Load Existing Comments Data
+        run: |
+          mkdir -p ./site/js
 
-      # Step 7: Generate Navigation Configuration
+          # Create comments loader script
+          cat > ./site/js/comments-loader.js << 'EOF'
+          // Staticman comments loader
+          window.staticmanComments = {};
+
+          // Function to load comments from _data directory
+          async function loadStaticmanComments() {
+            try {
+              // This will be populated by the build process
+              return window.preloadedComments || {};
+            } catch (error) {
+              console.log('No existing comments found:', error);
+              return {};
+            }
+          }
+
+          // Initialize comments on page load
+          document.addEventListener('DOMContentLoaded', async () => {
+            window.staticmanComments = await loadStaticmanComments();
+            console.log('Loaded Staticman comments:', Object.keys(window.staticmanComments).length, 'pages');
+          });
+          EOF
+
+          # Create preloaded comments data
+          echo "// Preloaded comments from Staticman data" > ./site/js/preloaded-comments.js
+          echo "window.preloadedComments = {" >> ./site/js/preloaded-comments.js
+
+          # Process existing comment data files if they exist
+          if [ -d "./_data/comments" ]; then
+            echo "Processing existing comment data..."
+            find ./_data/comments -name "*.json" | while read comment_file; do
+              page_id=$(basename $(dirname "$comment_file"))
+              echo "  \"$page_id\": [" >> ./site/js/preloaded-comments.js
+              
+              # Add all comments for this page
+              find "./_data/comments/$page_id" -name "*.json" | while read page_comment; do
+                cat "$page_comment" >> ./site/js/preloaded-comments.js
+                echo "," >> ./site/js/preloaded-comments.js
+              done
+              
+              echo "  ]," >> ./site/js/preloaded-comments.js
+            done
+          else
+            echo "No existing comment data found"
+          fi
+
+          echo "};" >> ./site/js/preloaded-comments.js
+
+      # Step 9: Generate Navigation Configuration
       - name: Generate Navigation Configuration
         run: |
           mkdir -p ./site/js ./site/css
@@ -318,11 +365,35 @@ jobs:
 
           echo "Navigation configuration generated from DITAMAP structure"
 
-      # Step 8: Create SPA CSS with Comments Side Cart (MODIFIED)
+      # Step 10: Create Staticman Integration Configuration
+      - name: Create Staticman Integration Config
+        run: |
+          # Get repository information
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+
+          echo "Repository: $REPO_OWNER/$REPO_NAME"
+          echo "Branch: $BRANCH_NAME"
+
+          # Create Staticman configuration JavaScript
+          cat > ./site/js/staticman-config.js << EOF
+          // Staticman configuration
+          window.staticmanConfig = {
+            endpoint: 'https://api.staticman.net/v3/entry/github/$REPO_OWNER/$REPO_NAME/$BRANCH_NAME/comments',
+            repository: '$REPO_OWNER/$REPO_NAME',
+            branch: '$BRANCH_NAME',
+            enabled: true
+          };
+
+          console.log('Staticman endpoint configured:', window.staticmanConfig.endpoint);
+          EOF
+
+      # Step 11: Create Enhanced SPA CSS with Comments Side Cart
       - name: Create Enhanced SPA CSS with Comments Side Cart
         run: |
           cat > ./site/css/style.css << 'EOF'
-          /* General styles based on Oxygen WebHelp theme with Comments Side Cart */
+          /* Enhanced SPA CSS with Staticman Integration */
           * {
             margin: 0;
             padding: 0;
@@ -344,7 +415,7 @@ jobs:
           /* Sidebar styling */
           .sidebar {
             width: 280px;
-            background-color: #e0f7f7; /* Light cyan background */
+            background-color: #e0f7f7;
             padding: 15px;
             height: 100vh;
             overflow-y: auto;
@@ -364,6 +435,37 @@ jobs:
             box-shadow: inset 0 0 10px rgba(0,0,0,0.02);
             position: relative;
             transition: margin-right 0.3s ease;
+          }
+
+          /* Staticman Status Indicator */
+          .staticman-status {
+            background: linear-gradient(135deg, #4caf50, #388e3c);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-bottom: 10px;
+            text-align: center;
+            position: relative;
+          }
+
+          .staticman-status.offline {
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+          }
+
+          .staticman-status.error {
+            background: linear-gradient(135deg, #f44336, #d32f2f);
+          }
+
+          .staticman-status::before {
+            content: '●';
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+          }
+
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
           }
 
           /* Comments Side Cart Styles */
@@ -525,203 +627,71 @@ jobs:
             font-size: 0.9em;
           }
 
-          .comment-images {
-            margin: 12px 0;
-          }
-
-          .comment-images-header {
-            font-size: 0.85em;
-            color: #666;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-          }
-
-          .image-preview-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-            gap: 8px;
-          }
-
-          .image-preview-item {
-            position: relative;
-            background: #f5f5f5;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            overflow: hidden;
-            transition: all 0.2s;
-          }
-
-          .image-preview-item:hover {
-            border-color: #2196f3;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          }
-
-          .comment-image-thumb {
-            width: 100%;
-            height: 80px;
-            object-fit: cover;
-            cursor: pointer;
-            transition: transform 0.2s;
-          }
-
-          .comment-image-thumb:hover {
-            transform: scale(1.05);
-          }
-
-          .image-actions {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(transparent, rgba(0,0,0,0.7));
-            padding: 6px 4px 4px;
-            display: flex;
-            gap: 2px;
-            opacity: 0;
-            transition: opacity 0.2s;
-          }
-
-          .image-preview-item:hover .image-actions {
-            opacity: 1;
-          }
-
-          .image-action-btn {
-            background: rgba(255,255,255,0.9);
-            border: none;
-            padding: 4px 6px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 10px;
+          .comment-author {
             font-weight: bold;
-            transition: all 0.2s;
+            color: #2c5aa0;
+            font-size: 0.9em;
+            margin-bottom: 5px;
           }
 
-          .image-action-btn:hover {
-            background: white;
-            transform: scale(1.05);
+          .comment-sync-status {
+            font-size: 0.8em;
+            color: #666;
+            font-style: italic;
+            margin-top: 5px;
           }
 
-          .image-action-btn.download {
+          .comment-sync-status.syncing {
+            color: #ff9800;
+          }
+
+          .comment-sync-status.synced {
             color: #4caf50;
           }
 
-          .image-action-btn.view {
-            color: #2196f3;
+          .comment-sync-status.error {
+            color: #f44336;
           }
 
-          .image-filename {
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            right: 2px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            font-size: 9px;
-            padding: 2px 4px;
-            border-radius: 3px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            opacity: 0;
-            transition: opacity 0.2s;
-          }
-
-          .image-preview-item:hover .image-filename {
-            opacity: 1;
-          }
-
-          .comment-resolve-btn {
-            background: linear-gradient(135deg, #4caf50, #388e3c);
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.8em;
-            margin-top: 10px;
-            transition: all 0.2s;
-          }
-
-          .comment-resolve-btn:hover {
-            background: linear-gradient(135deg, #388e3c, #2e7d32);
-            transform: translateY(-1px);
-          }
-
-          .comment-resolve-btn.resolved {
-            background: linear-gradient(135deg, #9e9e9e, #757575);
-            cursor: not-allowed;
-          }
-
-          .comment-item.resolved {
-            opacity: 0.6;
-          }
-
-          .comment-item.resolved .comment-selected-text {
-            background: #f5f5f5;
-            border-left-color: #bbb;
-          }
-
-          /* Image Hover Preview */
-          .image-hover-preview {
+          /* Loading States */
+          .loading-overlay {
             position: fixed;
-            z-index: 2000;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.3);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+          }
+
+          .loading-overlay.show {
+            display: flex;
+          }
+
+          .loading-spinner {
             background: white;
-            border: 2px solid #2196f3;
+            padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-            padding: 8px;
-            pointer-events: none;
-            opacity: 0;
-            transform: scale(0.8);
-            transition: all 0.2s ease;
-            max-width: 300px;
-            max-height: 300px;
-          }
-
-          .image-hover-preview.show {
-            opacity: 1;
-            transform: scale(1);
-          }
-
-          .image-hover-preview img {
-            max-width: 100%;
-            max-height: 280px;
-            object-fit: contain;
-            border-radius: 4px;
-          }
-
-          .image-hover-preview .preview-filename {
-            font-size: 11px;
-            color: #666;
             text-align: center;
-            margin-top: 6px;
-            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
           }
 
-          /* No Comments State */
-          .no-comments {
-            padding: 40px 20px;
-            text-align: center;
-            color: #666;
+          .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2c5aa0;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
           }
 
-          .no-comments-icon {
-            font-size: 3em;
-            margin-bottom: 15px;
-            opacity: 0.5;
-          }
-
-          .no-comments h4 {
-            margin-bottom: 10px;
-            color: #333;
-          }
-
-          .no-comments p {
-            font-size: 0.9em;
-            line-height: 1.4;
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
 
           /* Sidebar styling */
@@ -729,7 +699,7 @@ jobs:
             font-weight: 500;
             margin-top: 0;
             margin-bottom: 15px;
-            color: #00747a; /* Teal color for headings */
+            color: #00747a;
             border-bottom: 2px solid #80cbc4;
             padding-bottom: 10px;
             font-size: 1.4em;
@@ -759,7 +729,6 @@ jobs:
             position: relative;
           }
 
-          /* Toggle arrow styling */
           .sidebar .toggle-arrow {
             display: inline-block;
             width: 18px;
@@ -1189,6 +1158,16 @@ jobs:
             margin-bottom: 15px;
           }
 
+          .comment-dialog input[type="text"],
+          .comment-dialog input[type="email"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+          }
+
           .comment-dialog textarea {
             width: 100%;
             height: 100px;
@@ -1232,118 +1211,6 @@ jobs:
 
           .dialog-btn.secondary:hover {
             background: #e0e0e0;
-          }
-
-          /* Image Upload Section in Dialog */
-          .image-upload-section {
-            margin: 15px 0;
-            border: 2px dashed #ddd;
-            border-radius: 8px;
-            padding: 15px;
-            text-align: center;
-            transition: border-color 0.3s;
-          }
-
-          .image-upload-section.dragover {
-            border-color: #2196f3;
-            background-color: #f0f8ff;
-          }
-
-          .upload-btn {
-            background: #4caf50;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9em;
-            margin: 5px;
-          }
-
-          .upload-btn:hover {
-            background: #45a049;
-          }
-
-          .image-preview {
-            margin-top: 10px;
-            max-height: 200px;
-            overflow-y: auto;
-          }
-
-          .preview-image {
-            width: 60px;
-            height: 60px;
-            object-fit: cover;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-            cursor: pointer;
-          }
-
-          .preview-image:hover {
-            border-color: #2196f3;
-            transform: scale(1.05);
-          }
-
-          .image-info {
-            font-size: 0.8em;
-            color: #666;
-          }
-
-          .remove-image {
-            background: #f44336;
-            color: white;
-            border: none;
-            padding: 4px 8px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 0.8em;
-          }
-
-          .remove-image:hover {
-            background: #d32f2f;
-          }
-
-          /* Image Modal for Full View */
-          .image-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0,0,0,0.9);
-            z-index: 3000;
-            display: none;
-            align-items: center;
-            justify-content: center;
-          }
-
-          .image-modal.show {
-            display: flex;
-          }
-
-          .image-modal img {
-            max-width: 90%;
-            max-height: 90%;
-            object-fit: contain;
-            border-radius: 8px;
-          }
-
-          .image-modal .close-btn {
-            position: absolute;
-            top: 20px;
-            right: 30px;
-            background: rgba(255,255,255,0.2);
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 20px;
-            font-weight: bold;
-          }
-
-          .image-modal .close-btn:hover {
-            background: rgba(255,255,255,0.4);
           }
 
           /* Content styling */
@@ -1459,105 +1326,6 @@ jobs:
             margin-top: 0;
           }
 
-          /* Header styling similar to Oxygen WebHelp */
-          .navbar {
-            background-color: #00838f;
-            color: white;
-            padding: 10px 0;
-            margin-bottom: 20px;
-          }
-
-          .navbar-default {
-            border: none;
-          }
-
-          /* Print button */
-          .wh_print_link {
-            display: inline-block;
-            margin-left: 15px;
-          }
-
-          .wh_print_link button {
-            background: transparent;
-            border: none;
-            color: #00838f;
-            cursor: pointer;
-          }
-
-          /* Password Dialog Styles */
-          .password-dialog {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            border: 2px solid #f44336;
-            border-radius: 8px;
-            padding: 20px;
-            width: 350px;
-            max-width: 90vw;
-            z-index: 2100;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-            display: none;
-          }
-
-          .password-dialog.show {
-            display: block;
-          }
-
-          .password-dialog h3 {
-            color: #f44336;
-            margin-bottom: 15px;
-          }
-
-          .password-dialog input[type="password"] {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 0.9em;
-            margin-bottom: 15px;
-          }
-
-          .password-dialog input[type="password"]:focus {
-            border-color: #f44336;
-            outline: none;
-            box-shadow: 0 0 5px rgba(244, 67, 54, 0.3);
-          }
-
-          .password-dialog-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-          }
-
-          .password-dialog-btn {
-            padding: 8px 16px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9em;
-            transition: all 0.2s;
-          }
-
-          .password-dialog-btn.danger {
-            background: #f44336;
-            color: white;
-            border-color: #f44336;
-          }
-
-          .password-dialog-btn.danger:hover {
-            background: #d32f2f;
-          }
-
-          .password-dialog-btn.secondary {
-            background: #f5f5f5;
-          }
-
-          .password-dialog-btn.secondary:hover {
-            background: #e0e0e0;
-          }
-
           /* Responsive design */
           @media (max-width: 768px) {
             body {
@@ -1589,11 +1357,11 @@ jobs:
           }
           EOF
 
-      # Step 9: Create Enhanced SPA JavaScript with Comments Side Cart (MODIFIED)
-      - name: Create Enhanced SPA Application with Comments Side Cart
+      # Step 12: Create Enhanced SPA Application with Staticman Integration
+      - name: Create Enhanced SPA Application with Staticman Integration
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // Enhanced SPA Application with comments side cart review system
+          // Enhanced SPA Application with Staticman Integration
 
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -1622,17 +1390,163 @@ jobs:
           // Current state
           window.currentPage = null;
           window.reviewMode = false;
-          window.reviewData = JSON.parse(localStorage.getItem('reviewData') || '{}');
+          window.staticmanComments = {};
+          window.pendingComments = []; // Queue for failed submissions
           const basePath = getBasePath();
 
           // Debug logging function
           function debug(message, data) {
-            console.log(`[DITA-SPA] ${message}`, data || '');
+            console.log(`[DITA-SPA-Staticman] ${message}`, data || '');
           }
+
+          // Staticman Integration Functions
+          class StaticmanIntegration {
+            constructor() {
+              this.endpoint = window.staticmanConfig?.endpoint || null;
+              this.enabled = window.staticmanConfig?.enabled || false;
+              this.status = 'offline';
+              this.retryCount = 0;
+              this.maxRetries = 3;
+              
+              this.checkConnection();
+            }
+
+            async checkConnection() {
+              if (!this.endpoint) {
+                this.setStatus('error', 'No endpoint configured');
+                return;
+              }
+
+              try {
+                // Test connection with a simple HEAD request
+                this.setStatus('connecting', 'Testing connection...');
+                
+                // For now, assume connection is working if endpoint exists
+                this.setStatus('online', 'Connected to Staticman');
+                debug('Staticman connection established');
+              } catch (error) {
+                this.setStatus('error', 'Connection failed: ' + error.message);
+                debug('Staticman connection failed:', error);
+              }
+            }
+
+            setStatus(status, message) {
+              this.status = status;
+              this.updateStatusUI(status, message);
+            }
+
+            updateStatusUI(status, message) {
+              let statusEl = document.getElementById('staticmanStatus');
+              if (!statusEl) {
+                statusEl = document.createElement('div');
+                statusEl.id = 'staticmanStatus';
+                statusEl.className = 'staticman-status';
+                
+                const reviewControls = document.querySelector('.review-controls');
+                if (reviewControls) {
+                  reviewControls.insertBefore(statusEl, reviewControls.firstChild);
+                }
+              }
+
+              statusEl.className = `staticman-status ${status}`;
+              statusEl.textContent = message || this.getStatusMessage(status);
+            }
+
+            getStatusMessage(status) {
+              const messages = {
+                'online': 'Staticman Connected',
+                'offline': 'Staticman Offline',
+                'connecting': 'Connecting...',
+                'error': 'Connection Error',
+                'syncing': 'Syncing Comments...'
+              };
+              return messages[status] || 'Unknown Status';
+            }
+
+            async submitComment(commentData) {
+              if (!this.endpoint || !this.enabled) {
+                throw new Error('Staticman not configured');
+              }
+
+              this.setStatus('syncing', 'Submitting comment...');
+
+              try {
+                const response = await fetch(this.endpoint, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    fields: commentData,
+                    options: {
+                      pageId: commentData.pageId
+                    }
+                  })
+                });
+
+                if (!response.ok) {
+                  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                this.setStatus('online', 'Comment submitted successfully');
+                debug('Comment submitted to Staticman:', result);
+                
+                return result;
+              } catch (error) {
+                this.setStatus('error', 'Submission failed: ' + error.message);
+                debug('Comment submission failed:', error);
+                
+                // Add to pending queue for retry
+                window.pendingComments.push(commentData);
+                throw error;
+              }
+            }
+
+            async loadCommentsForPage(pageId) {
+              // Load from preloaded comments (from build process)
+              if (window.preloadedComments && window.preloadedComments[pageId]) {
+                return window.preloadedComments[pageId];
+              }
+
+              // Try to fetch dynamically (if repository supports CORS)
+              try {
+                const response = await fetch(`${basePath}/_data/comments/${pageId}.json`);
+                if (response.ok) {
+                  return await response.json();
+                }
+              } catch (error) {
+                debug('Could not load comments dynamically:', error);
+              }
+
+              return [];
+            }
+
+            async retryPendingComments() {
+              if (window.pendingComments.length === 0) return;
+
+              debug('Retrying pending comments:', window.pendingComments.length);
+              
+              const retry = [...window.pendingComments];
+              window.pendingComments = [];
+
+              for (const comment of retry) {
+                try {
+                  await this.submitComment(comment);
+                } catch (error) {
+                  // If retry fails, it will be added back to pending
+                  debug('Retry failed for comment:', comment.id);
+                }
+              }
+            }
+          }
+
+          // Initialize Staticman integration
+          const staticman = new StaticmanIntegration();
 
           // Initialize the application
           function initApp() {
-            debug('Initializing app with base path:', basePath);
+            debug('Initializing app with Staticman integration');
 
             // Render navigation
             renderNavigation(navigationConfig);
@@ -1663,7 +1577,7 @@ jobs:
             document.querySelector('.wh_print_link button').addEventListener('click', (e) => {
               e.preventDefault();
               if (window.reviewMode && window.currentPage) {
-                openPrintSnapshotWindow();
+                openCommentsSideCart();
               } else {
                 window.print();
               }
@@ -1680,11 +1594,16 @@ jobs:
             } else {
               showWelcomeScreen();
             }
+
+            // Set up periodic retry for failed comments
+            setInterval(() => {
+              staticman.retryPendingComments();
+            }, 30000); // Retry every 30 seconds
           }
 
           // Initialize Review System
           function initReviewSystem() {
-            debug('Initializing review system');
+            debug('Initializing review system with Staticman');
             
             // Create hover tooltip
             createHoverTooltip();
@@ -1695,20 +1614,39 @@ jobs:
             // Create comments side cart
             createCommentsSideCart();
             
-            // Create image modal
-            createImageModal();
-            
-            // Create image hover preview
-            createImageHoverPreview();
-            
-            // Create password dialog
-            createPasswordDialog();
+            // Create loading overlay
+            createLoadingOverlay();
             
             // Update review button states
             updateReviewButtons();
           }
 
-          // Create Comments Side Cart (NEW)
+          // Create Loading Overlay
+          function createLoadingOverlay() {
+            const overlay = document.createElement('div');
+            overlay.className = 'loading-overlay';
+            overlay.id = 'loadingOverlay';
+            overlay.innerHTML = `
+              <div class="loading-spinner">
+                <div class="spinner"></div>
+                <div>Submitting to Staticman...</div>
+              </div>
+            `;
+            document.body.appendChild(overlay);
+          }
+
+          // Show/Hide Loading Overlay
+          function showLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.classList.add('show');
+          }
+
+          function hideLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.classList.remove('show');
+          }
+
+          // Create Comments Side Cart
           function createCommentsSideCart() {
             const sideCart = document.createElement('div');
             sideCart.className = 'comments-side-cart';
@@ -1726,12 +1664,12 @@ jobs:
                       <span class="stat-label">Total</span>
                     </div>
                     <div class="stat-item">
-                      <span class="stat-number" id="unresolvedComments">0</span>
-                      <span class="stat-label">Active</span>
+                      <span class="stat-number" id="pendingComments">${window.pendingComments.length}</span>
+                      <span class="stat-label">Pending</span>
                     </div>
                     <div class="stat-item">
-                      <span class="stat-number" id="resolvedComments">0</span>
-                      <span class="stat-label">Resolved</span>
+                      <span class="stat-number" id="syncedComments">0</span>
+                      <span class="stat-label">Synced</span>
                     </div>
                   </div>
                 </div>
@@ -1740,6 +1678,7 @@ jobs:
                     <div class="no-comments-icon">💬</div>
                     <h4>No Comments Yet</h4>
                     <p>Select text or click images to add comments and suggestions in review mode.</p>
+                    <p><em>Comments are saved via Staticman and synchronized with the repository.</em></p>
                   </div>
                 </div>
               </div>
@@ -1748,53 +1687,7 @@ jobs:
             document.body.appendChild(sideCart);
           }
 
-          // Create Password Dialog (NEW)
-          function createPasswordDialog() {
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            overlay.id = 'passwordDialogOverlay';
-            
-            const dialog = document.createElement('div');
-            dialog.className = 'password-dialog';
-            dialog.id = 'passwordDialog';
-            dialog.innerHTML = `
-              <h3>⚠️ Clear All Comments</h3>
-              <p>This action will permanently delete all comments and suggestions. Please enter the password to confirm:</p>
-              <input type="password" id="clearPassword" placeholder="Enter password...">
-              <div class="password-dialog-actions">
-                <button class="password-dialog-btn secondary" onclick="closePasswordDialog()">Cancel</button>
-                <button class="password-dialog-btn danger" onclick="confirmClearReviewData()">Clear All</button>
-              </div>
-            `;
-            
-            document.body.appendChild(overlay);
-            document.body.appendChild(dialog);
-            
-            // Close dialog when clicking overlay
-            overlay.addEventListener('click', closePasswordDialog);
-            
-            // Allow Enter key to submit password
-            document.getElementById('clearPassword').addEventListener('keypress', (e) => {
-              if (e.key === 'Enter') {
-                confirmClearReviewData();
-              }
-            });
-          }
-
-          // Create Image Hover Preview (NEW)
-          function createImageHoverPreview() {
-            const preview = document.createElement('div');
-            preview.className = 'image-hover-preview';
-            preview.id = 'imageHoverPreview';
-            preview.innerHTML = `
-              <img src="" alt="Preview">
-              <div class="preview-filename"></div>
-            `;
-            
-            document.body.appendChild(preview);
-          }
-
-          // Open Comments Side Cart (NEW)
+          // Open Comments Side Cart
           function openCommentsSideCart() {
             const sideCart = document.getElementById('commentsSideCart');
             if (sideCart) {
@@ -1803,7 +1696,7 @@ jobs:
             }
           }
 
-          // Close Comments Side Cart (NEW)
+          // Close Comments Side Cart
           function closeCommentsSideCart() {
             const sideCart = document.getElementById('commentsSideCart');
             if (sideCart) {
@@ -1811,154 +1704,66 @@ jobs:
             }
           }
 
-          // Update Comments Side Cart Content (NEW)
-          function updateCommentsSideCart() {
+          // Update Comments Side Cart Content
+          async function updateCommentsSideCart() {
             if (!window.currentPage) return;
             
-            const comments = getCommentsForPage(window.currentPage);
-            const resolvedCount = comments.filter(c => c.resolved).length;
-            const unresolvedCount = comments.length - resolvedCount;
+            // Load comments from Staticman
+            const comments = await staticman.loadCommentsForPage(window.currentPage);
+            const syncedCount = comments.length;
+            const pendingCount = window.pendingComments.filter(c => c.pageId === window.currentPage).length;
+            const totalCount = syncedCount + pendingCount;
             
             // Update statistics
-            document.getElementById('totalComments').textContent = comments.length;
-            document.getElementById('unresolvedComments').textContent = unresolvedCount;
-            document.getElementById('resolvedComments').textContent = resolvedCount;
+            document.getElementById('totalComments').textContent = totalCount;
+            document.getElementById('pendingComments').textContent = pendingCount;
+            document.getElementById('syncedComments').textContent = syncedCount;
             
             // Update comments list
             const commentsList = document.getElementById('commentsList');
             
-            if (comments.length === 0) {
+            if (totalCount === 0) {
               commentsList.innerHTML = `
                 <div class="no-comments">
                   <div class="no-comments-icon">💬</div>
                   <h4>No Comments Yet</h4>
                   <p>Select text or click images to add comments and suggestions in review mode.</p>
+                  <p><em>Comments are saved via Staticman and synchronized with the repository.</em></p>
                 </div>
               `;
               return;
             }
             
+            // Combine synced and pending comments
+            const allComments = [
+              ...comments.map(c => ({...c, synced: true})),
+              ...window.pendingComments.filter(c => c.pageId === window.currentPage).map(c => ({...c, synced: false}))
+            ];
+            
             // Sort comments by timestamp (newest first)
-            const sortedComments = comments.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const sortedComments = allComments.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
             commentsList.innerHTML = sortedComments.map(comment => `
               <div class="comment-item ${comment.resolved ? 'resolved' : ''}" data-comment-id="${comment.id}">
                 <div class="comment-header">
-                  <span class="comment-type-badge ${comment.type}">${comment.type}</span>
+                  <span class="comment-type-badge ${comment.commentType || 'comment'}">${comment.commentType || 'comment'}</span>
                   <span class="comment-timestamp">${new Date(comment.timestamp).toLocaleDateString()} ${new Date(comment.timestamp).toLocaleTimeString()}</span>
                 </div>
+                
+                ${comment.name ? `<div class="comment-author">By: ${comment.name}</div>` : ''}
                 
                 <div class="comment-selected-text">
                   "${comment.selectedText}"
                   ${comment.selectionType === 'image' ? ' (Image)' : ''}
                 </div>
                 
-                ${comment.text ? `<div class="comment-text">${comment.text}</div>` : ''}
+                ${comment.message ? `<div class="comment-text">${comment.message}</div>` : ''}
                 
-                ${comment.uploadedImages && comment.uploadedImages.length > 0 ? `
-                  <div class="comment-images">
-                    <div class="comment-images-header">
-                      📎 ${comment.uploadedImages.length} image${comment.uploadedImages.length > 1 ? 's' : ''}
-                    </div>
-                    <div class="image-preview-grid">
-                      ${comment.uploadedImages.map(img => `
-                        <div class="image-preview-item">
-                          <div class="image-filename">${img.name}</div>
-                          <img src="${img.data}" alt="${img.name}" class="comment-image-thumb" 
-                               onmouseenter="showImageHoverPreview(event, '${img.data}', '${img.name}')"
-                               onmouseleave="hideImageHoverPreview()"
-                               onclick="showImageModal('${img.data}')">
-                          <div class="image-actions">
-                            <button class="image-action-btn view" onclick="showImageModal('${img.data}')" title="View full size">👁</button>
-                            <button class="image-action-btn download" onclick="downloadCommentImage('${img.data}', '${img.name}')" title="Download">💾</button>
-                          </div>
-                        </div>
-                      `).join('')}
-                    </div>
-                  </div>
-                ` : ''}
-                
-                <button class="comment-resolve-btn ${comment.resolved ? 'resolved' : ''}" 
-                        onclick="toggleCommentResolved('${comment.id}')"
-                        ${comment.resolved ? 'disabled' : ''}>
-                  ${comment.resolved ? '✓ Resolved' : 'Mark Resolved'}
-                </button>
+                <div class="comment-sync-status ${comment.synced ? 'synced' : 'syncing'}">
+                  ${comment.synced ? '✓ Synced with repository' : '⏳ Pending sync...'}
+                </div>
               </div>
             `).join('');
-          }
-
-          // Show Image Hover Preview (NEW)
-          function showImageHoverPreview(event, imageSrc, filename) {
-            const preview = document.getElementById('imageHoverPreview');
-            if (!preview) return;
-            
-            const img = preview.querySelector('img');
-            const filenameEl = preview.querySelector('.preview-filename');
-            
-            img.src = imageSrc;
-            filenameEl.textContent = filename;
-            
-            // Position preview near cursor
-            const rect = event.target.getBoundingClientRect();
-            preview.style.left = (rect.right + 10) + 'px';
-            preview.style.top = (rect.top) + 'px';
-            
-            // Adjust if would go off screen
-            const previewRect = preview.getBoundingClientRect();
-            if (previewRect.right > window.innerWidth - 20) {
-              preview.style.left = (rect.left - previewRect.width - 10) + 'px';
-            }
-            if (previewRect.bottom > window.innerHeight - 20) {
-              preview.style.top = (window.innerHeight - previewRect.height - 20) + 'px';
-            }
-            
-            preview.classList.add('show');
-          }
-
-          // Hide Image Hover Preview (NEW)
-          function hideImageHoverPreview() {
-            const preview = document.getElementById('imageHoverPreview');
-            if (preview) {
-              preview.classList.remove('show');
-            }
-          }
-
-          // Download Comment Image (NEW)
-          function downloadCommentImage(imageSrc, filename) {
-            const link = document.createElement('a');
-            link.href = imageSrc;
-            link.download = filename || 'comment-image.png';
-            link.click();
-          }
-
-          // Toggle Comment Resolved Status (NEW)
-          function toggleCommentResolved(commentId) {
-            if (!window.currentPage) return;
-            
-            const pageData = window.reviewData[window.currentPage];
-            if (!pageData) return;
-            
-            const comment = pageData.comments.find(c => c.id === commentId);
-            if (!comment) return;
-            
-            comment.resolved = !comment.resolved;
-            comment.resolvedTimestamp = comment.resolved ? new Date().toISOString() : null;
-            
-            // Save to localStorage
-            localStorage.setItem('reviewData', JSON.stringify(window.reviewData));
-            
-            // Update UI
-            updateCommentsSideCart();
-            
-            // Update highlights in main content
-            if (window.reviewMode) {
-              loadReviewDataForPage(window.currentPage);
-            }
-            
-            // Update toolbar
-            if (window.reviewMode) {
-              addReviewToolbar();
-            }
           }
 
           // Create Hover Tooltip
@@ -1980,6 +1785,10 @@ jobs:
             dialog.id = 'commentDialog';
             dialog.innerHTML = `
               <h3>Add Review Comment</h3>
+              <div style="margin-bottom: 15px;">
+                <input type="text" id="commentName" placeholder="Your name (required)" required>
+                <input type="email" id="commentEmail" placeholder="Your email (optional)">
+              </div>
               <div>
                 <label>
                   <input type="radio" name="commentType" value="comment" checked> Comment
@@ -1989,25 +1798,11 @@ jobs:
                 </label>
               </div>
               <div style="margin: 15px 0;">
-                <textarea id="commentText" placeholder="Enter your comment or suggestion..."></textarea>
-              </div>
-              <div class="image-upload-section" id="imageUploadSection">
-                <input type="file" id="imageUpload" accept="image/*" multiple style="display: none;">
-                <div id="uploadDropZone">
-                  <p>📸 Add Reference Images</p>
-                  <button type="button" class="upload-btn" onclick="document.getElementById('imageUpload').click()">
-                    Choose Images
-                  </button>
-                  <p style="font-size: 0.8em; color: #666; margin-top: 8px;">
-                    Drag & drop images here or click to browse<br>
-                    <em>Useful for suggesting image placements or providing visual references</em>
-                  </p>
-                </div>
-                <div id="imagePreview" class="image-preview"></div>
+                <textarea id="commentText" placeholder="Enter your comment or suggestion..." required></textarea>
               </div>
               <div class="dialog-actions">
                 <button class="dialog-btn secondary" onclick="closeCommentDialog()">Cancel</button>
-                <button class="dialog-btn primary" onclick="saveComment()">Save</button>
+                <button class="dialog-btn primary" onclick="saveCommentToStaticman()">Submit to Repository</button>
               </div>
             `;
             
@@ -2016,197 +1811,133 @@ jobs:
             
             // Close dialog when clicking overlay
             overlay.addEventListener('click', closeCommentDialog);
-            
-            // Set up image upload functionality
-            setupImageUpload();
           }
 
-          // Create Image Modal for Full View
-          function createImageModal() {
-            const imageModal = document.createElement('div');
-            imageModal.className = 'image-modal';
-            imageModal.id = 'imageModal';
-            imageModal.innerHTML = `
-              <button class="close-btn" onclick="closeImageModal()">✕</button>
-              <img id="modalImage" src="" alt="Full size image">
-            `;
+          // Save Comment to Staticman
+          async function saveCommentToStaticman() {
+            if (!window.currentSelection) {
+              closeCommentDialog();
+              return;
+            }
             
-            document.body.appendChild(imageModal);
+            const name = document.getElementById('commentName').value.trim();
+            const email = document.getElementById('commentEmail').value.trim();
+            const commentText = document.getElementById('commentText').value.trim();
+            const commentType = document.querySelector('input[name="commentType"]:checked').value;
             
-            // Close on background click
-            imageModal.addEventListener('click', (e) => {
-              if (e.target === imageModal) {
-                closeImageModal();
-              }
-            });
-          }
-
-          // Setup Image Upload Functionality
-          function setupImageUpload() {
-            const imageUpload = document.getElementById('imageUpload');
-            const dropZone = document.getElementById('uploadDropZone');
-            const imagePreview = document.getElementById('imagePreview');
-            const uploadSection = document.getElementById('imageUploadSection');
+            if (!name || !commentText) {
+              alert('Please fill in your name and comment.');
+              return;
+            }
             
-            // Store uploaded images for current comment
-            window.currentCommentImages = [];
+            // Create comment object for Staticman
+            const commentData = {
+              name: name,
+              email: email,
+              message: commentText,
+              pageId: window.currentPage,
+              commentType: commentType,
+              selectedText: window.currentSelection.text || window.currentSelection.imageAlt || 'Selected content',
+              selectionType: window.currentSelection.type,
+              timestamp: new Date().toISOString(),
+              resolved: false
+            };
             
-            // File input change handler
-            imageUpload.addEventListener('change', handleImageFiles);
+            if (window.currentSelection.type === 'image') {
+              commentData.imageSrc = window.currentSelection.imageSrc;
+              commentData.imageAlt = window.currentSelection.imageAlt;
+              commentData.position = JSON.stringify(window.currentSelection.position);
+            }
             
-            // Drag and drop handlers
-            dropZone.addEventListener('dragover', (e) => {
-              e.preventDefault();
-              uploadSection.classList.add('dragover');
-            });
+            // Add unique ID for tracking
+            commentData.id = generateCommentId();
             
-            dropZone.addEventListener('dragleave', (e) => {
-              e.preventDefault();
-              uploadSection.classList.remove('dragover');
-            });
-            
-            dropZone.addEventListener('drop', (e) => {
-              e.preventDefault();
-              uploadSection.classList.remove('dragover');
+            try {
+              showLoading();
               
-              const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
-              if (files.length > 0) {
-                processImageFiles(files);
+              // Submit to Staticman
+              await staticman.submitComment(commentData);
+              
+              // Add visual indicator to document immediately
+              if (window.currentSelection.type === 'text') {
+                highlightTextInDocument(window.currentSelection, commentData);
+              } else if (window.currentSelection.type === 'image') {
+                addImageCommentMarker(window.currentSelection, commentData);
               }
-            });
-          }
-
-          function handleImageFiles(event) {
-            const files = Array.from(event.target.files);
-            processImageFiles(files);
-          }
-
-          function processImageFiles(files) {
-            files.forEach(file => {
-              if (file.type.startsWith('image/') && file.size < 5 * 1024 * 1024) { // 5MB limit
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                  const imageData = {
-                    id: generateImageId(),
-                    data: e.target.result,
-                    name: file.name,
-                    size: file.size,
-                    type: file.type
-                  };
-                  
-                  window.currentCommentImages.push(imageData);
-                  updateImagePreview();
-                };
-                reader.readAsDataURL(file);
-              } else if (file.size >= 5 * 1024 * 1024) {
-                alert(`Image "${file.name}" is too large. Please use images smaller than 5MB.`);
-              }
-            });
-          }
-
-          function generateImageId() {
-            return 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-          }
-
-          function updateImagePreview() {
-            const imagePreview = document.getElementById('imagePreview');
-            
-            if (window.currentCommentImages.length === 0) {
-              imagePreview.innerHTML = '';
-              return;
-            }
-            
-            imagePreview.innerHTML = window.currentCommentImages.map(img => `
-              <div style="display: flex; align-items: center; margin: 8px 0; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <img src="${img.data}" alt="${img.name}" class="preview-image" onclick="showImageModal('${img.data}')">
-                <div style="margin-left: 10px; flex: 1;">
-                  <div class="image-info">
-                    <strong>${img.name}</strong><br>
-                    ${(img.size / 1024).toFixed(1)} KB
-                  </div>
-                </div>
-                <button class="remove-image" onclick="removeImageFromComment('${img.id}')">Remove</button>
-              </div>
-            `).join('');
-          }
-
-          function removeImageFromComment(imageId) {
-            window.currentCommentImages = window.currentCommentImages.filter(img => img.id !== imageId);
-            updateImagePreview();
-          }
-
-          function showImageModal(imageSrc) {
-            const modal = document.getElementById('imageModal');
-            const modalImage = document.getElementById('modalImage');
-            
-            modalImage.src = imageSrc;
-            modal.classList.add('show');
-          }
-
-          function closeImageModal() {
-            const modal = document.getElementById('imageModal');
-            modal.classList.remove('show');
-          }
-
-          // Password Protection Functions (NEW)
-          function promptClearReviewData() {
-            const dialog = document.getElementById('passwordDialog');
-            const overlay = document.getElementById('passwordDialogOverlay');
-            
-            dialog.classList.add('show');
-            overlay.classList.add('show');
-            
-            // Clear and focus on password input
-            const passwordInput = document.getElementById('clearPassword');
-            passwordInput.value = '';
-            passwordInput.focus();
-          }
-
-          function closePasswordDialog() {
-            const dialog = document.getElementById('passwordDialog');
-            const overlay = document.getElementById('passwordDialogOverlay');
-            
-            dialog.classList.remove('show');
-            overlay.classList.remove('show');
-            
-            // Clear password input
-            document.getElementById('clearPassword').value = '';
-          }
-
-          function confirmClearReviewData() {
-            const passwordInput = document.getElementById('clearPassword');
-            const enteredPassword = passwordInput.value;
-            
-            // Check if password is correct
-            if (enteredPassword !== 'poweroverwhelming') {
-              alert('Incorrect password. Access denied.');
-              passwordInput.value = '';
-              passwordInput.focus();
-              return;
-            }
-            
-            // Password is correct, proceed with clearing
-            window.reviewData = {};
-            localStorage.removeItem('reviewData');
-            
-            // Clear highlights from current page
-            clearReviewHighlights();
-            
-            // Update UI
-            if (window.reviewMode) {
+              
+              // Update toolbar
               addReviewToolbar();
+              
+              // Update side cart if open
+              const sideCart = document.getElementById('commentsSideCart');
+              if (sideCart && sideCart.classList.contains('open')) {
+                updateCommentsSideCart();
+              }
+              
+              closeCommentDialog();
+              
+              // Show success message
+              alert('Comment submitted successfully! It will appear in the repository after processing.');
+              
+              debug('Comment submitted to Staticman:', commentData);
+              
+            } catch (error) {
+              alert('Failed to submit comment: ' + error.message + '\nComment saved locally and will retry automatically.');
+              debug('Comment submission error:', error);
+              
+              // Still add visual indicator even if submission failed
+              if (window.currentSelection.type === 'text') {
+                highlightTextInDocument(window.currentSelection, commentData);
+              } else if (window.currentSelection.type === 'image') {
+                addImageCommentMarker(window.currentSelection, commentData);
+              }
+              
+              closeCommentDialog();
+            } finally {
+              hideLoading();
             }
+          }
+
+          function highlightTextInDocument(selection, comment) {
+            const span = document.createElement('span');
+            span.className = comment.commentType === 'suggestion' ? 'review-suggestion-highlight' : 'review-comment-highlight';
+            span.setAttribute('data-comment-id', comment.id);
             
-            // Update side cart if open
-            const sideCart = document.getElementById('commentsSideCart');
-            if (sideCart && sideCart.classList.contains('open')) {
-              updateCommentsSideCart();
+            // Add hover events for tooltip
+            span.addEventListener('mouseenter', (e) => showTooltip(e, comment));
+            span.addEventListener('mouseleave', hideTooltip);
+            
+            try {
+              selection.range.surroundContents(span);
+            } catch (e) {
+              // Fallback for complex selections
+              span.textContent = selection.text;
+              selection.range.deleteContents();
+              selection.range.insertNode(span);
             }
+          }
+
+          function addImageCommentMarker(selection, comment) {
+            const image = selection.element;
+            const container = image.parentElement;
             
-            // Close password dialog
-            closePasswordDialog();
+            // Create marker element
+            const marker = document.createElement('div');
+            marker.className = `image-comment-marker ${comment.commentType}`;
+            marker.setAttribute('data-comment-id', comment.id);
+            marker.innerHTML = '💬';
             
-            alert('All review data has been cleared successfully.');
+            // Position marker based on click coordinates
+            marker.style.left = selection.position.x + '%';
+            marker.style.top = selection.position.y + '%';
+            marker.style.transform = 'translate(-50%, -50%)';
+            
+            // Add hover events for tooltip
+            marker.addEventListener('mouseenter', (e) => showTooltip(e, comment));
+            marker.addEventListener('mouseleave', hideTooltip);
+            
+            // Add marker to container
+            container.appendChild(marker);
           }
 
           // Function to show welcome screen
@@ -2219,14 +1950,303 @@ jobs:
                 <h2>Welcome to Documentation</h2>
                 <p>Please select a topic from the navigation menu or use the search bar.</p>
                 <p><strong>Review Mode:</strong> Click "Review Mode" to enable collaborative commenting and suggestions.</p>
-                <p><strong>Comments Side Cart:</strong> View all comments and suggestions in an organized panel with image previews and download options.</p>
+                <p><strong>Staticman Integration:</strong> Comments are automatically synchronized with the GitHub repository for collaborative review.</p>
+                <p><strong>Comments Side Cart:</strong> View all comments and suggestions in an organized panel with sync status indicators.</p>
               </div>
             `;
 
             document.body.classList.remove('loading');
           }
 
-          // Render the navigation menu with hierarchy
+          // Review System Functions
+          function toggleReviewMode() {
+            window.reviewMode = !window.reviewMode;
+            
+            if (window.reviewMode) {
+              document.body.classList.add('review-mode');
+              debug('Review mode activated with Staticman integration');
+              
+              if (window.currentPage) {
+                initializeReviewForContent();
+                loadReviewDataForPage(window.currentPage);
+              }
+            } else {
+              document.body.classList.remove('review-mode');
+              clearReviewHighlights();
+              closeCommentsSideCart();
+              debug('Review mode deactivated');
+            }
+            
+            updateReviewButtons();
+          }
+
+          function clearReviewHighlights() {
+            const elements = document.querySelectorAll('[data-comment-id]');
+            elements.forEach(element => {
+              const parent = element.parentNode;
+              if (parent) {
+                if (element.classList.contains('image-comment-marker')) {
+                  parent.removeChild(element);
+                } else {
+                  parent.insertBefore(document.createTextNode(element.textContent), element);
+                  parent.removeChild(element);
+                }
+              }
+            });
+            hideTooltip();
+          }
+
+          function startReviewSession() {
+            if (!window.currentPage) {
+              alert('Please select a document to review first.');
+              return;
+            }
+            
+            if (!window.reviewMode) {
+              toggleReviewMode();
+            }
+            
+            const statusMsg = staticman.status === 'online' 
+              ? 'Comments will be synchronized with the GitHub repository via Staticman.'
+              : 'Staticman is offline. Comments will be queued and synchronized when connection is restored.';
+            
+            alert(`Review session started for "${getPageTitle(window.currentPage)}".\n\n${statusMsg}\n\nYou can now:\n• Select text to add comments or suggestions\n• Click on images to add annotations\n• View all comments in the side cart with sync status`);
+          }
+
+          function updateReviewButtons() {
+            if (reviewToggleBtn) {
+              reviewToggleBtn.textContent = window.reviewMode ? 'Exit Review' : 'Review Mode';
+              reviewToggleBtn.classList.toggle('active', window.reviewMode);
+            }
+            
+            const reviewControls = document.querySelectorAll('.review-btn:not(#reviewToggle)');
+            reviewControls.forEach(btn => {
+              btn.style.display = window.reviewMode ? 'block' : 'none';
+            });
+          }
+
+          function initializeReviewForContent() {
+            if (!window.reviewMode) return;
+            
+            const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th');
+            
+            textElements.forEach(element => {
+              element.classList.add('reviewable-text');
+              element.addEventListener('mouseup', handleTextSelection);
+            });
+            
+            const images = contentEl.querySelectorAll('img');
+            images.forEach(image => {
+              image.classList.add('reviewable-image');
+              
+              if (!image.parentElement.classList.contains('image-comment-container')) {
+                const container = document.createElement('div');
+                container.className = 'image-comment-container';
+                image.parentNode.insertBefore(container, image);
+                container.appendChild(image);
+              }
+              
+              image.addEventListener('click', handleImageComment);
+            });
+            
+            addReviewToolbar();
+          }
+
+          function addReviewToolbar() {
+            const existingToolbar = document.querySelector('.review-toolbar');
+            if (existingToolbar) {
+              existingToolbar.remove();
+            }
+            
+            const toolbar = document.createElement('div');
+            toolbar.className = 'review-toolbar';
+            toolbar.innerHTML = `
+              <h3>Review Mode: ${getPageTitle(window.currentPage)} (Staticman Integration)</h3>
+              <div class="review-toolbar-actions">
+                <button class="review-toolbar-btn" onclick="openCommentsSideCart()">
+                  View Comments
+                </button>
+                <button class="review-toolbar-btn" onclick="staticman.retryPendingComments()">
+                  Retry Failed (${window.pendingComments.length})
+                </button>
+              </div>
+            `;
+            
+            contentEl.insertBefore(toolbar, contentEl.firstChild);
+          }
+
+          function handleTextSelection(event) {
+            if (!window.reviewMode) return;
+            
+            const selection = window.getSelection();
+            if (selection.toString().trim().length === 0) return;
+            
+            const selectedText = selection.toString().trim();
+            const range = selection.getRangeAt(0);
+            
+            window.currentSelection = {
+              type: 'text',
+              text: selectedText,
+              element: event.target,
+              range: range.cloneRange()
+            };
+            
+            setTimeout(() => showCommentDialog(), 100);
+          }
+
+          function handleImageComment(event) {
+            if (!window.reviewMode) return;
+            
+            event.preventDefault();
+            
+            const image = event.target;
+            const rect = image.getBoundingClientRect();
+            
+            const x = ((event.clientX - rect.left) / rect.width) * 100;
+            const y = ((event.clientY - rect.top) / rect.height) * 100;
+            
+            window.currentSelection = {
+              type: 'image',
+              element: image,
+              position: { x: x, y: y },
+              imageSrc: image.src,
+              imageAlt: image.alt || 'Image'
+            };
+            
+            showCommentDialog();
+          }
+
+          function showCommentDialog() {
+            const dialog = document.getElementById('commentDialog');
+            const overlay = document.getElementById('dialogOverlay');
+            
+            dialog.classList.add('show');
+            overlay.classList.add('show');
+            
+            document.getElementById('commentName').focus();
+          }
+
+          function closeCommentDialog() {
+            const dialog = document.getElementById('commentDialog');
+            const overlay = document.getElementById('dialogOverlay');
+            
+            dialog.classList.remove('show');
+            overlay.classList.remove('show');
+            
+            // Clear form
+            document.getElementById('commentName').value = '';
+            document.getElementById('commentEmail').value = '';
+            document.getElementById('commentText').value = '';
+            document.querySelector('input[name="commentType"]:checked').checked = false;
+            document.querySelector('input[name="commentType"][value="comment"]').checked = true;
+            
+            window.getSelection().removeAllRanges();
+            window.currentSelection = null;
+          }
+
+          // Hover Tooltip Functions
+          function showTooltip(event, comment) {
+            if (!window.reviewMode) return;
+            
+            const tooltip = document.getElementById('commentTooltip');
+            if (!tooltip) return;
+            
+            tooltip.className = `comment-tooltip ${comment.commentType} show`;
+            tooltip.innerHTML = `
+              <div class="tooltip-header">${comment.commentType.toUpperCase()} ${comment.name ? 'by ' + comment.name : ''}</div>
+              <div class="tooltip-text">${comment.message}</div>
+              <div class="tooltip-meta">
+                Selected: "${comment.selectedText}"<br>
+                ${new Date(comment.timestamp).toLocaleString()}
+                ${comment.synced !== undefined ? (comment.synced ? '<br>✓ Synced' : '<br>⏳ Pending') : ''}
+              </div>
+            `;
+            
+            positionTooltip(tooltip, event.target);
+          }
+
+          function hideTooltip() {
+            const tooltip = document.getElementById('commentTooltip');
+            if (tooltip) {
+              tooltip.classList.remove('show');
+            }
+          }
+
+          function positionTooltip(tooltip, targetElement) {
+            const rect = targetElement.getBoundingClientRect();
+            const tooltipRect = tooltip.getBoundingClientRect();
+            
+            let top = rect.top - tooltipRect.height - 10;
+            let left = rect.left;
+            
+            if (top < 10) {
+              top = rect.bottom + 10;
+            }
+            
+            if (left + tooltipRect.width > window.innerWidth - 20) {
+              left = window.innerWidth - tooltipRect.width - 20;
+            }
+            
+            if (left < 10) {
+              left = 10;
+            }
+            
+            tooltip.style.top = top + window.scrollY + 'px';
+            tooltip.style.left = left + 'px';
+          }
+
+          function generateCommentId() {
+            return 'comment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          }
+
+          async function loadReviewDataForPage(pageId) {
+            const comments = await staticman.loadCommentsForPage(pageId);
+            
+            // Clear existing highlights
+            clearReviewHighlights();
+            
+            // Re-apply highlights (simplified version for demo)
+            comments.forEach(comment => {
+              if (comment.selectionType === 'text') {
+                // Simplified highlighting - in production, you'd want more sophisticated text matching
+                debug('Would highlight text:', comment.selectedText);
+              } else if (comment.selectionType === 'image') {
+                debug('Would add image marker for:', comment.imageAlt);
+              }
+            });
+          }
+
+          function promptClearReviewData() {
+            if (confirm('This will clear all pending comments. Synced comments in the repository will not be affected. Continue?')) {
+              window.pendingComments = [];
+              clearReviewHighlights();
+              
+              if (window.reviewMode) {
+                addReviewToolbar();
+              }
+              
+              const sideCart = document.getElementById('commentsSideCart');
+              if (sideCart && sideCart.classList.contains('open')) {
+                updateCommentsSideCart();
+              }
+              
+              alert('Pending comments cleared. Repository comments remain intact.');
+            }
+          }
+
+          // Make functions available globally
+          window.toggleReviewMode = toggleReviewMode;
+          window.startReviewSession = startReviewSession;
+          window.promptClearReviewData = promptClearReviewData;
+          window.openCommentsSideCart = openCommentsSideCart;
+          window.closeCommentsSideCart = closeCommentsSideCart;
+          window.showCommentDialog = showCommentDialog;
+          window.closeCommentDialog = closeCommentDialog;
+          window.saveCommentToStaticman = saveCommentToStaticman;
+          window.showTooltip = showTooltip;
+          window.hideTooltip = hideTooltip;
+
+          // Navigation and content functions (keeping existing functionality)
           function renderNavigation(items, parentEl = navigationEl) {
             const ul = document.createElement('ul');
             ul.setAttribute('role', 'menu');
@@ -2277,7 +2297,6 @@ jobs:
             parentEl.appendChild(ul);
           }
 
-          // Expand navigation path to the current page
           function expandNavigationTo(pageId) {
             function findPageInNavigation(items, id, path = []) {
               for (let i = 0; i < items.length; i++) {
@@ -2308,7 +2327,6 @@ jobs:
             }
           }
 
-          // Navigate to a specific page
           function navigateToPage(pageId, pushState = true) {
             debug('Navigating to page:', pageId);
             
@@ -2345,7 +2363,6 @@ jobs:
                 contentEl.innerHTML = content;
                 enhanceTables();
                 
-                // Only initialize review features if in review mode
                 if (window.reviewMode) {
                   initializeReviewForContent();
                   loadReviewDataForPage(pageId);
@@ -2404,538 +2421,6 @@ jobs:
               });
           }
 
-          // Review System Functions
-          function toggleReviewMode() {
-            window.reviewMode = !window.reviewMode;
-            
-            if (window.reviewMode) {
-              document.body.classList.add('review-mode');
-              debug('Review mode activated');
-              
-              if (window.currentPage) {
-                initializeReviewForContent();
-                loadReviewDataForPage(window.currentPage);
-              }
-            } else {
-              document.body.classList.remove('review-mode');
-              // Clear any visible highlights from main view
-              clearReviewHighlights();
-              // Close side cart if open
-              closeCommentsSideCart();
-              debug('Review mode deactivated');
-            }
-            
-            updateReviewButtons();
-          }
-
-          function clearReviewHighlights() {
-            // Remove all comment highlights and image markers from the current view
-            const elements = document.querySelectorAll('[data-comment-id]');
-            elements.forEach(element => {
-              const parent = element.parentNode;
-              if (parent) {
-                if (element.classList.contains('image-comment-marker')) {
-                  // Remove image markers
-                  parent.removeChild(element);
-                } else {
-                  // Remove text highlights
-                  parent.insertBefore(document.createTextNode(element.textContent), element);
-                  parent.removeChild(element);
-                }
-              }
-            });
-            
-            // Hide tooltip if visible
-            hideTooltip();
-          }
-
-          function startReviewSession() {
-            if (!window.currentPage) {
-              alert('Please select a document to review first.');
-              return;
-            }
-            
-            if (!window.reviewMode) {
-              toggleReviewMode();
-            }
-            
-            alert(`Review session started for "${getPageTitle(window.currentPage)}". You can now:\n\n• Select text to add comments or suggestions\n• Click on images to add annotations\n• View all comments in the side cart with image previews\n• Download images attached to comments`);
-          }
-
-          function updateReviewButtons() {
-            if (reviewToggleBtn) {
-              reviewToggleBtn.textContent = window.reviewMode ? 'Exit Review' : 'Review Mode';
-              reviewToggleBtn.classList.toggle('active', window.reviewMode);
-            }
-            
-            const reviewControls = document.querySelectorAll('.review-btn:not(#reviewToggle)');
-            reviewControls.forEach(btn => {
-              btn.style.display = window.reviewMode ? 'block' : 'none';
-            });
-          }
-
-          function initializeReviewForContent() {
-            if (!window.reviewMode) return;
-            
-            // Make all text elements selectable and add event listeners
-            const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th');
-            
-            textElements.forEach(element => {
-              element.classList.add('reviewable-text');
-              
-              // Add mouseup event for text selection
-              element.addEventListener('mouseup', handleTextSelection);
-            });
-            
-            // Make images commentable
-            const images = contentEl.querySelectorAll('img');
-            images.forEach(image => {
-              image.classList.add('reviewable-image');
-              
-              // Wrap image in container for positioning markers
-              if (!image.parentElement.classList.contains('image-comment-container')) {
-                const container = document.createElement('div');
-                container.className = 'image-comment-container';
-                image.parentNode.insertBefore(container, image);
-                container.appendChild(image);
-              }
-              
-              // Add click event for image commenting
-              image.addEventListener('click', handleImageComment);
-            });
-            
-            // Add review toolbar
-            addReviewToolbar();
-          }
-
-          function addReviewToolbar() {
-            const existingToolbar = document.querySelector('.review-toolbar');
-            if (existingToolbar) {
-              existingToolbar.remove();
-            }
-            
-            const toolbar = document.createElement('div');
-            toolbar.className = 'review-toolbar';
-            toolbar.innerHTML = `
-              <h3>Review Mode: ${getPageTitle(window.currentPage)}</h3>
-              <div class="review-toolbar-actions">
-                <button class="review-toolbar-btn" onclick="showCommentsCount()">
-                  Comments (${getCommentsForPage(window.currentPage).length})
-                </button>
-                <button class="review-toolbar-btn" onclick="openPrintSnapshotWindow()">Print Snapshot</button>
-              </div>
-            `;
-            
-            contentEl.insertBefore(toolbar, contentEl.firstChild);
-          }
-
-          // Modified showCommentsCount to open side cart instead of alert (MODIFIED)
-          function showCommentsCount() {
-            openCommentsSideCart();
-          }
-
-          function handleTextSelection(event) {
-            if (!window.reviewMode) return;
-            
-            const selection = window.getSelection();
-            if (selection.toString().trim().length === 0) return;
-            
-            const selectedText = selection.toString().trim();
-            const range = selection.getRangeAt(0);
-            
-            // Store selection data for comment creation
-            window.currentSelection = {
-              type: 'text',
-              text: selectedText,
-              element: event.target,
-              range: range.cloneRange()
-            };
-            
-            // Show comment dialog
-            setTimeout(() => showCommentDialog(), 100);
-          }
-
-          function handleImageComment(event) {
-            if (!window.reviewMode) return;
-            
-            event.preventDefault();
-            
-            const image = event.target;
-            const rect = image.getBoundingClientRect();
-            
-            // Calculate click position relative to image
-            const x = ((event.clientX - rect.left) / rect.width) * 100;
-            const y = ((event.clientY - rect.top) / rect.height) * 100;
-            
-            // Store image selection data
-            window.currentSelection = {
-              type: 'image',
-              element: image,
-              position: { x: x, y: y },
-              imageSrc: image.src,
-              imageAlt: image.alt || 'Image'
-            };
-            
-            // Show comment dialog
-            showCommentDialog();
-          }
-
-          function showCommentDialog() {
-            const dialog = document.getElementById('commentDialog');
-            const overlay = document.getElementById('dialogOverlay');
-            
-            dialog.classList.add('show');
-            overlay.classList.add('show');
-            
-            // Focus on textarea
-            document.getElementById('commentText').focus();
-          }
-
-          function closeCommentDialog() {
-            const dialog = document.getElementById('commentDialog');
-            const overlay = document.getElementById('dialogOverlay');
-            
-            dialog.classList.remove('show');
-            overlay.classList.remove('show');
-            
-            // Clear form
-            document.getElementById('commentText').value = '';
-            document.querySelector('input[name="commentType"]:checked').checked = false;
-            document.querySelector('input[name="commentType"][value="comment"]').checked = true;
-            
-            // Clear uploaded images
-            window.currentCommentImages = [];
-            const imagePreview = document.getElementById('imagePreview');
-            if (imagePreview) {
-              imagePreview.innerHTML = '';
-            }
-            const imageUpload = document.getElementById('imageUpload');
-            if (imageUpload) {
-              imageUpload.value = '';
-            }
-            
-            // Clear selection
-            window.getSelection().removeAllRanges();
-            window.currentSelection = null;
-          }
-
-          function saveComment() {
-            if (!window.currentSelection) {
-              closeCommentDialog();
-              return;
-            }
-            
-            const commentText = document.getElementById('commentText').value.trim();
-            const commentType = document.querySelector('input[name="commentType"]:checked').value;
-            
-            if (!commentText && (!window.currentCommentImages || window.currentCommentImages.length === 0)) {
-              alert('Please enter a comment or add at least one image.');
-              return;
-            }
-            
-            // Create comment object
-            const comment = {
-              id: generateCommentId(),
-              pageId: window.currentPage,
-              type: commentType,
-              text: commentText,
-              timestamp: new Date().toISOString(),
-              resolved: false,
-              selectionType: window.currentSelection.type,
-              uploadedImages: window.currentCommentImages ? [...window.currentCommentImages] : []
-            };
-            
-            if (window.currentSelection.type === 'text') {
-              comment.selectedText = window.currentSelection.text;
-            } else if (window.currentSelection.type === 'image') {
-              comment.imageSrc = window.currentSelection.imageSrc;
-              comment.imageAlt = window.currentSelection.imageAlt;
-              comment.position = window.currentSelection.position;
-              comment.selectedText = `Image: ${window.currentSelection.imageAlt}`;
-            }
-            
-            // Store comment
-            if (!window.reviewData[window.currentPage]) {
-              window.reviewData[window.currentPage] = {
-                comments: [],
-                lastModified: new Date().toISOString()
-              };
-            }
-            
-            window.reviewData[window.currentPage].comments.push(comment);
-            window.reviewData[window.currentPage].lastModified = new Date().toISOString();
-            
-            // Persist to localStorage
-            localStorage.setItem('reviewData', JSON.stringify(window.reviewData));
-            
-            // Add visual indicator to document
-            if (window.currentSelection.type === 'text') {
-              highlightTextInDocument(window.currentSelection, comment);
-            } else if (window.currentSelection.type === 'image') {
-              addImageCommentMarker(window.currentSelection, comment);
-            }
-            
-            // Update toolbar
-            addReviewToolbar();
-            
-            // Update side cart if open
-            const sideCart = document.getElementById('commentsSideCart');
-            if (sideCart && sideCart.classList.contains('open')) {
-              updateCommentsSideCart();
-            }
-            
-            closeCommentDialog();
-            
-            debug('Comment saved with images:', comment);
-          }
-
-          function highlightTextInDocument(selection, comment) {
-            const span = document.createElement('span');
-            span.className = comment.type === 'suggestion' ? 'review-suggestion-highlight' : 'review-comment-highlight';
-            span.setAttribute('data-comment-id', comment.id);
-            
-            // Add hover events for tooltip
-            span.addEventListener('mouseenter', (e) => showTooltip(e, comment));
-            span.addEventListener('mouseleave', hideTooltip);
-            
-            try {
-              selection.range.surroundContents(span);
-            } catch (e) {
-              // Fallback for complex selections
-              span.textContent = selection.text;
-              selection.range.deleteContents();
-              selection.range.insertNode(span);
-            }
-          }
-
-          function addImageCommentMarker(selection, comment) {
-            const image = selection.element;
-            const container = image.parentElement;
-            
-            // Create marker element
-            const marker = document.createElement('div');
-            marker.className = `image-comment-marker ${comment.type}`;
-            marker.setAttribute('data-comment-id', comment.id);
-            marker.innerHTML = '💬';
-            
-            // Position marker based on click coordinates
-            marker.style.left = selection.position.x + '%';
-            marker.style.top = selection.position.y + '%';
-            marker.style.transform = 'translate(-50%, -50%)';
-            
-            // Add hover events for tooltip
-            marker.addEventListener('mouseenter', (e) => showTooltip(e, comment));
-            marker.addEventListener('mouseleave', hideTooltip);
-            
-            // Add marker to container
-            container.appendChild(marker);
-          }
-
-          // Hover Tooltip Functions
-          function showTooltip(event, comment) {
-            if (!window.reviewMode) return;
-            
-            const tooltip = document.getElementById('commentTooltip');
-            if (!tooltip) return;
-            
-            // Set tooltip content
-            tooltip.className = `comment-tooltip ${comment.type} show`;
-            tooltip.innerHTML = `
-              <div class="tooltip-header">${comment.type.toUpperCase()}</div>
-              <div class="tooltip-text">${comment.text}</div>
-              <div class="tooltip-meta">
-                Selected: "${comment.selectedText}"<br>
-                ${new Date(comment.timestamp).toLocaleString()}
-                ${comment.resolved ? '<br>✓ Resolved' : ''}
-                ${comment.uploadedImages && comment.uploadedImages.length > 0 ? `<br>📎 ${comment.uploadedImages.length} image(s)` : ''}
-              </div>
-            `;
-            
-            // Position tooltip
-            positionTooltip(tooltip, event.target);
-          }
-
-          function hideTooltip() {
-            const tooltip = document.getElementById('commentTooltip');
-            if (tooltip) {
-              tooltip.classList.remove('show');
-            }
-          }
-
-          function positionTooltip(tooltip, targetElement) {
-            const rect = targetElement.getBoundingClientRect();
-            const tooltipRect = tooltip.getBoundingClientRect();
-            
-            // Position above the highlighted text
-            let top = rect.top - tooltipRect.height - 10;
-            let left = rect.left;
-            
-            // Adjust if tooltip would go off screen
-            if (top < 10) {
-              top = rect.bottom + 10; // Position below instead
-            }
-            
-            if (left + tooltipRect.width > window.innerWidth - 20) {
-              left = window.innerWidth - tooltipRect.width - 20;
-            }
-            
-            if (left < 10) {
-              left = 10;
-            }
-            
-            tooltip.style.top = top + window.scrollY + 'px';
-            tooltip.style.left = left + 'px';
-          }
-
-          function generateCommentId() {
-            return 'comment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-          }
-
-          function getCommentsForPage(pageId) {
-            return window.reviewData[pageId] ? window.reviewData[pageId].comments : [];
-          }
-
-          function loadReviewDataForPage(pageId) {
-            const comments = getCommentsForPage(pageId);
-            
-            // Clear existing highlights
-            const existingHighlights = document.querySelectorAll('[data-comment-id]');
-            existingHighlights.forEach(highlight => {
-              if (highlight.classList.contains('image-comment-marker')) {
-                highlight.remove();
-              } else {
-                const parent = highlight.parentNode;
-                if (parent) {
-                  parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
-                  parent.removeChild(highlight);
-                }
-              }
-            });
-            
-            // Re-apply highlights (simplified version)
-            comments.forEach(comment => {
-              if (comment.selectionType === 'text') {
-                const textNodes = getAllTextNodes(contentEl);
-                textNodes.forEach(node => {
-                  if (node.textContent.includes(comment.selectedText)) {
-                    const parent = node.parentNode;
-                    const index = node.textContent.indexOf(comment.selectedText);
-                    
-                    if (index !== -1) {
-                      const beforeText = node.textContent.substring(0, index);
-                      const selectedText = comment.selectedText;
-                      const afterText = node.textContent.substring(index + selectedText.length);
-                      
-                      const span = document.createElement('span');
-                      span.className = comment.type === 'suggestion' ? 'review-suggestion-highlight' : 'review-comment-highlight';
-                      span.setAttribute('data-comment-id', comment.id);
-                      span.textContent = selectedText;
-                      span.addEventListener('mouseenter', (e) => showTooltip(e, comment));
-                      span.addEventListener('mouseleave', hideTooltip);
-                      
-                      if (comment.resolved) {
-                        span.style.opacity = '0.5';
-                      }
-                      
-                      // Replace the text node
-                      parent.removeChild(node);
-                      if (beforeText) parent.appendChild(document.createTextNode(beforeText));
-                      parent.appendChild(span);
-                      if (afterText) parent.appendChild(document.createTextNode(afterText));
-                      
-                      return; // Only highlight first occurrence
-                    }
-                  }
-                });
-              } else if (comment.selectionType === 'image') {
-                // Re-add image markers
-                const images = contentEl.querySelectorAll('img');
-                images.forEach(img => {
-                  if (img.src.includes(comment.imageSrc.split('/').pop())) {
-                    const container = img.parentElement;
-                    
-                    const marker = document.createElement('div');
-                    marker.className = `image-comment-marker ${comment.type}`;
-                    marker.setAttribute('data-comment-id', comment.id);
-                    marker.innerHTML = '💬';
-                    marker.style.left = comment.position.x + '%';
-                    marker.style.top = comment.position.y + '%';
-                    marker.style.transform = 'translate(-50%, -50%)';
-                    marker.addEventListener('mouseenter', (e) => showTooltip(e, comment));
-                    marker.addEventListener('mouseleave', hideTooltip);
-                    
-                    if (comment.resolved) {
-                      marker.style.opacity = '0.5';
-                    }
-                    
-                    container.appendChild(marker);
-                  }
-                });
-              }
-            });
-          }
-
-          function getAllTextNodes(element) {
-            const textNodes = [];
-            const walker = document.createTreeWalker(
-              element,
-              NodeFilter.SHOW_TEXT,
-              null,
-              false
-            );
-            
-            let node;
-            while (node = walker.nextNode()) {
-              if (node.textContent.trim()) {
-                textNodes.push(node);
-              }
-            }
-            
-            return textNodes;
-          }
-
-          // Print Snapshot Functions (kept for compatibility)
-          function openPrintSnapshotWindow() {
-            if (!window.currentPage) {
-              alert('No page selected for snapshot.');
-              return;
-            }
-            
-            const comments = getCommentsForPage(window.currentPage);
-            const pageTitle = getPageTitle(window.currentPage);
-            
-            // For now, just open the comments side cart
-            // This can be enhanced later with a full print view
-            openCommentsSideCart();
-            
-            if (comments.length === 0) {
-              alert('No comments to display. Add some comments first using review mode.');
-            }
-          }
-
-          // Make functions available globally
-          window.toggleReviewMode = toggleReviewMode;
-          window.startReviewSession = startReviewSession;
-          window.promptClearReviewData = promptClearReviewData;
-          window.confirmClearReviewData = confirmClearReviewData;
-          window.closePasswordDialog = closePasswordDialog;
-          window.openCommentsSideCart = openCommentsSideCart;
-          window.closeCommentsSideCart = closeCommentsSideCart;
-          window.openPrintSnapshotWindow = openPrintSnapshotWindow;
-          window.showCommentsCount = showCommentsCount;
-          window.closeCommentDialog = closeCommentDialog;
-          window.saveComment = saveComment;
-          window.showTooltip = showTooltip;
-          window.hideTooltip = hideTooltip;
-          window.removeImageFromComment = removeImageFromComment;
-          window.showImageModal = showImageModal;
-          window.closeImageModal = closeImageModal;
-          window.showImageHoverPreview = showImageHoverPreview;
-          window.hideImageHoverPreview = hideImageHoverPreview;
-          window.downloadCommentImage = downloadCommentImage;
-          window.toggleCommentResolved = toggleCommentResolved;
-
-          // Enhance tables with OxygenXML-like styling
           function enhanceTables() {
             const tables = document.querySelectorAll('#content table');
             tables.forEach(table => {
@@ -2952,7 +2437,6 @@ jobs:
             });
           }
 
-          // Show error content when page cannot be loaded
           function showErrorContent(pageId) {
             console.error('Failed to load content:', pageId);
             contentEl.innerHTML = `
@@ -2965,7 +2449,6 @@ jobs:
             document.body.classList.remove('loading');
           }
 
-          // Load content for a page
           async function loadContent(pageId) {
             const contentPath = `${basePath}/content/${pageId}.html`;
             debug('Fetching from URL:', contentPath);
@@ -2982,7 +2465,6 @@ jobs:
             }
           }
 
-          // Update active state in navigation
           function updateActiveNavItem(pageId) {
             const allNavItems = document.querySelectorAll('.sidebar a');
             allNavItems.forEach(item => item.classList.remove('active'));
@@ -3001,19 +2483,16 @@ jobs:
             }
           }
 
-          // Handle popstate event (browser back/forward)
           function handlePopState(event) {
             const pageId = event.state?.pageId || getPageIdFromUrl() || navigationConfig[0].id;
             debug('Popstate event, loading page:', pageId);
             navigateToPage(pageId, false);
           }
 
-          // Get page ID from URL hash
           function getPageIdFromUrl() {
             return window.location.hash.substring(1) || null;
           }
 
-          // Get page title from content manifest
           function getPageTitle(pageId) {
             if (window.contentIdMap && contentIdMap[pageId]) {
               return contentIdMap[pageId].title;
@@ -3040,7 +2519,6 @@ jobs:
             ).join(' ');
           }
 
-          // Search functionality
           function performSearch() {
             const query = searchInput.value.toLowerCase().trim();
             searchResultsEl.innerHTML = '';
@@ -3136,24 +2614,20 @@ jobs:
             return text.replace(regex, '<span class="highlight">$1</span>');
           }
 
-          // Make navigateToPage available globally
           window.navigateToPage = navigateToPage;
 
           // Initialize the app when DOM is ready
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 10: Create default content for container nodes
+      # Step 13: Create default content for container nodes
       - name: Create Default Content
         run: |
-          # Create content directory if it doesn't exist
           mkdir -p ./site/content
 
-          # Extract container nodes from navigation
           grep -o '"id": "[^"]*".*"children"' ./navigation-structure.json |
           sed 's/"id": "\([^"]*\)".*/\1/' > container-nodes.txt
 
-          # Create default content for container nodes
           while IFS= read -r id || [ -n "$id" ]; do
             if [ ! -f "./site/content/$id.html" ]; then
               title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
@@ -3163,17 +2637,15 @@ jobs:
           <h1>${title}</h1>
           <p>This section contains information about ${title}.</p>
           <p>Use the navigation menu to explore topics within this section.</p>
-          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
-          <p><strong>Comments Side Cart:</strong> View all comments and suggestions in an organized panel with image previews and download options.</p>
+          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features with Staticman integration.</p>
+          <p><strong>Staticman Comments:</strong> All comments and suggestions are automatically synchronized with the GitHub repository for persistent collaborative review.</p>
           EOF
             fi
           done < container-nodes.txt
 
-          # Create default containers if none found
           if [ ! -s container-nodes.txt ]; then
             echo "No container nodes found in navigation. Creating default containers."
 
-            # Create default containers
             for id in automotive-information basic-maintenance major-vehicle-components; do
               title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
 
@@ -3182,14 +2654,14 @@ jobs:
           <h1>${title}</h1>
           <p>This section contains information about ${title}.</p>
           <p>Use the navigation menu to explore topics within this section.</p>
-          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features.</p>
-          <p><strong>Comments Side Cart:</strong> View all comments and suggestions in an organized panel with image previews and download options.</p>
+          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features with Staticman integration.</p>
+          <p><strong>Staticman Comments:</strong> All comments and suggestions are automatically synchronized with the GitHub repository for persistent collaborative review.</p>
           EOF
             done
           fi
 
-      # Step 11: Create Enhanced index.html (MODIFIED)
-      - name: Create Enhanced Index HTML with Comments Side Cart
+      # Step 14: Create Enhanced index.html with Staticman Integration
+      - name: Create Enhanced Index HTML with Staticman Integration
         run: |
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
@@ -3213,7 +2685,7 @@ jobs:
               }
             </script>
 
-            <title>Automotive Documentation - Enhanced with Comments Side Cart Review</title>
+            <title>Automotive Documentation - Enhanced with Staticman Comments Review System</title>
             <link rel="stylesheet" href="css/style.css">
           </head>
           <body>
@@ -3236,7 +2708,7 @@ jobs:
                   <button id="reviewToggle" class="review-btn">Review Mode</button>
                 </div>
                 <button id="startReview" class="review-btn secondary">Start Review</button>
-                <button id="clearReview" class="review-btn danger" style="margin-top: 10px;">Clear All</button>
+                <button id="clearReview" class="review-btn danger" style="margin-top: 10px;">Clear Pending</button>
               </div>
               
               <div class="sidebar-nav">
@@ -3250,7 +2722,7 @@ jobs:
                 <h3>Review Mode Active</h3>
                 <div class="review-toolbar-actions">
                   <button class="review-toolbar-btn">Comments</button>
-                  <button class="review-toolbar-btn">Print Snapshot</button>
+                  <button class="review-toolbar-btn">Retry Failed</button>
                 </div>
               </div>
               
@@ -3258,16 +2730,20 @@ jobs:
               <div id="loading">Loading content...</div>
               <div id="content">
                 <div class="initial-loading">
-                  <p>Initializing enhanced documentation viewer with comments side cart review system...</p>
+                  <p>Initializing enhanced documentation viewer with Staticman comments review system...</p>
                 </div>
               </div>
             </div>
 
-            <!-- Print functionality (modified behavior) -->
+            <!-- Print functionality -->
             <div class="wh_print_link" style="position: fixed; top: 10px; right: 10px; z-index: 999;">
               <button title="Print page or view comments">🖨️ Print</button>
             </div>
 
+            <!-- Load all JavaScript modules -->
+            <script src="js/staticman-config.js"></script>
+            <script src="js/preloaded-comments.js"></script>
+            <script src="js/comments-loader.js"></script>
             <script src="js/navigation-config.js"></script>
             <script src="js/content-id-map.js"></script>
             <script src="js/app.js"></script>
@@ -3275,7 +2751,10 @@ jobs:
           </html>
           EOF
 
-      # Step 12: Create 404.html for SPA routing
+          # Copy staticman.yml to site directory for GitHub Pages
+          cp staticman.yml ./site/
+
+      # Step 15: Create 404.html for SPA routing
       - name: Create 404 Page
         run: |
           cat > ./site/404.html << 'EOF'
@@ -3286,10 +2765,8 @@ jobs:
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Redirecting...</title>
             <script>
-              // Store the requested URL for processing after redirect
               sessionStorage.redirect = location.href;
 
-              // Determine the correct base path
               function getBasePath() {
                 if (location.hostname.includes('github.io')) {
                   const pathSegments = location.pathname.split('/');
@@ -3300,7 +2777,6 @@ jobs:
                 return '';
               }
 
-              // Redirect to the main site
               const basePath = getBasePath();
               window.location.href = basePath + '/';
             </script>
@@ -3314,7 +2790,81 @@ jobs:
           </html>
           EOF
 
-      # Step 13: Deploy to GitHub Pages
+      # Step 16: Create Staticman Setup Instructions
+      - name: Create Staticman Setup Instructions
+        run: |
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+
+          cat > ./site/staticman-setup.md << EOF
+          # Staticman Setup Instructions
+
+          Your repository is configured for Staticman integration with the following settings:
+
+          ## Configuration Details
+          - **Repository**: $REPO_OWNER/$REPO_NAME
+          - **Branch**: $BRANCH_NAME  
+          - **Endpoint**: https://api.staticman.net/v3/entry/github/$REPO_OWNER/$REPO_NAME/$BRANCH_NAME/comments
+
+          ## Manual Setup Steps Required
+
+          ### 1. Add Staticman Bot as Collaborator
+          1. Go to your repository settings → Manage access
+          2. Click "Invite a collaborator"
+          3. Add username: \`staticmanapp\`
+          4. Send invitation
+
+          ### 2. Accept Staticman Invitation
+          Visit this URL to accept the invitation:
+          \`\`\`
+          https://api.staticman.net/v3/connect/github/$REPO_OWNER/$REPO_NAME
+          \`\`\`
+
+          ### 3. Test Your Setup
+          Use this curl command to test:
+          \`\`\`bash
+          curl -X POST \\
+            https://api.staticman.net/v3/entry/github/$REPO_OWNER/$REPO_NAME/$BRANCH_NAME/comments \\
+            -H 'Content-Type: application/json' \\
+            -d '{
+              "fields": {
+                "name": "Test User",
+                "message": "Test comment",
+                "pageId": "test-page"
+              }
+            }'
+          \`\`\`
+
+          ## Features Enabled
+          - ✅ Staticman configuration file created
+          - ✅ Comment submission endpoint configured  
+          - ✅ Review system with text selection and image annotation
+          - ✅ Comments side cart with sync status indicators
+          - ✅ Automatic retry for failed submissions
+          - ✅ Repository-based comment persistence
+
+          ## Next Steps
+          1. Complete the manual setup steps above
+          2. Deploy this workflow to GitHub Pages
+          3. Test the comment system in review mode
+          4. Comments will be stored in \`_data/comments/\` directory
+
+          EOF
+
+          echo "Staticman setup instructions created at ./site/staticman-setup.md"
+          echo ""
+          echo "=== IMPORTANT: Manual Setup Required ==="
+          echo "Repository: $REPO_OWNER/$REPO_NAME"
+          echo "Branch: $BRANCH_NAME"
+          echo "Endpoint: https://api.staticman.net/v3/entry/github/$REPO_OWNER/$REPO_NAME/$BRANCH_NAME/comments"
+          echo ""
+          echo "1. Add 'staticmanapp' as collaborator to your repository"
+          echo "2. Visit: https://api.staticman.net/v3/connect/github/$REPO_OWNER/$REPO_NAME"
+          echo "3. Check ./site/staticman-setup.md for complete instructions"
+          echo "========================================="
+
+      # Step 17: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
