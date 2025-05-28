@@ -1,992 +1,2227 @@
-name: DITA to SPA with Staticman Comments System
-
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Create Staticman Configuration
-        run: |
-          cat > staticman.yml << 'EOF'
-          comments:
-            allowedFields: ["name", "email", "url", "message", "pageId", "commentType", "selectedText", "selectionType", "position"]
-            branch: "main"
-            commitMessage: "New comment by {fields.name} on {options.pageId}"
-            filename: "comment-{@timestamp}"
-            format: "json"
-            transforms:
-              email: md5
-            moderation: true
-            pullRequestBody: "New comment for approval"
-            path: "_data/comments/{options.pageId}"
-            requiredFields: ["name", "message", "pageId"]
-            generatedFields:
-              date:
-                type: "date"
-                options:
-                  format: "iso8601"
-              id:
-                type: "date"
-                options:
-                  format: "timestamp"
-          EOF
-
-      - name: Set up DITA-OT
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxml2-utils xsltproc
-          wget https://github.com/dita-ot/dita-ot/releases/download/4.0.2/dita-ot-4.0.2.zip
-          unzip dita-ot-4.0.2.zip
-          chmod +x dita-ot-4.0.2/bin/dita
-
-      - name: Parse DITAMAP Structure
-        run: |
-          cat > extract-nav.xsl << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-            <xsl:output method="text"/>
-            <xsl:template match="/">
-              [<xsl:apply-templates select="//topicref[not(ancestor::topicref)]"/>]
-            </xsl:template>
-            <xsl:template match="topicref">
-              <xsl:variable name="id" select="translate(substring-before(@href, '.'), '_', '-')"/>
-              <xsl:variable name="title" select="@navtitle"/>
-              {
-                "id": "<xsl:value-of select="$id"/>",
-                "title": "<xsl:value-of select="$title"/>",
-                "href": "<xsl:value-of select="@href"/>"
-                <xsl:if test="topicref">,
-                "children": [<xsl:apply-templates select="topicref"/>]</xsl:if>
-              }<xsl:if test="following-sibling::topicref">,</xsl:if>
-            </xsl:template>
-          </xsl:stylesheet>
-          EOF
-          
-          xsltproc extract-nav.xsl dita-source/automotive.ditamap > navigation-structure.json || echo '[]' > navigation-structure.json
-
-      - name: Transform DITA to HTML
-        run: |
-          ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site || echo "DITA transformation completed"
-          mkdir -p ./site/content ./site/images ./site/js ./site/css ./site/_data/comments
-          find ./dita-source -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp {} ./site/images/ \; 2>/dev/null || true
-
-      - name: Process HTML Content
-        run: |
-          find ./site -name "*.html" ! -name "index.html" ! -name "404.html" | while read file; do
-            filename=$(basename "$file" .html)
-            sed -n '/<body/,/<\/body>/p' "$file" | sed '/<body/d; /<\/body>/d' > "./site/content/$filename.html" || echo "Processed $filename"
-          done
-
-      - name: Create JavaScript Files
-        run: |
-          # Get repository info
-          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
-          REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
-          
-          # Navigation config
-          echo "const navigationConfig = " > ./site/js/navigation-config.js
-          cat navigation-structure.json >> ./site/js/navigation-config.js
-          echo ";" >> ./site/js/navigation-config.js
-          
-          # Staticman config template
-          cat > ./site/js/staticman-config.js << 'EOF'
-          window.staticmanConfig = {
-            endpoint: 'https://api.staticman.net/v3/entry/github/PLACEHOLDER_OWNER/PLACEHOLDER_NAME/PLACEHOLDER_BRANCH/comments',
-            repository: 'PLACEHOLDER_OWNER/PLACEHOLDER_NAME',
-            branch: 'PLACEHOLDER_BRANCH',
-            enabled: true,
-            moderation: true,
-            setup: {
-              inviteUrl: 'https://api.staticman.net/v3/connect/github/PLACEHOLDER_OWNER/PLACEHOLDER_NAME',
-              docsUrl: 'https://staticman.net/docs/',
-              repositoryUrl: 'https://github.com/PLACEHOLDER_OWNER/PLACEHOLDER_NAME'
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" data-whc_version="25.1" lang="en" dir="ltr">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+        <meta name="wh-path2root" content=""/>        
+        <title>Enhanced DITA Documentation Browser with Text-Linked Comments</title>
+        
+        <!-- Root level paths to DitaTO folder resources -->
+        <link rel="stylesheet" type="text/css" href="DitaTO/oxygen-webhelp/app/commons.css?buildId=2023110910"/>
+        <link rel="stylesheet" type="text/css" href="DitaTO/oxygen-webhelp/app/main.css?buildId=2023110910"/>
+        <link rel="stylesheet" type="text/css" href="DitaTO/oxygen-webhelp/template/aquamarine.css?buildId=2023110910"/>
+        <link rel="stylesheet" type="text/css" href="DitaTO/oxygen-webhelp/template/notes.css?buildId=2023110910"/>
+        
+        <style>
+            .search-results {
+                margin-top: 20px;
+                padding: 20px;
+                background: #f8f9fa;
+                border-radius: 8px;
             }
-          };
-          EOF
-          
-          # Replace placeholders
-          sed -i "s/PLACEHOLDER_OWNER/$REPO_OWNER/g" ./site/js/staticman-config.js
-          sed -i "s/PLACEHOLDER_NAME/$REPO_NAME/g" ./site/js/staticman-config.js
-          sed -i "s/PLACEHOLDER_BRANCH/$BRANCH_NAME/g" ./site/js/staticman-config.js
-
-      - name: Create Comments System
-        run: |
-          cat > ./site/js/comments-loader.js << 'EOF'
-          class CommentsLoader {
-            constructor() {
-              this.comments = {};
-              this.loadExistingComments();
+            .result-item {
+                padding: 15px;
+                margin: 10px 0;
+                background: white;
+                border-left: 4px solid #5F9EA0;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                border-radius: 4px;
             }
-            
-            async loadExistingComments() {
-              try {
-                if (window.preloadedComments) {
-                  this.comments = window.preloadedComments;
+            .result-title {
+                font-weight: bold;
+                color: #2c3e50;
+                margin-bottom: 5px;
+            }
+            .result-path {
+                font-size: 0.9em;
+                color: #7f8c8d;
+                margin-bottom: 8px;
+            }
+            .result-snippet {
+                color: #34495e;
+                line-height: 1.4;
+            }
+            .highlight {
+                background-color: #fff3cd;
+                padding: 2px 4px;
+                border-radius: 3px;
+            }
+            .file-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                gap: 15px;
+                margin-top: 20px;
+            }
+            .file-card {
+                background: white;
+                padding: 15px;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                cursor: pointer;
+                transition: transform 0.2s, box-shadow 0.2s;
+            }
+            .file-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            }
+            .file-type {
+                font-size: 0.8em;
+                background: #5F9EA0;
+                color: white;
+                padding: 2px 8px;
+                border-radius: 12px;
+                display: inline-block;
+                margin-bottom: 8px;
+            }
+            .html-list {
+                background: white;
+                padding: 20px;
+                margin: 20px 0;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .html-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 12px;
+                margin: 8px 0;
+                background: #f8f9fa;
+                border-left: 4px solid #5F9EA0;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: background 0.2s;
+            }
+            .html-item:hover {
+                background: #e9ecef;
+            }
+            .html-info {
+                flex-grow: 1;
+            }
+            .html-title {
+                font-weight: bold;
+                color: #2c3e50;
+                margin-bottom: 4px;
+            }
+            .html-path {
+                font-size: 0.9em;
+                color: #6c757d;
+                font-family: monospace;
+            }
+            .html-badge {
+                background: #5F9EA0;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 12px;
+                font-size: 0.8em;
+                margin-left: 10px;
+            }
+            .loading {
+                text-align: center;
+                padding: 20px;
+                color: #7f8c8d;
+            }
+
+            /* DOCUMENT VIEWER STYLES */
+            .document-viewer {
+                display: none;
+                background: white;
+                margin-top: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+
+            .document-viewer.active {
+                display: block;
+            }
+
+            .document-viewer.selection-mode .document-content {
+                cursor: text;
+                user-select: text;
+            }
+
+            .document-header {
+                background: linear-gradient(135deg, #5F9EA0, #4a7c7e);
+                color: white;
+                padding: 20px;
+                border-radius: 8px 8px 0 0;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .document-title {
+                font-size: 1.3em;
+                font-weight: bold;
+                margin: 0;
+            }
+
+            .document-controls {
+                display: flex;
+                gap: 10px;
+            }
+
+            .doc-btn {
+                background: rgba(255,255,255,0.2);
+                border: 1px solid rgba(255,255,255,0.3);
+                color: white;
+                padding: 8px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 0.9em;
+                transition: all 0.2s;
+            }
+
+            .doc-btn:hover {
+                background: rgba(255,255,255,0.3);
+                transform: translateY(-1px);
+            }
+
+            .doc-btn.active {
+                background: rgba(255,255,255,0.4);
+                box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+            }
+
+            .document-content {
+                padding: 30px;
+                line-height: 1.6;
+                max-height: 70vh;
+                overflow-y: auto;
+                border-bottom: 1px solid #e0e0e0;
+                position: relative;
+            }
+
+            .document-content h1, .document-content h2, .document-content h3 {
+                color: #2c3e50;
+                margin-top: 1.5em;
+                margin-bottom: 0.8em;
+            }
+
+            .document-content h1 {
+                font-size: 1.8em;
+                border-bottom: 2px solid #5F9EA0;
+                padding-bottom: 10px;
+            }
+
+            .document-content img {
+                max-width: 100%;
+                height: auto;
+                display: block;
+                margin: 1em auto;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+
+            .document-content table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 1.5em 0;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+
+            .document-content th, .document-content td {
+                border: 1px solid #b2dfdb;
+                padding: 12px;
+                text-align: left;
+            }
+
+            .document-content th {
+                background-color: #e0f2f1;
+                font-weight: bold;
+                color: #00796b;
+            }
+
+            .document-content tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
+
+            /* TEXT HIGHLIGHTING STYLES */
+            .text-highlight {
+                background: linear-gradient(120deg, #a8e6cf 0%, #deff8b 100%);
+                padding: 2px 4px;
+                border-radius: 3px;
+                cursor: pointer;
+                position: relative;
+                transition: all 0.2s;
+                border: 2px solid transparent;
+            }
+
+            .text-highlight:hover {
+                border-color: #5F9EA0;
+                box-shadow: 0 2px 8px rgba(95,158,160,0.3);
+            }
+
+            .text-highlight.active {
+                background: linear-gradient(120deg, #ffb3ba 0%, #ffdfba 100%);
+                border-color: #ff6b6b;
+            }
+
+            .text-highlight::after {
+                content: '💬';
+                position: absolute;
+                top: -8px;
+                right: -8px;
+                background: #5F9EA0;
+                color: white;
+                border-radius: 50%;
+                width: 18px;
+                height: 18px;
+                font-size: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0;
+                transition: opacity 0.2s;
+            }
+
+            .text-highlight:hover::after {
+                opacity: 1;
+            }
+
+            .selection-overlay {
+                position: absolute;
+                background: rgba(95,158,160,0.2);
+                border: 2px dashed #5F9EA0;
+                border-radius: 4px;
+                pointer-events: none;
+                z-index: 10;
+                display: none;
+            }
+
+            /* COMMENTS SECTION STYLES */
+            .comments-section {
+                background: #f8f9fa;
+                padding: 20px;
+                border-radius: 0 0 8px 8px;
+                border-top: 3px solid #5F9EA0;
+            }
+
+            .comments-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                margin-bottom: 20px;
+                padding-bottom: 15px;
+                border-bottom: 2px solid #dee2e6;
+            }
+
+            .comments-title-group {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .comments-title {
+                font-size: 1.2em;
+                font-weight: bold;
+                color: #2c3e50;
+                margin: 0;
+            }
+
+            .comments-icon {
+                font-size: 1.3em;
+            }
+
+            .comments-subtitle {
+                font-size: 0.9em;
+                color: #6c757d;
+                margin: 5px 0 0 0;
+            }
+
+            .comments-controls {
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+
+            .comment-btn {
+                background: #5F9EA0;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 0.9em;
+                transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            }
+
+            .comment-btn:hover {
+                background: #4a7c7e;
+                transform: translateY(-1px);
+            }
+
+            .comment-btn:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+                transform: none;
+            }
+
+            .comment-btn.highlight-mode {
+                background: #ff6b6b;
+            }
+
+            .comment-btn.highlight-mode:hover {
+                background: #ff5252;
+            }
+
+            /* VERSION INFO STYLES */
+            .version-info {
+                background: #e8f5e8;
+                border: 1px solid #c8e6c9;
+                border-radius: 6px;
+                padding: 10px 15px;
+                margin-bottom: 15px;
+                font-size: 0.9em;
+            }
+
+            .version-warning {
+                background: #fff3cd;
+                border: 1px solid #ffeaa7;
+                color: #856404;
+            }
+
+            .version-error {
+                background: #f8d7da;
+                border: 1px solid #f5c6cb;
+                color: #721c24;
+            }
+
+            /* EXISTING COMMENTS DISPLAY */
+            .comments-list {
+                margin-top: 25px;
+            }
+
+            .comment-item {
+                background: white;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 15px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                transition: all 0.2s;
+            }
+
+            .comment-item:hover {
+                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            }
+
+            .comment-item.outdated {
+                opacity: 0.6;
+                border-color: #ffc107;
+                background: #fffbf0;
+            }
+
+            .comment-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid #f0f0f0;
+            }
+
+            .comment-author {
+                font-weight: bold;
+                color: #2c3e50;
+            }
+
+            .comment-date {
+                font-size: 0.85em;
+                color: #6c757d;
+            }
+
+            .comment-selected-text {
+                background: #f8f9fa;
+                border-left: 4px solid #5F9EA0;
+                padding: 8px 12px;
+                margin: 10px 0;
+                border-radius: 4px;
+                font-style: italic;
+                cursor: pointer;
+                position: relative;
+            }
+
+            .comment-selected-text:hover {
+                background: #e9ecef;
+            }
+
+            .comment-selected-text::after {
+                content: '🔍 Click to highlight in document';
+                position: absolute;
+                right: 10px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 0.75em;
+                color: #6c757d;
+                opacity: 0;
+                transition: opacity 0.2s;
+            }
+
+            .comment-selected-text:hover::after {
+                opacity: 1;
+            }
+
+            .comment-body {
+                line-height: 1.5;
+                color: #333;
+                white-space: pre-wrap;
+                margin: 10px 0;
+            }
+
+            .comment-labels {
+                margin-top: 10px;
+                display: flex;
+                gap: 5px;
+                flex-wrap: wrap;
+            }
+
+            .comment-label {
+                background: #e9ecef;
+                color: #495057;
+                padding: 2px 8px;
+                border-radius: 12px;
+                font-size: 0.75em;
+                border: 1px solid #dee2e6;
+            }
+
+            .comment-label.outdated {
+                background: #fff3cd;
+                color: #856404;
+                border-color: #ffeaa7;
+            }
+
+            .comment-actions {
+                margin-top: 10px;
+                display: flex;
+                gap: 10px;
+                align-items: center;
+            }
+
+            .comment-link {
+                color: #5F9EA0;
+                text-decoration: none;
+                font-size: 0.85em;
+            }
+
+            .comment-link:hover {
+                text-decoration: underline;
+            }
+
+            .comment-jump-btn {
+                background: #28a745;
+                color: white;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 3px;
+                font-size: 0.8em;
+                cursor: pointer;
+                transition: background 0.2s;
+            }
+
+            .comment-jump-btn:hover {
+                background: #218838;
+            }
+
+            .comment-jump-btn:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+            }
+
+            /* ADD COMMENT FORM */
+            .add-comment-form {
+                background: white;
+                border: 2px solid #5F9EA0;
+                border-radius: 8px;
+                padding: 20px;
+                margin-top: 20px;
+                display: none;
+            }
+
+            .add-comment-form.show {
+                display: block;
+            }
+
+            .form-group {
+                margin-bottom: 15px;
+            }
+
+            .form-label {
+                display: block;
+                font-weight: bold;
+                color: #2c3e50;
+                margin-bottom: 5px;
+            }
+
+            .form-input, .form-textarea {
+                width: 100%;
+                padding: 10px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                font-family: inherit;
+                font-size: 0.9em;
+            }
+
+            .form-textarea {
+                min-height: 100px;
+                resize: vertical;
+            }
+
+            .selected-text-preview {
+                background: #e8f5e8;
+                border: 1px solid #c8e6c9;
+                border-radius: 4px;
+                padding: 10px;
+                margin: 10px 0;
+                font-style: italic;
+            }
+
+            .selected-text-preview .label {
+                font-weight: bold;
+                color: #2c3e50;
+                font-style: normal;
+            }
+
+            .form-actions {
+                display: flex;
+                gap: 10px;
+                justify-content: flex-end;
+            }
+
+            .form-btn {
+                padding: 8px 16px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 0.9em;
+                transition: all 0.2s;
+            }
+
+            .form-btn.primary {
+                background: #5F9EA0;
+                color: white;
+            }
+
+            .form-btn.primary:hover {
+                background: #4a7c7e;
+            }
+
+            .form-btn.secondary {
+                background: #f8f9fa;
+                color: #6c757d;
+                border: 1px solid #dee2e6;
+            }
+
+            .form-btn.secondary:hover {
+                background: #e9ecef;
+            }
+
+            /* BACK BUTTON */
+            .back-to-browse {
+                position: fixed;
+                top: 20px;
+                left: 20px;
+                background: #5F9EA0;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 0.9em;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                z-index: 1000;
+                display: none;
+                transition: all 0.2s;
+            }
+
+            .back-to-browse:hover {
+                background: #4a7c7e;
+                transform: translateY(-1px);
+            }
+
+            .back-to-browse.show {
+                display: block;
+            }
+
+            /* STATUS MESSAGES */
+            .status-message {
+                padding: 10px 15px;
+                border-radius: 4px;
+                margin: 10px 0;
+                font-size: 0.9em;
+            }
+
+            .status-success {
+                background: #d4edda;
+                color: #155724;
+                border: 1px solid #c3e6cb;
+            }
+
+            .status-error {
+                background: #f8d7da;
+                color: #721c24;
+                border: 1px solid #f5c6cb;
+            }
+
+            .status-loading {
+                background: #d1ecf1;
+                color: #0c5460;
+                border: 1px solid #b8daff;
+            }
+
+            .status-warning {
+                background: #fff3cd;
+                color: #856404;
+                border: 1px solid #ffeaa7;
+            }
+
+            /* RESPONSIVE DESIGN */
+            @media (max-width: 768px) {
+                .document-header {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 10px;
                 }
-              } catch (error) {
-                console.log('No existing comments found');
-              }
-            }
-            
-            getCommentsForPage(pageId) {
-              return this.comments[pageId] || [];
-            }
-          }
-          
-          window.commentsLoader = new CommentsLoader();
-          window.getCommentsForPage = (pageId) => window.commentsLoader.getCommentsForPage(pageId);
-          EOF
-          
-          echo "window.preloadedComments = {};" > ./site/js/preloaded-comments.js
 
-      - name: Create Staticman Integration
-        run: |
-          cat > ./site/js/staticman-integration.js << 'EOF'
-          class StaticmanIntegration {
-            constructor() {
-              this.config = window.staticmanConfig;
-              this.status = 'disconnected';
-              this.testConnection();
-            }
-            
-            async testConnection() {
-              if (!this.config?.endpoint) {
-                this.setStatus('error', 'Staticman not configured');
-                return;
-              }
-              
-              try {
-                this.setStatus('connecting', 'Testing connection...');
-                const response = await fetch(this.config.endpoint.replace('/entry/', '/'), {
-                  method: 'GET',
-                  mode: 'cors'
-                }).catch(() => ({ ok: false }));
-                
-                if (response.ok || response.status === 404) {
-                  this.setStatus('connected', 'Staticman connected');
-                } else {
-                  throw new Error('Service unavailable');
+                .document-controls {
+                    width: 100%;
+                    justify-content: flex-end;
                 }
-              } catch (error) {
-                this.setStatus('error', 'Connection failed - click for help');
-              }
-            }
-            
-            async submitComment(commentData) {
-              try {
-                this.setStatus('submitting', 'Submitting comment...');
-                
-                const response = await fetch(this.config.endpoint, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    fields: commentData,
-                    options: { pageId: commentData.pageId }
-                  })
-                });
-                
-                if (!response.ok) {
-                  throw new Error('HTTP ' + response.status);
-                }
-                
-                this.setStatus('submitted', 'Comment submitted for review');
-                return {
-                  success: true,
-                  moderated: true,
-                  message: 'Comment submitted for review'
-                };
-              } catch (error) {
-                this.setStatus('error', 'Submission failed: ' + error.message);
-                throw error;
-              }
-            }
-            
-            setStatus(status, message) {
-              this.status = status;
-              this.updateStatusUI(status, message);
-            }
-            
-            updateStatusUI(status, message) {
-              let statusEl = document.getElementById('staticman-status');
-              if (!statusEl) {
-                statusEl = document.createElement('div');
-                statusEl.id = 'staticman-status';
-                statusEl.className = 'staticman-status';
-                const sidebar = document.querySelector('.sidebar');
-                if (sidebar) sidebar.insertBefore(statusEl, sidebar.firstChild);
-              }
-              
-              statusEl.className = 'staticman-status status-' + status;
-              statusEl.textContent = message;
-              
-              if (status === 'error') {
-                statusEl.style.cursor = 'pointer';
-                statusEl.onclick = () => this.showSetupHelp();
-              }
-            }
-            
-            showSetupHelp() {
-              alert('Staticman Setup:\n\n1. Add staticmanapp as collaborator\n2. Visit: ' + this.config.setup.inviteUrl + '\n3. Test the integration');
-            }
-          }
-          
-          window.staticmanIntegration = new StaticmanIntegration();
-          EOF
 
-      - name: Create Content Map
-        run: |
-          echo "const contentMap = {" > ./site/js/content-map.js
-          find ./site/content -name "*.html" | while read file; do
-            id=$(basename "$file" .html)
-            title=$(echo "$id" | tr '-' ' ' | sed 's/\b\w/\U&/g')
-            echo "  \"$id\": { \"title\": \"$title\", \"content\": \"Sample content\" }," >> ./site/js/content-map.js
-          done
-          echo "};" >> ./site/js/content-map.js
-
-      - name: Create Main Application
-        run: |
-          cat > ./site/js/app.js << 'EOF'
-          class DocumentationSPA {
-            constructor() {
-              this.currentPage = null;
-              this.reviewMode = false;
-              this.currentSelection = null;
-              this.init();
-            }
-            
-            init() {
-              this.setupEventListeners();
-              this.renderNavigation();
-              this.setupCommentsSystem();
-              this.loadInitialPage();
-            }
-            
-            setupEventListeners() {
-              window.addEventListener('popstate', (e) => {
-                const pageId = e.state?.pageId || this.getPageFromHash();
-                if (pageId) this.navigateToPage(pageId, false);
-              });
-              
-              const searchBtn = document.getElementById('search-btn');
-              const searchInput = document.getElementById('search-input');
-              if (searchBtn && searchInput) {
-                searchBtn.addEventListener('click', () => this.performSearch());
-                searchInput.addEventListener('keypress', (e) => {
-                  if (e.key === 'Enter') this.performSearch();
-                });
-              }
-              
-              const reviewToggle = document.getElementById('review-toggle');
-              if (reviewToggle) {
-                reviewToggle.addEventListener('click', () => this.toggleReviewMode());
-              }
-            }
-            
-            renderNavigation() {
-              const navContainer = document.getElementById('navigation');
-              if (!navContainer || !window.navigationConfig) return;
-              this.createNavItems(window.navigationConfig, navContainer);
-            }
-            
-            createNavItems(items, container) {
-              const ul = document.createElement('ul');
-              items.forEach(item => {
-                const li = document.createElement('li');
-                const a = document.createElement('a');
-                a.textContent = item.title;
-                a.href = '#' + item.id;
-                a.addEventListener('click', (e) => {
-                  e.preventDefault();
-                  this.navigateToPage(item.id);
-                });
-                li.appendChild(a);
-                if (item.children) {
-                  this.createNavItems(item.children, li);
+                .document-content {
+                    padding: 20px;
+                    max-height: 60vh;
                 }
-                ul.appendChild(li);
-              });
-              container.appendChild(ul);
-            }
-            
-            async navigateToPage(pageId, pushState = true) {
-              if (!pageId) return;
-              this.currentPage = pageId;
-              this.updateActiveNavItem(pageId);
-              
-              if (pushState) {
-                history.pushState({ pageId }, '', '#' + pageId);
-              }
-              
-              try {
-                const content = await this.loadContent(pageId);
-                this.displayContent(content, pageId);
-                this.loadCommentsForPage(pageId);
-              } catch (error) {
-                this.displayError(pageId);
-              }
-            }
-            
-            async loadContent(pageId) {
-              const response = await fetch('content/' + pageId + '.html');
-              if (!response.ok) throw new Error('Content not found');
-              return await response.text();
-            }
-            
-            displayContent(content, pageId) {
-              const contentContainer = document.getElementById('main-content');
-              const titleContainer = document.getElementById('page-title');
-              
-              if (contentContainer) {
-                contentContainer.innerHTML = content;
-                this.setupContentInteractivity();
-              }
-              
-              if (titleContainer && window.contentMap && window.contentMap[pageId]) {
-                titleContainer.textContent = window.contentMap[pageId].title;
-                document.title = window.contentMap[pageId].title;
-              }
-            }
-            
-            displayError(pageId) {
-              const contentContainer = document.getElementById('main-content');
-              if (contentContainer) {
-                contentContainer.innerHTML = '<div class="error-message"><h2>Content Not Found</h2><p>The requested page could not be loaded.</p></div>';
-              }
-            }
-            
-            setupContentInteractivity() {
-              if (this.reviewMode) {
-                this.makeContentReviewable();
-              }
-            }
-            
-            makeContentReviewable() {
-              const textElements = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td');
-              textElements.forEach(el => {
-                el.addEventListener('mouseup', (e) => this.handleTextSelection(e));
-                el.style.cursor = 'text';
-              });
-              
-              const images = document.querySelectorAll('img');
-              images.forEach(img => {
-                img.addEventListener('click', (e) => this.handleImageClick(e));
-                img.style.cursor = 'crosshair';
-              });
-            }
-            
-            handleTextSelection(event) {
-              const selection = window.getSelection();
-              const selectedText = selection.toString().trim();
-              
-              if (selectedText.length > 0) {
-                this.currentSelection = {
-                  type: 'text',
-                  text: selectedText,
-                  element: event.target,
-                  range: selection.getRangeAt(0).cloneRange()
-                };
-                setTimeout(() => this.showCommentDialog(), 100);
-              }
-            }
-            
-            handleImageClick(event) {
-              const img = event.target;
-              const rect = img.getBoundingClientRect();
-              const x = ((event.clientX - rect.left) / rect.width) * 100;
-              const y = ((event.clientY - rect.top) / rect.height) * 100;
-              
-              this.currentSelection = {
-                type: 'image',
-                element: img,
-                position: { x, y },
-                imageSrc: img.src,
-                imageAlt: img.alt || 'Image'
-              };
-              this.showCommentDialog();
-            }
-            
-            showCommentDialog() {
-              const dialog = document.getElementById('comment-dialog');
-              const overlay = document.getElementById('dialog-overlay');
-              
-              if (dialog && overlay) {
-                dialog.classList.add('show');
-                overlay.classList.add('show');
-                const nameInput = document.getElementById('comment-name');
-                if (nameInput) nameInput.focus();
-              }
-            }
-            
-            hideCommentDialog() {
-              const dialog = document.getElementById('comment-dialog');
-              const overlay = document.getElementById('dialog-overlay');
-              
-              if (dialog && overlay) {
-                dialog.classList.remove('show');
-                overlay.classList.remove('show');
-              }
-              this.currentSelection = null;
-              window.getSelection().removeAllRanges();
-            }
-            
-            async submitComment() {
-              if (!this.currentSelection || !window.staticmanIntegration) {
-                this.hideCommentDialog();
-                return;
-              }
-              
-              const name = document.getElementById('comment-name')?.value?.trim();
-              const email = document.getElementById('comment-email')?.value?.trim();
-              const message = document.getElementById('comment-message')?.value?.trim();
-              const commentType = document.querySelector('input[name="comment-type"]:checked')?.value || 'comment';
-              
-              if (!name || !message) {
-                alert('Please fill in your name and comment message.');
-                return;
-              }
-              
-              const commentData = {
-                name, email, message,
-                pageId: this.currentPage,
-                commentType,
-                selectedText: this.currentSelection.text || this.currentSelection.imageAlt || 'Selected content',
-                selectionType: this.currentSelection.type,
-                timestamp: new Date().toISOString()
-              };
-              
-              if (this.currentSelection.type === 'image') {
-                commentData.position = JSON.stringify(this.currentSelection.position);
-                commentData.imageSrc = this.currentSelection.imageSrc;
-                commentData.imageAlt = this.currentSelection.imageAlt;
-              }
-              
-              try {
-                const result = await window.staticmanIntegration.submitComment(commentData);
-                if (result.success) {
-                  this.hideCommentDialog();
-                  alert(result.moderated ? 'Comment submitted for review!' : 'Comment submitted!');
-                }
-              } catch (error) {
-                alert('Failed to submit comment: ' + error.message);
-              }
-            }
-            
-            toggleReviewMode() {
-              this.reviewMode = !this.reviewMode;
-              const toggleBtn = document.getElementById('review-toggle');
-              
-              if (toggleBtn) {
-                toggleBtn.textContent = this.reviewMode ? 'Exit Review Mode' : 'Enable Review Mode';
-                toggleBtn.classList.toggle('active', this.reviewMode);
-              }
-              
-              document.body.classList.toggle('review-mode', this.reviewMode);
-              if (this.reviewMode) this.setupContentInteractivity();
-            }
-            
-            loadCommentsForPage(pageId) {
-              if (window.commentsLoader) {
-                const comments = window.commentsLoader.getCommentsForPage(pageId);
-                this.displayComments(comments);
-              }
-            }
-            
-            displayComments(comments) {
-              const commentsContainer = document.getElementById('comments-container');
-              if (!commentsContainer || !comments.length) return;
-              
-              commentsContainer.innerHTML = comments.map(comment => 
-                '<div class="comment">' +
-                '<div class="comment-header">' +
-                '<strong>' + comment.name + '</strong>' +
-                '<span class="comment-date">' + new Date(comment.date).toLocaleDateString() + '</span>' +
-                '<span class="comment-type ' + comment.commentType + '">' + comment.commentType + '</span>' +
-                '</div>' +
-                (comment.selectedText ? '<div class="comment-context">"' + comment.selectedText + '"</div>' : '') +
-                '<div class="comment-message">' + comment.message + '</div>' +
-                '</div>'
-              ).join('');
-            }
-            
-            performSearch() {
-              const searchInput = document.getElementById('search-input');
-              const resultsContainer = document.getElementById('search-results');
-              
-              if (!searchInput || !resultsContainer || !window.contentMap) return;
-              
-              const query = searchInput.value.toLowerCase().trim();
-              resultsContainer.innerHTML = '';
-              
-              if (query.length < 2) return;
-              
-              const results = Object.entries(window.contentMap)
-                .filter(([id, data]) => 
-                  data.title.toLowerCase().includes(query) || 
-                  data.content.toLowerCase().includes(query)
-                )
-                .slice(0, 10);
-              
-              results.forEach(([id, data]) => {
-                const li = document.createElement('li');
-                const a = document.createElement('a');
-                a.textContent = data.title;
-                a.href = '#' + id;
-                a.addEventListener('click', (e) => {
-                  e.preventDefault();
-                  this.navigateToPage(id);
-                  resultsContainer.innerHTML = '';
-                  searchInput.value = '';
-                });
-                li.appendChild(a);
-                resultsContainer.appendChild(li);
-              });
-            }
-            
-            updateActiveNavItem(pageId) {
-              document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-              const activeLink = document.querySelector('.sidebar a[href="#' + pageId + '"]');
-              if (activeLink) activeLink.classList.add('active');
-            }
-            
-            getPageFromHash() {
-              return window.location.hash.slice(1) || null;
-            }
-            
-            loadInitialPage() {
-              const pageId = this.getPageFromHash();
-              if (pageId) {
-                this.navigateToPage(pageId, false);
-              } else if (window.navigationConfig && window.navigationConfig.length > 0) {
-                this.navigateToPage(window.navigationConfig[0].id, false);
-              }
-            }
-            
-            setupCommentsSystem() {
-              this.createCommentDialog();
-              document.addEventListener('commentsUpdated', (e) => {
-                if (e.detail.pageId === this.currentPage) {
-                  this.displayComments(e.detail.comments);
-                }
-              });
-            }
-            
-            createCommentDialog() {
-              const dialogHTML = 
-                '<div id="dialog-overlay" class="dialog-overlay"></div>' +
-                '<div id="comment-dialog" class="comment-dialog">' +
-                '<h3>Add Comment</h3>' +
-                '<div class="form-group">' +
-                '<input type="text" id="comment-name" placeholder="Your name (required)" required>' +
-                '<input type="email" id="comment-email" placeholder="Your email (optional)">' +
-                '</div>' +
-                '<div class="form-group">' +
-                '<label><input type="radio" name="comment-type" value="comment" checked> Comment</label>' +
-                '<label><input type="radio" name="comment-type" value="suggestion"> Suggestion</label>' +
-                '</div>' +
-                '<div class="form-group">' +
-                '<textarea id="comment-message" placeholder="Your comment or suggestion..." required></textarea>' +
-                '</div>' +
-                '<div class="dialog-actions">' +
-                '<button type="button" onclick="app.hideCommentDialog()">Cancel</button>' +
-                '<button type="button" onclick="app.submitComment()" class="primary">Submit Comment</button>' +
-                '</div>' +
-                '</div>';
-              
-              document.body.insertAdjacentHTML('beforeend', dialogHTML);
-              
-              document.getElementById('dialog-overlay').addEventListener('click', () => {
-                this.hideCommentDialog();
-              });
-            }
-          }
-          
-          let app;
-          document.addEventListener('DOMContentLoaded', () => {
-            app = new DocumentationSPA();
-            window.app = app;
-          });
-          EOF
 
-      - name: Create CSS
-        run: |
-          cat > ./site/css/styles.css << 'EOF'
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background-color: #f8fafc;
-            display: flex;
-            min-height: 100vh;
-          }
-          
-          .sidebar {
-            width: 300px;
-            background: #ffffff;
-            border-right: 1px solid #e2e8f0;
-            height: 100vh;
-            overflow-y: auto;
-            padding: 1rem;
-            box-shadow: 2px 0 4px rgba(0,0,0,0.05);
-          }
-          
-          .sidebar h2 {
-            color: #2d3748;
-            margin-bottom: 1rem;
-            font-size: 1.25rem;
-            font-weight: 600;
-            border-bottom: 2px solid #4299e1;
-            padding-bottom: 0.5rem;
-          }
-          
-          .staticman-status {
-            padding: 0.75rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            font-size: 0.875rem;
-            font-weight: 500;
-            text-align: center;
-          }
-          
-          .staticman-status.status-connected {
-            background-color: #c6f6d5;
-            color: #22543d;
-          }
-          
-          .staticman-status.status-error {
-            background-color: #fed7d7;
-            color: #742a2a;
-            cursor: pointer;
-          }
-          
-          .staticman-status.status-connecting {
-            background-color: #bee3f8;
-            color: #2a4365;
-          }
-          
-          .search-container {
-            margin-bottom: 1rem;
-            display: flex;
-            gap: 0.5rem;
-          }
-          
-          .search-container input {
-            flex: 1;
-            padding: 0.5rem;
-            border: 1px solid #cbd5e0;
-            border-radius: 0.375rem;
-          }
-          
-          .search-container button {
-            padding: 0.5rem 1rem;
-            background-color: #4299e1;
-            color: white;
-            border: none;
-            border-radius: 0.375rem;
-            cursor: pointer;
-          }
-          
-          .sidebar ul {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-          }
-          
-          .sidebar a {
-            display: block;
-            padding: 0.5rem 0.75rem;
-            color: #4a5568;
-            text-decoration: none;
-            border-radius: 0.375rem;
-            transition: all 0.2s;
-          }
-          
-          .sidebar a:hover {
-            background-color: #edf2f7;
-          }
-          
-          .sidebar a.active {
-            background-color: #4299e1;
-            color: white;
-          }
-          
-          .review-controls {
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid #e2e8f0;
-          }
-          
-          #review-toggle {
-            width: 100%;
-            padding: 0.75rem;
-            background-color: #805ad5;
-            color: white;
-            border: none;
-            border-radius: 0.375rem;
-            cursor: pointer;
-          }
-          
-          #review-toggle.active {
-            background-color: #f56565;
-          }
-          
-          .main-content {
-            flex: 1;
-            padding: 2rem;
-            overflow-y: auto;
-            height: 100vh;
-          }
-          
-          #page-title {
-            color: #2d3748;
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 1.5rem;
-            border-bottom: 3px solid #4299e1;
-            padding-bottom: 0.5rem;
-          }
-          
-          .review-mode p:hover,
-          .review-mode h1:hover, .review-mode h2:hover, .review-mode h3:hover, .review-mode h4:hover,
-          .review-mode li:hover, .review-mode td:hover {
-            background-color: rgba(66, 153, 225, 0.1);
-            border-radius: 0.25rem;
-          }
-          
-          .dialog-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: none;
-            z-index: 1000;
-          }
-          
-          .dialog-overlay.show { display: block; }
-          
-          .comment-dialog {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 2rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 20px 25px rgba(0,0,0,0.25);
-            width: 90%;
-            max-width: 500px;
-            display: none;
-            z-index: 1001;
-          }
-          
-          .comment-dialog.show { display: block; }
-          
-          .form-group { margin-bottom: 1rem; }
-          
-          .form-group input,
-          .form-group textarea {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #cbd5e0;
-            border-radius: 0.375rem;
-            font-family: inherit;
-          }
-          
-          .form-group textarea {
-            height: 100px;
-            resize: vertical;
-          }
-          
-          .dialog-actions {
-            display: flex;
-            gap: 0.75rem;
-            justify-content: flex-end;
-            margin-top: 1.5rem;
-          }
-          
-          .dialog-actions button {
-            padding: 0.75rem 1.5rem;
-            border: 1px solid #cbd5e0;
-            border-radius: 0.375rem;
-            cursor: pointer;
-          }
-          
-          .dialog-actions button.primary {
-            background-color: #4299e1;
-            color: white;
-            border-color: #4299e1;
-          }
-          
-          .comment {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 1rem;
-          }
-          
-          .comment-header {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 0.75rem;
-            font-size: 0.875rem;
-          }
-          
-          .comment-type {
-            padding: 0.25rem 0.5rem;
-            border-radius: 0.25rem;
-            font-size: 0.75rem;
-            font-weight: 500;
-            text-transform: uppercase;
-          }
-          
-          .comment-type.comment {
-            background-color: #bee3f8;
-            color: #2a4365;
-          }
-          
-          .comment-type.suggestion {
-            background-color: #faf089;
-            color: #744210;
-          }
-          
-          .error-message {
-            background-color: #fed7d7;
-            color: #742a2a;
-            padding: 2rem;
-            border-radius: 0.5rem;
-            text-align: center;
-          }
-          
-          @media (max-width: 768px) {
-            body { flex-direction: column; }
-            .sidebar { width: 100%; height: auto; max-height: 40vh; }
-            .main-content { height: auto; padding: 1rem; }
-          }
-          EOF
+                .comments-section {
+                    padding: 15px;
+                }
 
-      - name: Create HTML Structure
-        run: |
-          cat > ./site/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Documentation with Staticman Comments</title>
-            <link rel="stylesheet" href="css/styles.css">
-          </head>
-          <body>
-            <aside class="sidebar">
-              <h2>Documentation</h2>
-              <div class="search-container">
-                <input type="text" id="search-input" placeholder="Search...">
-                <button id="search-btn">Search</button>
-              </div>
-              <ul id="search-results"></ul>
-              <nav id="navigation"></nav>
-              <div class="review-controls">
-                <h3>Collaborative Review</h3>
-                <button id="review-toggle">Enable Review Mode</button>
-              </div>
-            </aside>
-            
-            <main class="main-content">
-              <h1 id="page-title">Loading...</h1>
-              <div id="main-content">
-                <div style="text-align: center; padding: 3rem;">
-                  <h2>Welcome to Interactive Documentation</h2>
-                  <p>Select a topic from the sidebar to begin.</p>
-                  <p><strong>Collaborative Features:</strong> Enable review mode to add comments via Staticman.</p>
+                .comments-header {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 10px;
+                }
+
+                .comments-controls {
+                    width: 100%;
+                    justify-content: stretch;
+                }
+
+                .comment-btn {
+                    flex: 1;
+                }
+            }
+        </style>
+    </head>
+    <body class="wh_main_page">
+        <a href="#content" class="sr-only sr-only-focusable">Jump to main content</a>
+        
+        <!-- Back to Browse Button -->
+        <button id="backToBrowse" class="back-to-browse" onclick="showBrowseView()">
+            ← Back to Browse
+        </button>
+        
+        <!-- Selection Overlay for text highlighting -->
+        <div id="selectionOverlay" class="selection-overlay"></div>
+        
+        <header class="navbar navbar-default wh_header">
+            <div class="container-fluid">
+                <div class="wh_header_flex_container navbar-nav navbar-expand-md navbar-dark">
+                    <div class="wh_logo_and_publication_title_container">
+                        <div class="wh_logo_and_publication_title">
+                            <div class="wh_publication_title">Enhanced DITA Documentation Browser with Text-Linked Comments</div>
+                        </div>
+                        
+                        <button type="button" data-target="#wh_top_menu_and_indexterms_link" id="wh_menu_mobile_button" data-toggle="collapse" class="navbar-toggler collapsed wh_toggle_button" aria-expanded="false" aria-label="Toggle menu" aria-controls="wh_top_menu_and_indexterms_link">
+                            <span class="navbar-toggler-icon"></span>
+                        </button>
+                    </div>
+
+                    <div class="wh_top_menu_and_indexterms_link collapse navbar-collapse" id="wh_top_menu_and_indexterms_link">
+                        <nav class="wh_top_menu" aria-label="Menu Container">
+                            <ul role="menubar" aria-label="Menu"></ul>
+                        </nav>
+                    </div>
                 </div>
-              </div>
-              <section id="comments-container"></section>
-            </main>
+            </div>
+        </header>
+        
+        <!-- BROWSE VIEW -->
+        <div id="browseView" class="wh_search_input navbar-form wh_main_page_search search" role="form">
+            <div class="wh_welcome">Search and browse DitaTO documentation files - Now with text-linked comments that auto-reset on document updates!</div>          
+            <form id="searchForm" method="get" role="search" onsubmit="return false;">
+                <div>
+                    <input type="search" placeholder="Search documentation..." class="wh_search_textfield" id="textToSearch" name="searchQuery" aria-label="Search query"/>
+                    <button type="button" class="wh_search_button" aria-label="Search" onclick="performSearch()">
+                        <span class="search_input_text">Search</span>
+                    </button>
+                    <button type="button" class="wh_search_button" aria-label="List HTML" onclick="listHtmlFiles()" style="margin-left: 10px;">
+                        <span class="search_input_text">List HTML</span>
+                    </button>
+                    <button type="button" class="wh_search_button" aria-label="Browse All" onclick="browseAllFiles()" style="margin-left: 10px;">
+                        <span class="search_input_text">Browse All</span>
+                    </button>
+                    <button type="button" class="wh_search_button" aria-label="Auto Discover" onclick="autoDiscover()" style="margin-left: 10px;">
+                        <span class="search_input_text">Auto Discover</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="wh_content_area" id="content">
+            <div class="container-fluid wh_content_flex_container">
+                <!-- BROWSE RESULTS -->
+                <div id="browseResults">
+                    <div style="text-align: center; padding: 20px; color: #5F9EA0; font-style: italic;">
+                        Enhanced search capabilities for DitaTO folder contents with text-linked GitHub Issues integration
+                    </div>
+                    
+                    <div id="searchResults" class="search-results" style="display: none;">
+                        <h3>Search Results</h3>
+                        <div id="resultsContainer"></div>
+                    </div>
+                    
+                    <div id="htmlList" class="html-list" style="display: none;">
+                        <h3>HTML Documents Found in DitaTO</h3>
+                        <div id="htmlContainer"></div>
+                    </div>
+                    
+                    <div id="fileGrid" class="file-grid" style="display: none;"></div>
+                    <div id="loadingIndicator" class="loading" style="display: none;">Processing files...</div>
+                </div>
+
+                <!-- DOCUMENT VIEWER -->
+                <div id="documentViewer" class="document-viewer">
+                    <div class="document-header">
+                        <h1 class="document-title" id="documentTitle">Document Title</h1>
+                        <div class="document-controls">
+                            <button class="doc-btn" id="highlightModeBtn" onclick="toggleHighlightMode()">
+                                🎯 Highlight Text
+                            </button>
+                            <button class="doc-btn" onclick="printDocument()">🖨️ Print</button>
+                            <button class="doc-btn" onclick="openInNewTab()">🔗 Open Original</button>
+                            <button class="doc-btn" onclick="showBrowseView()">📁 Browse</button>
+                        </div>
+                    </div>
+                    
+                    <div class="document-content" id="documentContent">
+                        <!-- Document content will be loaded here -->
+                    </div>
+                    
+                    <!-- COMMENTS SECTION -->
+                    <div class="comments-section">
+                        <div class="comments-header">
+                            <div class="comments-title-group">
+                                <span class="comments-icon">💬</span>
+                                <div>
+                                    <h3 class="comments-title">Document Discussion</h3>
+                                    <p class="comments-subtitle">Select text and add linked comments - auto-resets when document updates</p>
+                                </div>
+                            </div>
+                            <div class="comments-controls">
+                                <button id="loadCommentsBtn" class="comment-btn" onclick="loadComments()">
+                                    📄 Load Comments
+                                </button>
+                                <button id="addCommentBtn" class="comment-btn" onclick="showAddCommentForm()">
+                                    ✏️ Add Comment
+                                </button>
+                                <button id="clearOutdatedBtn" class="comment-btn" onclick="clearOutdatedComments()" style="display: none;">
+                                    🗑️ Clear Outdated
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- VERSION INFO -->
+                        <div id="versionInfo" class="version-info" style="display: none;">
+                            <strong>Document Version:</strong> <span id="currentVersion">Unknown</span>
+                        </div>
+
+                        <!-- STATUS MESSAGES -->
+                        <div id="statusMessages"></div>
+
+                        <!-- ADD COMMENT FORM -->
+                        <div id="addCommentForm" class="add-comment-form">
+                            <div id="selectedTextPreview" class="selected-text-preview" style="display: none;">
+                                <div class="label">Selected Text:</div>
+                                <div id="selectedTextContent"></div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="commentTitle">Comment Title:</label>
+                                <input type="text" id="commentTitle" class="form-input" placeholder="Brief description of your feedback...">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="commentBody">Comment Details:</label>
+                                <textarea id="commentBody" class="form-textarea" placeholder="Provide detailed feedback, questions, or suggestions about this document..."></textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button class="form-btn secondary" onclick="hideAddCommentForm()">Cancel</button>
+                                <button class="form-btn primary" onclick="submitComment()" id="submitCommentBtn">Submit Comment</button>
+                            </div>
+                        </div>
+
+                        <!-- EXISTING COMMENTS -->
+                        <div id="commentsList" class="comments-list">
+                            <!-- Comments will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer class="navbar navbar-default wh_footer">
+            <div class="footer-container mx-auto">
+                <div>Generated by <a class="oxyFooter" href="http://www.oxygenxml.com/xml_webhelp.html" target="_blank">&lt;oXygen/&gt; XML WebHelp</a> | Enhanced with Text-Linked GitHub Issues</div>
+            </div>
+        </footer>
+        
+        <script>
+            // ===== GITHUB API CONFIGURATION =====
+            // ⚠️ SECURITY WARNING: Replace with your actual token
+            // For production, consider using a backend proxy to keep token secure
+            const GITHUB_CONFIG = {
+                owner: 'x-vlim',  // Your GitHub username
+                repo: 'Prototype-Unit-00',  // Your repository name
+                token: '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',  // ⚠️ REPLACE WITH YOUR ACTUAL TOKEN
+                apiUrl: 'https://api.github.com'
+            };
+
+            // File index and global variables
+            const fileIndex = [];
+            const folderPath = 'DitaTO/';
+            let currentDocument = null;
+            let currentComments = [];
+            let currentDocumentHash = null;
+            let selectedText = null;
+            let highlightMode = false;
+            let textHighlights = [];
             
-            <script src="js/staticman-config.js"></script>
-            <script src="js/preloaded-comments.js"></script>
-            <script src="js/comments-loader.js"></script>
-            <script src="js/staticman-integration.js"></script>
-            <script src="js/navigation-config.js"></script>
-            <script src="js/content-map.js"></script>
-            <script src="js/app.js"></script>
-          </body>
-          </html>
-          EOF
-          
-          cat > ./site/404.html << 'EOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <title>Redirecting...</title>
-            <script>
-              const segments = location.pathname.split('/');
-              const basePath = segments.length > 1 ? '/' + segments[1] : '';
-              location.replace(basePath + '/' + location.hash);
-            </script>
-          </head>
-          <body><p>Redirecting...</p></body>
-          </html>
-          EOF
+            // Known files from your DitaTO directory - fallback list
+            const knownFiles = [
+                'index.html',
+                'search.html',
+                'cshelp.html',
+                'indexTerms.html',
+                'context-help-map.xml',
+                'index.xml',
+                'sitemap.xml',
+                'indexterms.properties',
+                'license-3rd-party.txt',
+                'MR-VH6B-FLT-LPN-Op.html',
+                'MR-VH6B-FLT-LPN-Sup.html'
+            ];
+            
+            // Additional potential files to discover
+            const potentialFiles = [
+                'toc.html',
+                'content.html',
+                'help.html',
+                'manual.html',
+                'guide.html',
+                'tutorial.html',
+                'readme.html',
+                'about.html',
+                'overview.html'
+            ];
+            
+            let discoveredFiles = [];
 
-      - name: Copy Configuration and Create Setup Docs
-        run: |
-          cp staticman.yml ./site/
-          touch ./site/.nojekyll
-          
-          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
-          REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
-          
-          cat > ./site/STATICMAN_SETUP.md << 'EOF'
-          # Staticman Setup Instructions
-          
-          ## Quick Setup
-          1. Add `staticmanapp` as repository collaborator
-          2. Visit setup URL to connect Staticman
-          3. Enable review mode and test comments
-          
-          ## Configuration
-          Repository: REPO_PLACEHOLDER
-          Branch: BRANCH_PLACEHOLDER
-          Endpoint: https://api.staticman.net/v3/entry/github/REPO_PLACEHOLDER/BRANCH_PLACEHOLDER/comments
-          
-          ## Setup URL
-          https://api.staticman.net/v3/connect/github/REPO_PLACEHOLDER
-          
-          Comments are stored in `_data/comments/` and create pull requests for moderation.
-          EOF
-          
-          sed -i "s/REPO_PLACEHOLDER/$REPO_OWNER\/$REPO_NAME/g" ./site/STATICMAN_SETUP.md
-          sed -i "s/BRANCH_PLACEHOLDER/$BRANCH_NAME/g" ./site/STATICMAN_SETUP.md
+            // ===== DOCUMENT VERSION TRACKING =====
+            
+            function generateDocumentHash(content) {
+                // Simple hash function for document content
+                let hash = 0;
+                if (content.length === 0) return hash;
+                for (let i = 0; i < content.length; i++) {
+                    const char = content.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash; // Convert to 32-bit integer
+                }
+                return hash.toString();
+            }
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
-          force_orphan: true
+            function updateVersionInfo(hash) {
+                const versionInfo = document.getElementById('versionInfo');
+                const currentVersion = document.getElementById('currentVersion');
+                
+                if (hash) {
+                    currentVersion.textContent = `${hash.substring(0, 8)}... (${new Date().toLocaleDateString()})`;
+                    versionInfo.style.display = 'block';
+                } else {
+                    versionInfo.style.display = 'none';
+                }
+            }
+
+            // ===== TEXT HIGHLIGHTING FUNCTIONS =====
+            
+            function toggleHighlightMode() {
+                highlightMode = !highlightMode;
+                const btn = document.getElementById('highlightModeBtn');
+                const viewer = document.getElementById('documentViewer');
+                
+                if (highlightMode) {
+                    btn.textContent = '🎯 Exit Highlight';
+                    btn.classList.add('highlight-mode');
+                    viewer.classList.add('selection-mode');
+                    showStatusMessage('💡 Select text to highlight, then add a comment', 'loading');
+                    enableTextSelection();
+                } else {
+                    btn.textContent = '🎯 Highlight Text';
+                    btn.classList.remove('highlight-mode');
+                    viewer.classList.remove('selection-mode');
+                    clearStatusMessage();
+                    disableTextSelection();
+                }
+            }
+
+            function enableTextSelection() {
+                const content = document.getElementById('documentContent');
+                content.addEventListener('mouseup', handleTextSelection);
+                content.addEventListener('selectstart', handleSelectionStart);
+            }
+
+            function disableTextSelection() {
+                const content = document.getElementById('documentContent');
+                content.removeEventListener('mouseup', handleTextSelection);
+                content.removeEventListener('selectstart', handleSelectionStart);
+                clearTextSelection();
+            }
+
+            function handleSelectionStart(event) {
+                if (!highlightMode) return;
+                clearTextSelection();
+            }
+
+            function handleTextSelection(event) {
+                if (!highlightMode) return;
+                
+                const selection = window.getSelection();
+                const selectedContent = selection.toString().trim();
+                
+                if (selectedContent.length === 0) {
+                    clearTextSelection();
+                    return;
+                }
+
+                const range = selection.getRangeAt(0);
+                const rect = range.getBoundingClientRect();
+                const contentRect = document.getElementById('documentContent').getBoundingClientRect();
+                
+                // Store selection info
+                selectedText = {
+                    text: selectedContent,
+                    startOffset: range.startOffset,
+                    endOffset: range.endOffset,
+                    startContainer: range.startContainer,
+                    endContainer: range.endContainer,
+                    contextBefore: getContextText(range.startContainer, range.startOffset, -50),
+                    contextAfter: getContextText(range.endContainer, range.endOffset, 50)
+                };
+
+                // Show visual selection overlay
+                showSelectionOverlay(rect, contentRect);
+                
+                // Auto-show comment form
+                showAddCommentFormWithSelection();
+                
+                showStatusMessage('✅ Text selected! Add your comment below.', 'success');
+            }
+
+            function getContextText(node, offset, length) {
+                let text = '';
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const fullText = node.textContent;
+                    if (length > 0) {
+                        text = fullText.substring(offset, offset + length);
+                    } else {
+                        text = fullText.substring(Math.max(0, offset + length), offset);
+                    }
+                }
+                return text.trim();
+            }
+
+            function showSelectionOverlay(rect, contentRect) {
+                const overlay = document.getElementById('selectionOverlay');
+                overlay.style.display = 'block';
+                overlay.style.left = (rect.left - contentRect.left) + 'px';
+                overlay.style.top = (rect.top - contentRect.top) + 'px';
+                overlay.style.width = rect.width + 'px';
+                overlay.style.height = rect.height + 'px';
+            }
+
+            function clearTextSelection() {
+                selectedText = null;
+                document.getElementById('selectionOverlay').style.display = 'none';
+                window.getSelection().removeAllRanges();
+            }
+
+            function addTextHighlight(commentId, text, contextBefore, contextAfter) {
+                const content = document.getElementById('documentContent');
+                const walker = document.createTreeWalker(
+                    content,
+                    NodeFilter.SHOW_TEXT,
+                    null,
+                    false
+                );
+
+                let node;
+                while (node = walker.nextNode()) {
+                    const nodeText = node.textContent;
+                    const index = nodeText.indexOf(text);
+                    
+                    if (index !== -1) {
+                        // Check context to ensure correct match
+                        const beforeText = nodeText.substring(Math.max(0, index - 50), index);
+                        const afterText = nodeText.substring(index + text.length, index + text.length + 50);
+                        
+                        if (beforeText.includes(contextBefore.slice(-20)) || afterText.includes(contextAfter.slice(0, 20))) {
+                            // Create highlight span
+                            const highlight = document.createElement('span');
+                            highlight.className = 'text-highlight';
+                            highlight.setAttribute('data-comment-id', commentId);
+                            highlight.title = 'Click to view comment';
+                            highlight.onclick = () => scrollToComment(commentId);
+                            
+                            // Split text node and insert highlight
+                            const beforeText = document.createTextNode(nodeText.substring(0, index));
+                            const afterText = document.createTextNode(nodeText.substring(index + text.length));
+                            highlight.textContent = text;
+                            
+                            const parent = node.parentNode;
+                            parent.insertBefore(beforeText, node);
+                            parent.insertBefore(highlight, node);
+                            parent.insertBefore(afterText, node);
+                            parent.removeChild(node);
+                            
+                            textHighlights.push({
+                                commentId: commentId,
+                                element: highlight,
+                                text: text
+                            });
+                            
+                            break;
+                        }
+                    }
+                }
+            }
+
+            function clearAllHighlights() {
+                textHighlights.forEach(highlight => {
+                    const element = highlight.element;
+                    if (element && element.parentNode) {
+                        const parent = element.parentNode;
+                        parent.insertBefore(document.createTextNode(element.textContent), element);
+                        parent.removeChild(element);
+                        parent.normalize();
+                    }
+                });
+                textHighlights = [];
+            }
+
+            function scrollToComment(commentId) {
+                const commentElement = document.querySelector(`[data-comment-id="${commentId}"]`);
+                if (commentElement) {
+                    commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    
+                    // Temporarily highlight the comment
+                    commentElement.classList.add('active');
+                    setTimeout(() => {
+                        commentElement.classList.remove('active');
+                    }, 2000);
+                }
+            }
+
+            // ===== GITHUB API FUNCTIONS =====
+            
+            function showStatusMessage(message, type = 'loading') {
+                const statusDiv = document.getElementById('statusMessages');
+                statusDiv.innerHTML = `<div class="status-message status-${type}">${message}</div>`;
+                
+                // Auto-hide success messages after 3 seconds
+                if (type === 'success') {
+                    setTimeout(() => {
+                        statusDiv.innerHTML = '';
+                    }, 3000);
+                }
+            }
+
+            function clearStatusMessage() {
+                document.getElementById('statusMessages').innerHTML = '';
+            }
+
+            // Create GitHub Issue for document comment with text highlighting
+            async function createGitHubIssue(title, body, documentPath, selectedTextData = null, documentHash = null) {
+                let issueBody = `**Document:** \`${documentPath}\`\n**Feedback Type:** Document Comment\n`;
+                
+                if (documentHash) {
+                    issueBody += `**Document Version:** \`${documentHash}\`\n`;
+                }
+                
+                if (selectedTextData) {
+                    issueBody += `**Selected Text:** "${selectedTextData.text}"\n`;
+                    issueBody += `**Context Before:** "${selectedTextData.contextBefore}"\n`;
+                    issueBody += `**Context After:** "${selectedTextData.contextAfter}"\n`;
+                }
+                
+                issueBody += `\n---\n\n${body}`;
+
+                const labels = ['documentation', 'feedback', 'comment'];
+                if (selectedTextData) {
+                    labels.push('text-linked');
+                }
+
+                const issueData = {
+                    title: `[COMMENT] ${documentPath}: ${title}`,
+                    body: issueBody,
+                    labels: labels
+                };
+
+                try {
+                    const response = await fetch(`${GITHUB_CONFIG.apiUrl}/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/issues`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
+                            'Accept': 'application/vnd.github+json',
+                            'Content-Type': 'application/json',
+                            'X-GitHub-Api-Version': '2022-11-28'
+                        },
+                        body: JSON.stringify(issueData)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.message || `HTTP ${response.status}`);
+                    }
+
+                    return await response.json();
+                } catch (error) {
+                    console.error('Error creating GitHub issue:', error);
+                    throw error;
+                }
+            }
+
+            // Load comments (GitHub Issues) for current document
+            async function loadCommentsForDocument(documentPath) {
+                try {
+                    // Search for issues with document path in title
+                    const searchQuery = `repo:${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo} in:title "${documentPath}" label:documentation`;
+                    const encodedQuery = encodeURIComponent(searchQuery);
+                    
+                    const response = await fetch(`${GITHUB_CONFIG.apiUrl}/search/issues?q=${encodedQuery}&sort=created&order=desc`, {
+                        headers: {
+                            'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
+                            'Accept': 'application/vnd.github+json',
+                            'X-GitHub-Api-Version': '2022-11-28'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    return data.items || [];
+                } catch (error) {
+                    console.error('Error loading comments:', error);
+                    throw error;
+                }
+            }
+
+            // Parse comment metadata from GitHub Issue body
+            function parseCommentMetadata(issueBody) {
+                const metadata = {};
+                
+                const versionMatch = issueBody.match(/\*\*Document Version:\*\* `([^`]+)`/);
+                if (versionMatch) {
+                    metadata.documentVersion = versionMatch[1];
+                }
+                
+                const selectedTextMatch = issueBody.match(/\*\*Selected Text:\*\* "([^"]+)"/);
+                if (selectedTextMatch) {
+                    metadata.selectedText = selectedTextMatch[1];
+                }
+                
+                const contextBeforeMatch = issueBody.match(/\*\*Context Before:\*\* "([^"]+)"/);
+                if (contextBeforeMatch) {
+                    metadata.contextBefore = contextBeforeMatch[1];
+                }
+                
+                const contextAfterMatch = issueBody.match(/\*\*Context After:\*\* "([^"]+)"/);
+                if (contextAfterMatch) {
+                    metadata.contextAfter = contextAfterMatch[1];
+                }
+                
+                // Extract the actual comment body (after the separator)
+                const bodyParts = issueBody.split('\n---\n\n');
+                if (bodyParts.length > 1) {
+                    metadata.actualBody = bodyParts[1];
+                }
+                
+                return metadata;
+            }
+
+            // Check if comment is outdated based on document version
+            function isCommentOutdated(commentVersion, currentVersion) {
+                return commentVersion && currentVersion && commentVersion !== currentVersion;
+            }
+
+            // Display comments in the UI
+            function displayComments(comments) {
+                const commentsList = document.getElementById('commentsList');
+                
+                if (comments.length === 0) {
+                    commentsList.innerHTML = `
+                        <div style="text-align: center; padding: 30px; color: #6c757d;">
+                            <h4>No comments yet</h4>
+                            <p>Select text and add feedback to this document!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Clear existing highlights
+                clearAllHighlights();
+
+                let outdatedCount = 0;
+                const commentsHtml = comments.map(comment => {
+                    const createdDate = new Date(comment.created_at).toLocaleString();
+                    const metadata = parseCommentMetadata(comment.body);
+                    const isOutdated = isCommentOutdated(metadata.documentVersion, currentDocumentHash);
+                    
+                    if (isOutdated) outdatedCount++;
+                    
+                    const labelsHtml = comment.labels.map(label => {
+                        const labelClass = isOutdated ? 'comment-label outdated' : 'comment-label';
+                        return `<span class="${labelClass}" style="background-color: #${label.color}; color: ${getContrastColor(label.color)}">${label.name}</span>`;
+                    }).join('');
+
+                    // Add highlight to document if text is linked and not outdated
+                    if (metadata.selectedText && !isOutdated) {
+                        addTextHighlight(comment.id, metadata.selectedText, metadata.contextBefore || '', metadata.contextAfter || '');
+                    }
+
+                    const commentClass = isOutdated ? 'comment-item outdated' : 'comment-item';
+                    
+                    return `
+                        <div class="${commentClass}" data-comment-id="${comment.id}">
+                            <div class="comment-header">
+                                <span class="comment-author">👤 ${comment.user.login}</span>
+                                <span class="comment-date">${createdDate}</span>
+                            </div>
+                            
+                            ${metadata.selectedText ? `
+                                <div class="comment-selected-text" onclick="jumpToText('${comment.id}', '${metadata.selectedText}')">
+                                    "${metadata.selectedText}"
+                                </div>
+                            ` : ''}
+                            
+                            <div class="comment-body">${metadata.actualBody || comment.body}</div>
+                            
+                            ${labelsHtml ? `<div class="comment-labels">${labelsHtml}</div>` : ''}
+                            
+                            <div class="comment-actions">
+                                <a href="${comment.html_url}" target="_blank" class="comment-link">
+                                    View on GitHub →
+                                </a>
+                                ${metadata.selectedText && !isOutdated ? `
+                                    <button class="comment-jump-btn" onclick="jumpToHighlight('${comment.id}')">
+                                        📍 Find in Document
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                commentsList.innerHTML = commentsHtml;
+
+                // Show clear outdated button if there are outdated comments
+                const clearBtn = document.getElementById('clearOutdatedBtn');
+                if (outdatedCount > 0) {
+                    clearBtn.style.display = 'block';
+                    clearBtn.textContent = `🗑️ Clear Outdated (${outdatedCount})`;
+                    showStatusMessage(`⚠️ ${outdatedCount} comment(s) may be outdated due to document changes.`, 'warning');
+                } else {
+                    clearBtn.style.display = 'none';
+                }
+            }
+
+            // Helper function to determine text color based on background
+            function getContrastColor(hexColor) {
+                const r = parseInt(hexColor.substr(0, 2), 16);
+                const g = parseInt(hexColor.substr(2, 2), 16);
+                const b = parseInt(hexColor.substr(4, 2), 16);
+                const brightness = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+                return brightness > 128 ? '#000000' : '#ffffff';
+            }
+
+            // Jump to highlighted text in document
+            function jumpToHighlight(commentId) {
+                const highlight = textHighlights.find(h => h.commentId == commentId);
+                if (highlight && highlight.element) {
+                    highlight.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    
+                    // Flash the highlight
+                    highlight.element.classList.add('active');
+                    setTimeout(() => {
+                        highlight.element.classList.remove('active');
+                    }, 2000);
+                } else {
+                    showStatusMessage('❌ Cannot locate the highlighted text in the current document.', 'error');
+                }
+            }
+
+            // Jump to text (for non-highlighted comments)
+            function jumpToText(commentId, searchText) {
+                const content = document.getElementById('documentContent');
+                const textContent = content.textContent.toLowerCase();
+                const searchLower = searchText.toLowerCase();
+                
+                if (textContent.includes(searchLower)) {
+                    // Simple text search and scroll
+                    const walker = document.createTreeWalker(
+                        content,
+                        NodeFilter.SHOW_TEXT,
+                        null,
+                        false
+                    );
+                    
+                    let node;
+                    while (node = walker.nextNode()) {
+                        if (node.textContent.toLowerCase().includes(searchLower)) {
+                            node.parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            
+                            // Temporarily highlight the text
+                            const parent = node.parentElement;
+                            const originalBg = parent.style.backgroundColor;
+                            parent.style.backgroundColor = '#ffeb3b';
+                            parent.style.transition = 'background-color 0.3s';
+                            
+                            setTimeout(() => {
+                                parent.style.backgroundColor = originalBg;
+                            }, 2000);
+                            
+                            break;
+                        }
+                    }
+                } else {
+                    showStatusMessage('❌ The referenced text was not found in the current document.', 'error');
+                }
+            }
+
+            // Clear outdated comments
+            async function clearOutdatedComments() {
+                if (!confirm('This will close all outdated comment issues on GitHub. Are you sure?')) {
+                    return;
+                }
+
+                const outdatedComments = currentComments.filter(comment => {
+                    const metadata = parseCommentMetadata(comment.body);
+                    return isCommentOutdated(metadata.documentVersion, currentDocumentHash);
+                });
+
+                showStatusMessage(`Closing ${outdatedComments.length} outdated comments...`, 'loading');
+
+                let closedCount = 0;
+                for (const comment of outdatedComments) {
+                    try {
+                        await fetch(`${GITHUB_CONFIG.apiUrl}/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/issues/${comment.number}`, {
+                            method: 'PATCH',
+                            headers: {
+                                'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
+                                'Accept': 'application/vnd.github+json',
+                                'Content-Type': 'application/json',
+                                'X-GitHub-Api-Version': '2022-11-28'
+                            },
+                            body: JSON.stringify({
+                                state: 'closed',
+                                state_reason: 'not_planned'
+                            })
+                        });
+                        closedCount++;
+                    } catch (error) {
+                        console.error('Error closing comment:', error);
+                    }
+                }
+
+                showStatusMessage(`✅ Closed ${closedCount} outdated comments.`, 'success');
+                
+                // Reload comments
+                setTimeout(() => {
+                    loadComments();
+                }, 1000);
+            }
+
+            // ===== COMMENT FORM FUNCTIONS =====
+            
+            function showAddCommentForm() {
+                // Check if token is configured
+                if (GITHUB_CONFIG.token === 'YOUR_GITHUB_TOKEN_HERE') {
+                    showStatusMessage('⚠️ GitHub token not configured. Please update GITHUB_CONFIG.token in the code.', 'error');
+                    return;
+                }
+
+                const form = document.getElementById('addCommentForm');
+                form.classList.add('show');
+                document.getElementById('commentTitle').focus();
+                clearStatusMessage();
+                
+                updateSelectedTextPreview();
+            }
+
+            function showAddCommentFormWithSelection() {
+                showAddCommentForm();
+            }
+
+            function updateSelectedTextPreview() {
+                const preview = document.getElementById('selectedTextPreview');
+                const content = document.getElementById('selectedTextContent');
+                
+                if (selectedText) {
+                    content.textContent = selectedText.text;
+                    preview.style.display = 'block';
+                } else {
+                    preview.style.display = 'none';
+                }
+            }
+
+            function hideAddCommentForm() {
+                const form = document.getElementById('addCommentForm');
+                form.classList.remove('show');
+                
+                // Clear form
+                document.getElementById('commentTitle').value = '';
+                document.getElementById('commentBody').value = '';
+                clearStatusMessage();
+                
+                // Clear text selection
+                clearTextSelection();
+                
+                // Exit highlight mode
+                if (highlightMode) {
+                    toggleHighlightMode();
+                }
+            }
+
+            async function submitComment() {
+                const title = document.getElementById('commentTitle').value.trim();
+                const body = document.getElementById('commentBody').value.trim();
+                const submitBtn = document.getElementById('submitCommentBtn');
+
+                // Validation
+                if (!title) {
+                    showStatusMessage('Please enter a comment title.', 'error');
+                    return;
+                }
+
+                if (!body) {
+                    showStatusMessage('Please enter comment details.', 'error');
+                    return;
+                }
+
+                if (!currentDocument) {
+                    showStatusMessage('No document selected.', 'error');
+                    return;
+                }
+
+                // Check token configuration
+                if (GITHUB_CONFIG.token === 'YOUR_GITHUB_TOKEN_HERE') {
+                    showStatusMessage('GitHub token not configured. Please update GITHUB_CONFIG.token in the code.', 'error');
+                    return;
+                }
+
+                // Disable submit button and show loading
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Submitting...';
+                showStatusMessage('Creating comment on GitHub...', 'loading');
+
+                try {
+                    const issue = await createGitHubIssue(
+                        title, 
+                        body, 
+                        currentDocument.name, 
+                        selectedText, 
+                        currentDocumentHash
+                    );
+                    
+                    showStatusMessage('✅ Comment submitted successfully!', 'success');
+                    hideAddCommentForm();
+                    
+                    // Reload comments to show the new one
+                    setTimeout(() => {
+                        loadComments();
+                    }, 1000);
+
+                } catch (error) {
+                    console.error('Error submitting comment:', error);
+                    showStatusMessage(`❌ Error submitting comment: ${error.message}`, 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Comment';
+                }
+            }
+
+            async function loadComments() {
+                if (!currentDocument) {
+                    showStatusMessage('No document selected.', 'error');
+                    return;
+                }
+
+                // Check token configuration
+                if (GITHUB_CONFIG.token === 'YOUR_GITHUB_TOKEN_HERE') {
+                    showStatusMessage('⚠️ GitHub token not configured. Please update GITHUB_CONFIG.token in the code.', 'error');
+                    return;
+                }
+
+                const loadBtn = document.getElementById('loadCommentsBtn');
+                loadBtn.disabled = true;
+                loadBtn.textContent = '🔄 Loading...';
+                
+                showStatusMessage('Loading comments from GitHub...', 'loading');
+
+                try {
+                    const comments = await loadCommentsForDocument(currentDocument.name);
+                    currentComments = comments;
+                    displayComments(comments);
+                    
+                    clearStatusMessage();
+                    
+                    // Update button text
+                    loadBtn.textContent = `📄 Refresh (${comments.length})`;
+
+                } catch (error) {
+                    console.error('Error loading comments:', error);
+                    showStatusMessage(`❌ Error loading comments: ${error.message}`, 'error');
+                    
+                    // Show placeholder if error
+                    document.getElementById('commentsList').innerHTML = `
+                        <div style="text-align: center; padding: 30px; color: #dc3545;">
+                            <h4>Error Loading Comments</h4>
+                            <p>Unable to load comments from GitHub. Please check your configuration and try again.</p>
+                        </div>
+                    `;
+                } finally {
+                    loadBtn.disabled = false;
+                    if (loadBtn.textContent.includes('Loading')) {
+                        loadBtn.textContent = '📄 Load Comments';
+                    }
+                }
+            }
+
+            // ===== VIEW MANAGEMENT FUNCTIONS =====
+            function showBrowseView() {
+                document.getElementById('browseView').style.display = 'block';
+                document.getElementById('browseResults').style.display = 'block';
+                document.getElementById('documentViewer').classList.remove('active');
+                document.getElementById('backToBrowse').classList.remove('show');
+                currentDocument = null;
+                currentDocumentHash = null;
+                
+                // Reset highlighting
+                if (highlightMode) {
+                    toggleHighlightMode();
+                }
+                clearAllHighlights();
+                
+                // Update URL
+                window.history.pushState({view: 'browse'}, 'Browse Documents', window.location.pathname);
+            }
+
+            function showDocumentView(filePath, fileName) {
+                document.getElementById('browseView').style.display = 'none';
+                document.getElementById('browseResults').style.display = 'none';
+                document.getElementById('documentViewer').classList.add('active');
+                document.getElementById('backToBrowse').classList.add('show');
+                
+                currentDocument = {
+                    path: filePath,
+                    name: fileName
+                };
+                
+                loadDocumentContent(filePath, fileName);
+                
+                // Reset comments section
+                document.getElementById('commentsList').innerHTML = '';
+                document.getElementById('loadCommentsBtn').textContent = '📄 Load Comments';
+                document.getElementById('clearOutdatedBtn').style.display = 'none';
+                hideAddCommentForm();
+                clearStatusMessage();
+                clearAllHighlights();
+                
+                // Reset highlighting
+                if (highlightMode) {
+                    toggleHighlightMode();
+                }
+                
+                // Update URL
+                window.history.pushState({view: 'document', path: filePath}, fileName, `?doc=${encodeURIComponent(fileName)}`);
+            }
+
+            // Load and display document content
+            async function loadDocumentContent(filePath, fileName) {
+                const documentTitle = document.getElementById('documentTitle');
+                const documentContent = document.getElementById('documentContent');
+                
+                documentTitle.textContent = fileName.replace(/\.[^/.]+$/, "").replace(/[-_]/g, ' ');
+                documentContent.innerHTML = '<div class="loading">Loading document...</div>';
+                
+                try {
+                    const response = await fetch(filePath);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    let content = await response.text();
+                    
+                    // Generate document hash for version tracking
+                    currentDocumentHash = generateDocumentHash(content);
+                    updateVersionInfo(currentDocumentHash);
+                    
+                    // Extract content from HTML body if it's a full HTML document
+                    const bodyMatch = content.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+                    if (bodyMatch) {
+                        content = bodyMatch[1];
+                    }
+                    
+                    // Clean up the content
+                    content = content.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+                    content = content.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+                    content = content.replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '');
+                    content = content.replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '');
+                    content = content.replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '');
+                    
+                    // Fix image paths - convert relative paths to absolute paths from DitaTO folder
+                    content = content.replace(/<img([^>]*)\s+src\s*=\s*["']([^"']+)["']/gi, function(match, attributes, src) {
+                        // Skip if already absolute URL
+                        if (src.startsWith('http') || src.startsWith('//')) {
+                            return match;
+                        }
+                        
+                        // Convert relative paths to DitaTO-relative paths
+                        let fixedSrc = src;
+                        
+                        // Remove leading ./ or ../
+                        fixedSrc = fixedSrc.replace(/^\.\//, '');
+                        fixedSrc = fixedSrc.replace(/^\.\.\//, '');
+                        
+                        // If path doesn't start with DitaTO/, prepend it
+                        if (!fixedSrc.startsWith('DitaTO/')) {
+                            fixedSrc = 'DitaTO/' + fixedSrc;
+                        }
+                        
+                        return `<img${attributes} src="${fixedSrc}"`;
+                    });
+                    
+                    // Also fix background-image CSS properties
+                    content = content.replace(/background-image\s*:\s*url\(["']?([^"')]+)["']?\)/gi, function(match, src) {
+                        if (src.startsWith('http') || src.startsWith('//')) {
+                            return match;
+                        }
+                        
+                        let fixedSrc = src.replace(/^\.\//, '').replace(/^\.\.\//, '');
+                        if (!fixedSrc.startsWith('DitaTO/')) {
+                            fixedSrc = 'DitaTO/' + fixedSrc;
+                        }
+                        
+                        return `background-image: url("${fixedSrc}")`;
+                    });
+                    
+                    documentContent.innerHTML = content;
+                    
+                } catch (error) {
+                    console.error('Error loading document:', error);
+                    documentContent.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #dc3545;">
+                            <h3>Error Loading Document</h3>
+                            <p>Could not load the document: ${fileName}</p>
+                            <p><em>${error.message}</em></p>
+                        </div>
+                    `;
+                }
+            }
+
+            // DOCUMENT CONTROL FUNCTIONS
+            function printDocument() {
+                if (currentDocument) {
+                    const printWindow = window.open('', '_blank');
+                    const documentContent = document.getElementById('documentContent').innerHTML;
+                    const documentTitle = document.getElementById('documentTitle').textContent;
+                    
+                    printWindow.document.write(`
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>${documentTitle}</title>
+                            <style>
+                                body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }
+                                h1, h2, h3 { color: #2c3e50; }
+                                img { max-width: 100%; height: auto; }
+                                table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+                                th, td { border: 1px solid #ddd; padding: 8px; }
+                                th { background-color: #f2f2f2; }
+                                .text-highlight { background: #ffeb3b; }
+                            </style>
+                        </head>
+                        <body>
+                            <h1>${documentTitle}</h1>
+                            ${documentContent}
+                        </body>
+                        </html>
+                    `);
+                    printWindow.document.close();
+                    printWindow.print();
+                }
+            }
+
+            function openInNewTab() {
+                if (currentDocument) {
+                    window.open(currentDocument.path, '_blank');
+                }
+            }
+
+            // Handle browser back/forward
+            window.addEventListener('popstate', function(event) {
+                if (event.state) {
+                    if (event.state.view === 'browse') {
+                        showBrowseView();
+                    } else if (event.state.view === 'document') {
+                        showDocumentView(event.state.path, event.state.path.split('/').pop());
+                    }
+                } else {
+                    showBrowseView();
+                }
+            });
+
+            // Check URL parameters on load
+            window.addEventListener('DOMContentLoaded', function() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const docParam = urlParams.get('doc');
+                
+                if (docParam) {
+                    // Try to find the document in discovered files
+                    const filePath = folderPath + docParam;
+                    showDocumentView(filePath, docParam);
+                } else {
+                    showBrowseView();
+                }
+                
+                // Pre-load the file index
+                initializeSearch();
+            });
+
+            // ===== EXISTING BROWSE FUNCTIONS (keeping your original functionality) =====
+            
+            async function autoDiscover() {
+                document.getElementById('loadingIndicator').style.display = 'block';
+                document.getElementById('searchResults').style.display = 'none';
+                document.getElementById('fileGrid').style.display = 'none';
+                document.getElementById('htmlList').style.display = 'none';
+                
+                discoveredFiles = [];
+                const allPotentialFiles = [...knownFiles, ...potentialFiles];
+                
+                console.log('Auto-discovering files in DitaTO folder...');
+                
+                for (const file of allPotentialFiles) {
+                    try {
+                        const response = await fetch(folderPath + file, { method: 'HEAD' });
+                        if (response.ok) {
+                            discoveredFiles.push(file);
+                            console.log(`Found: ${file}`);
+                        }
+                    } catch (error) {
+                        console.log(`Not found: ${file}`);
+                    }
+                }
+                
+                // Update file index with discovered files
+                fileIndex.length = 0; // Clear existing
+                for (const file of discoveredFiles) {
+                    try {
+                        const response = await fetch(folderPath + file);
+                        if (response.ok) {
+                            const content = await response.text();
+                            fileIndex.push({
+                                name: file,
+                                path: folderPath + file,
+                                content: content,
+                                type: getFileType(file),
+                                size: content.length
+                            });
+                        }
+                    } catch (error) {
+                        console.log(`Could not load content for ${file}`);
+                    }
+                }
+                
+                // Filter valid files and show statistics
+                const validFiles = filterValidFiles(fileIndex);
+                const excludedCount = fileIndex.length - validFiles.length;
+                
+                // Display discovered files (only valid ones)
+                const resultsContainer = document.getElementById('resultsContainer');
+                resultsContainer.innerHTML = `
+                    <div style="margin-bottom: 20px;">
+                        <h4>Auto-Discovery Results:</h4>
+                        <p><strong>${validFiles.length}</strong> valid files found • <span style="color: #7f8c8d;">${excludedCount} empty/invalid files excluded</span></p>
+                    </div>
+                    ${validFiles.map(file => `
+                        <div class="result-item" onclick="openFileWithViewer('${file.path}', '${file.name}')">
+                            <div class="result-title">${file.name}</div>
+                            <div class="result-path">${file.path} • ${file.type} • ${Math.round(file.size / 1024)} KB</div>
+                            <div class="result-snippet">Click to open with text-linked comments</div>
+                        </div>
+                    `).join('')}
+                `;
+                
+                console.log(`Updated index: ${validFiles.length} valid files, ${excludedCount} excluded`);
+                
+                document.getElementById('searchResults').style.display = 'block';
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }
+            
+            // Initialize the search system
+            async function initializeSearch() {
+                console.log('Initializing search system...');
+                
+                // First try auto-discovery if not already done
+                if (discoveredFiles.length === 0) {
+                    await autoDiscoverSilent();
+                }
+                
+                // Use discovered files or fall back to known files
+                const filesToIndex = discoveredFiles.length > 0 ? discoveredFiles : knownFiles;
+                
+                for (const file of filesToIndex) {
+                    try {
+                        const response = await fetch(folderPath + file);
+                        if (response.ok) {
+                            const content = await response.text();
+                            fileIndex.push({
+                                name: file,
+                                path: folderPath + file,
+                                content: content,
+                                type: getFileType(file),
+                                size: content.length
+                            });
+                        }
+                    } catch (error) {
+                        console.log(`Could not load ${file}:`, error.message);
+                    }
+                }
+                
+                console.log(`Indexed ${fileIndex.length} files`);
+            }
+            
+            // Silent auto-discovery for initialization
+            async function autoDiscoverSilent() {
+                const allPotentialFiles = [...knownFiles, ...potentialFiles];
+                
+                for (const file of allPotentialFiles) {
+                    try {
+                        const response = await fetch(folderPath + file, { method: 'HEAD' });
+                        if (response.ok) {
+                            discoveredFiles.push(file);
+                        }
+                    } catch (error) {
+                        // Silently continue
+                    }
+                }
+            }
+            
+            function shouldExcludeFile(file) {
+                // Exclude files with 0 KB or very small size (likely empty or loading errors)
+                if (file.size === 0 || file.size < 100) {
+                    return true;
+                }
+                
+                // Exclude files with minimal content (just whitespace/empty tags)
+                if (file.content && file.content.trim().length < 50) {
+                    return true;
+                }
+                
+                // Exclude files that are just XML declarations or minimal HTML
+                if (file.content) {
+                    const trimmed = file.content.trim();
+                    if (trimmed === '' || 
+                        trimmed === '<?xml version="1.0" encoding="UTF-8"?>' ||
+                        trimmed.match(/^<\?xml[^>]*>\s*$/)) {
+                        return true;
+                    }
+                }
+                
+                // ONLY INCLUDE OPERATOR MANUAL DOCUMENTS
+                // Exclude all oxygen-webhelp system files and show only transformed operator documents
+                const excludeSystemFiles = [
+                    'index.html',        // Generic webhelp index
+                    'search.html',       // Search functionality
+                    'cshelp.html',       // Context help
+                    'indexTerms.html',   // Index terms
+                    'context-help-map.xml',
+                    'indexterms.properties',
+                    'sitemap.xml',
+                    'license-3rd-party.txt',
+                    'index.xml'
+                ];
+                
+                // Exclude system files by name
+                if (excludeSystemFiles.includes(file.name)) {
+                    return true;
+                }
+                
+                // ONLY SHOW VH6 documents (containing "VH6" pattern)
+                // This appears to be your transformed DITA content
+                if (file.type.includes('HTML')) {
+                    // Only include HTML files that match VH6 pattern
+                    const isVH6Document = file.name.match(/VH6.*\.(html|htm)$/i);
+                    if (!isVH6Document) {
+                        return true; // Exclude non-VH6 HTML files
+                    }
+                }
+                
+                return false;
+            }
+            
+            function filterValidFiles(files) {
+                return files.filter(file => !shouldExcludeFile(file));
+            }
+            
+            function getFileType(filename) {
+                const extension = filename.split('.').pop().toLowerCase();
+                const typeMap = {
+                    'html': 'HTML Document',
+                    'xml': 'XML Document',
+                    'txt': 'Text Document',
+                    'properties': 'Properties File',
+                    'css': 'Stylesheet',
+                    'js': 'JavaScript'
+                };
+                return typeMap[extension] || 'Document';
+            }
+            
+            function extractTextFromHTML(html) {
+                // Create a temporary div to parse HTML
+                const temp = document.createElement('div');
+                temp.innerHTML = html;
+                
+                // Remove script and style elements
+                const scripts = temp.querySelectorAll('script, style');
+                scripts.forEach(el => el.remove());
+                
+                return temp.textContent || temp.innerText || '';
+            }
+            
+            function getHtmlTitle(html, filename) {
+                const temp = document.createElement('div');
+                temp.innerHTML = html;
+                
+                // Try to find title in various ways
+                let title = temp.querySelector('title');
+                if (title) return title.textContent.trim();
+                
+                title = temp.querySelector('h1, .title, .wh_publication_title');
+                if (title) return title.textContent.trim();
+                
+                // Fallback to filename without extension
+                return filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, ' ');
+            }
+            
+            async function listHtmlFiles() {
+                document.getElementById('loadingIndicator').style.display = 'block';
+                document.getElementById('searchResults').style.display = 'none';
+                document.getElementById('fileGrid').style.display = 'none';
+                document.getElementById('htmlList').style.display = 'none';
+                
+                // Ensure files are indexed
+                if (fileIndex.length === 0) {
+                    await initializeSearch();
+                }
+                
+                // Filter only HTML files and exclude invalid ones
+                const validFiles = filterValidFiles(fileIndex);
+                const htmlFiles = validFiles.filter(file => file.type.includes('HTML'));
+                
+                const htmlContainer = document.getElementById('htmlContainer');
+                
+                if (htmlFiles.length === 0) {
+                    htmlContainer.innerHTML = '<p>No HTML files found in DitaTO folder</p>';
+                } else {
+                    htmlContainer.innerHTML = htmlFiles.map(file => {
+                        const title = getHtmlTitle(file.content, file.name);
+                        return `
+                            <div class="html-item" onclick="openFileWithViewer('${file.path}', '${file.name}')">
+                                <div class="html-info">
+                                    <div class="html-title">${title}</div>
+                                    <div class="html-path">${file.path}</div>
+                                </div>
+                                <div class="html-badge">HTML</div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+                
+                document.getElementById('htmlList').style.display = 'block';
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }
+            
+            async function performSearch() {
+                const searchTerm = document.getElementById('textToSearch').value.trim();
+                
+                if (!searchTerm) {
+                    browseAllFiles();
+                    return;
+                }
+                
+                document.getElementById('loadingIndicator').style.display = 'block';
+                document.getElementById('searchResults').style.display = 'none';
+                document.getElementById('fileGrid').style.display = 'none';
+                
+                // Ensure files are indexed
+                if (fileIndex.length === 0) {
+                    await initializeSearch();
+                }
+                
+                const results = [];
+                const searchTermLower = searchTerm.toLowerCase();
+                
+                // Filter out invalid/empty files before searching
+                const validFiles = filterValidFiles(fileIndex);
+                
+                validFiles.forEach(file => {
+                    let searchableContent = '';
+                    
+                    if (file.type.includes('HTML')) {
+                        searchableContent = extractTextFromHTML(file.content);
+                    } else {
+                        searchableContent = file.content;
+                    }
+                    
+                    const contentLower = searchableContent.toLowerCase();
+                    const nameMatches = file.name.toLowerCase().includes(searchTermLower);
+                    const contentMatches = contentLower.includes(searchTermLower);
+                    
+                    if (nameMatches || contentMatches) {
+                        // Extract snippet around the match
+                        let snippet = '';
+                        if (contentMatches) {
+                            const index = contentLower.indexOf(searchTermLower);
+                            const start = Math.max(0, index - 100);
+                            const end = Math.min(searchableContent.length, index + 200);
+                            snippet = searchableContent.substring(start, end);
+                            
+                            // Highlight the search term
+                            const regex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi');
+                            snippet = snippet.replace(regex, '<span class="highlight">$1</span>');
+                        }
+                        
+                        results.push({
+                            file: file,
+                            snippet: snippet,
+                            nameMatch: nameMatches
+                        });
+                    }
+                });
+                
+                displaySearchResults(results, searchTerm);
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }
+            
+            function escapeRegExp(string) {
+                return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            }
+            
+            function displaySearchResults(results, searchTerm) {
+                const resultsContainer = document.getElementById('resultsContainer');
+                const searchResults = document.getElementById('searchResults');
+                
+                if (results.length === 0) {
+                    resultsContainer.innerHTML = `<p>No results found for "${searchTerm}"</p>`;
+                } else {
+                    resultsContainer.innerHTML = results.map(result => `
+                        <div class="result-item" onclick="openFileWithViewer('${result.file.path}', '${result.file.name}')">
+                            <div class="result-title">${result.file.name}</div>
+                            <div class="result-path">${result.file.path} • ${result.file.type}</div>
+                            <div class="result-snippet">${result.snippet || 'Filename match'}</div>
+                        </div>
+                    `).join('');
+                }
+                
+                searchResults.style.display = 'block';
+                document.getElementById('fileGrid').style.display = 'none';
+                document.getElementById('htmlList').style.display = 'none';
+            }
+            
+            async function browseAllFiles() {
+                document.getElementById('loadingIndicator').style.display = 'block';
+                document.getElementById('searchResults').style.display = 'none';
+                document.getElementById('htmlList').style.display = 'none';
+                
+                // Ensure files are indexed
+                if (fileIndex.length === 0) {
+                    await initializeSearch();
+                }
+                
+                const fileGrid = document.getElementById('fileGrid');
+                
+                if (fileIndex.length === 0) {
+                    fileGrid.innerHTML = `
+                        <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
+                            <p>No files could be loaded from DitaTO folder.</p>
+                            <button onclick="autoDiscover()" style="background: #5F9EA0; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 10px;">
+                                Auto Discover Files
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    // Filter out invalid/empty files before displaying
+                    const validFiles = filterValidFiles(fileIndex);
+                    
+                    if (validFiles.length === 0) {
+                        fileGrid.innerHTML = `
+                            <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
+                                <p>No valid files found. All discovered files appear to be empty or invalid.</p>
+                                <button onclick="autoDiscover()" style="background: #5F9EA0; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 10px;">
+                                    Try Auto Discover Again
+                                </button>
+                            </div>
+                        `;
+                    } else {
+                        fileGrid.innerHTML = validFiles.map(file => `
+                            <div class="file-card" onclick="openFileWithViewer('${file.path}', '${file.name}')">
+                                <div class="file-type">${file.type}</div>
+                                <div class="result-title">${file.name}</div>
+                                <div class="result-path">${Math.round(file.size / 1024)} KB</div>
+                            </div>
+                        `).join('');
+                    }
+                }
+                
+                fileGrid.style.display = 'grid';
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }
+            
+            // MODIFIED: Use document viewer instead of opening in new tab
+            function openFile(path) {
+                const fileName = path.split('/').pop();
+                showDocumentView(path, fileName);
+            }
+
+            function openFileWithViewer(path, fileName) {
+                showDocumentView(path, fileName);
+            }
+            
+            // Handle Enter key in search box
+            document.getElementById('textToSearch').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performSearch();
+                }
+            });
+        </script>
+    </body>
+</html>
