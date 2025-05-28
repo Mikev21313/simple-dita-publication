@@ -296,7 +296,7 @@ jobs:
           cat > ./site/js/supabase-config.js << 'EOF'
           // Supabase configuration and client setup
           const SUPABASE_URL = 'https://oiluavgeyngmkqozzmnz.supabase.co';
-          const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzI4MzIyMzUsImV4cCI6MjA0ODQwODIzNX0.B5h7wjPvKHLHNu7sTq4C7QoKjLFgJWgKyftLPJgIh6E';
+          const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ';
 
           // Supabase client class for comments system
           class SupabaseClient {
@@ -965,8 +965,8 @@ jobs:
               // Test with a simple select to verify connection
               const response = await fetch('https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments?limit=1', {
                 headers: {
-                  'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzI4MzIyMzUsImV4cCI6MjA0ODQwODIzNX0.B5h7wjPvKHLHNu7sTq4C7QoKjLFgJWgKyftLPJgIh6E',
-                  'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzI4MzIyMzUsImV4cCI6MjA0ODQwODIzNX0.B5h7wjPvKHLHNu7sTq4C7QoKjLFgJWgKyftLPJgIh6E',
+                  'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ',
+                  'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ',
                   'Content-Type': 'application/json'
                 }
               });
@@ -991,9 +991,7 @@ jobs:
             debug('Initializing app with base path:', basePath);
 
             // Test Supabase connection
-            if (window.supabaseClient) {
-              testSupabaseConnection();
-            }
+            testSupabaseConnection();
 
             // Render navigation
             renderNavigation(navigationConfig);
