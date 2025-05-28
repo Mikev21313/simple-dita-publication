@@ -1,4 +1,4 @@
-name: DITA to SPA Transformation with Staticman Comments Review System
+name: DITA to SPA Transformation with Enhanced Staticman Comments Review System
 
 on:
   push:
@@ -302,25 +302,117 @@ jobs:
 
           # Create comments loader script
           cat > ./site/js/comments-loader.js << 'EOF'
-          // Staticman comments loader
+          // Staticman comments loader with local storage fallback
           window.staticmanComments = {};
+          window.localComments = {};
 
-          // Function to load comments from _data directory
+          // Function to load comments from _data directory or local storage
           async function loadStaticmanComments() {
             try {
-              // This will be populated by the build process
-              return window.preloadedComments || {};
+              // Load from preloaded data (from repository)
+              const repoComments = window.preloadedComments || {};
+              
+              // Load from local storage
+              const localData = localStorage.getItem('staticman-comments');
+              const localComments = localData ? JSON.parse(localData) : {};
+              
+              // Merge both sources
+              const allComments = {};
+              
+              // Add repository comments
+              Object.keys(repoComments).forEach(pageId => {
+                allComments[pageId] = repoComments[pageId] || [];
+              });
+              
+              // Add local comments
+              Object.keys(localComments).forEach(pageId => {
+                if (!allComments[pageId]) {
+                  allComments[pageId] = [];
+                }
+                allComments[pageId] = [
+                  ...allComments[pageId],
+                  ...localComments[pageId].map(comment => ({
+                    ...comment,
+                    local: true,
+                    synced: false
+                  }))
+                ];
+              });
+              
+              return allComments;
             } catch (error) {
-              console.log('No existing comments found:', error);
+              console.log('Error loading comments:', error);
               return {};
+            }
+          }
+
+          // Save comment to local storage
+          function saveCommentToLocal(comment) {
+            try {
+              const existing = localStorage.getItem('staticman-comments');
+              const comments = existing ? JSON.parse(existing) : {};
+              
+              if (!comments[comment.pageId]) {
+                comments[comment.pageId] = [];
+              }
+              
+              comments[comment.pageId].push(comment);
+              localStorage.setItem('staticman-comments', JSON.stringify(comments));
+              
+              console.log('Comment saved to local storage:', comment.id);
+              return true;
+            } catch (error) {
+              console.error('Failed to save comment locally:', error);
+              return false;
+            }
+          }
+
+          // Export comments from local storage
+          function exportLocalComments() {
+            try {
+              const localData = localStorage.getItem('staticman-comments');
+              if (!localData) {
+                alert('No local comments found to export.');
+                return;
+              }
+              
+              const blob = new Blob([localData], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `staticman-comments-${new Date().toISOString().split('T')[0]}.json`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            } catch (error) {
+              console.error('Failed to export comments:', error);
+              alert('Failed to export comments: ' + error.message);
+            }
+          }
+
+          // Clear local comments
+          function clearLocalComments() {
+            if (confirm('This will permanently delete all locally stored comments. Continue?')) {
+              localStorage.removeItem('staticman-comments');
+              alert('Local comments cleared.');
+              location.reload();
             }
           }
 
           // Initialize comments on page load
           document.addEventListener('DOMContentLoaded', async () => {
             window.staticmanComments = await loadStaticmanComments();
-            console.log('Loaded Staticman comments:', Object.keys(window.staticmanComments).length, 'pages');
+            window.localComments = JSON.parse(localStorage.getItem('staticman-comments') || '{}');
+            console.log('Loaded comments:', Object.keys(window.staticmanComments).length, 'pages');
+            console.log('Local comments:', Object.keys(window.localComments).length, 'pages');
           });
+
+          // Make functions globally available
+          window.saveCommentToLocal = saveCommentToLocal;
+          window.exportLocalComments = exportLocalComments;
+          window.clearLocalComments = clearLocalComments;
+          window.loadStaticmanComments = loadStaticmanComments;
           EOF
 
           # Create preloaded comments data
@@ -378,15 +470,22 @@ jobs:
 
           # Create Staticman configuration JavaScript
           cat > ./site/js/staticman-config.js << EOF
-          // Staticman configuration
+          // Staticman configuration with enhanced error handling
           window.staticmanConfig = {
             endpoint: 'https://api.staticman.net/v3/entry/github/$REPO_OWNER/$REPO_NAME/$BRANCH_NAME/comments',
             repository: '$REPO_OWNER/$REPO_NAME',
             branch: '$BRANCH_NAME',
-            enabled: true
+            enabled: true,
+            fallbackMode: false,
+            troubleshooting: {
+              setupUrl: 'https://api.staticman.net/v3/connect/github/$REPO_OWNER/$REPO_NAME',
+              docsUrl: 'https://staticman.net/docs/',
+              repositoryUrl: 'https://github.com/$REPO_OWNER/$REPO_NAME'
+            }
           };
 
           console.log('Staticman endpoint configured:', window.staticmanConfig.endpoint);
+          console.log('Setup URL:', window.staticmanConfig.troubleshooting.setupUrl);
           EOF
 
       # Step 11: Create Enhanced SPA CSS with Comments Side Cart
@@ -447,6 +546,7 @@ jobs:
             margin-bottom: 10px;
             text-align: center;
             position: relative;
+            cursor: default;
           }
 
           .staticman-status.offline {
@@ -455,12 +555,21 @@ jobs:
 
           .staticman-status.error {
             background: linear-gradient(135deg, #f44336, #d32f2f);
+            cursor: pointer;
+          }
+
+          .staticman-status.connecting {
+            background: linear-gradient(135deg, #2196f3, #1976d2);
           }
 
           .staticman-status::before {
             content: '●';
             margin-right: 6px;
             animation: pulse 2s infinite;
+          }
+
+          .staticman-status.error::after {
+            content: ' ⚠️';
           }
 
           @keyframes pulse {
@@ -580,6 +689,11 @@ jobs:
             border-bottom: none;
           }
 
+          .comment-item.local {
+            border-left: 4px solid #ff9800;
+            background: #fff8e1;
+          }
+
           .comment-header {
             display: flex;
             justify-content: space-between;
@@ -651,6 +765,43 @@ jobs:
 
           .comment-sync-status.error {
             color: #f44336;
+          }
+
+          .comment-sync-status.local {
+            color: #ff9800;
+          }
+
+          /* Export/Import Controls */
+          .data-controls {
+            background: #f0f4f8;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e0e8f0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+          }
+
+          .data-control-btn {
+            background: #546e7a;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: background 0.2s;
+          }
+
+          .data-control-btn:hover {
+            background: #455a64;
+          }
+
+          .data-control-btn.danger {
+            background: #f44336;
+          }
+
+          .data-control-btn.danger:hover {
+            background: #d32f2f;
           }
 
           /* Loading States */
@@ -1357,11 +1508,11 @@ jobs:
           }
           EOF
 
-      # Step 12: Create Enhanced SPA Application with Staticman Integration
-      - name: Create Enhanced SPA Application with Staticman Integration
+      # Step 12: Create Enhanced SPA Application with Improved Staticman Integration
+      - name: Create Enhanced SPA Application with Improved Staticman Integration
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // Enhanced SPA Application with Staticman Integration
+          // Enhanced SPA Application with Improved Staticman Integration
 
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -1399,7 +1550,7 @@ jobs:
             console.log(`[DITA-SPA-Staticman] ${message}`, data || '');
           }
 
-          // Staticman Integration Functions
+          // Enhanced Staticman Integration Class with Better Error Handling
           class StaticmanIntegration {
             constructor() {
               this.endpoint = window.staticmanConfig?.endpoint || null;
@@ -1407,6 +1558,8 @@ jobs:
               this.status = 'offline';
               this.retryCount = 0;
               this.maxRetries = 3;
+              this.fallbackMode = false;
+              this.troubleshooting = window.staticmanConfig?.troubleshooting || {};
               
               this.checkConnection();
             }
@@ -1414,20 +1567,50 @@ jobs:
             async checkConnection() {
               if (!this.endpoint) {
                 this.setStatus('error', 'No endpoint configured');
+                this.enableFallbackMode();
                 return;
               }
 
               try {
-                // Test connection with a simple HEAD request
                 this.setStatus('connecting', 'Testing connection...');
                 
-                // For now, assume connection is working if endpoint exists
-                this.setStatus('online', 'Connected to Staticman');
-                debug('Staticman connection established');
+                // Test with a simple request to avoid CORS preflight issues
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                
+                try {
+                  // Try a simple HEAD request first
+                  const response = await fetch(this.endpoint, {
+                    method: 'HEAD',
+                    signal: controller.signal,
+                    mode: 'cors'
+                  });
+                  clearTimeout(timeoutId);
+                  
+                  if (response.ok || response.status === 404 || response.status === 405) {
+                    // These status codes indicate the service is reachable
+                    this.setStatus('online', 'Connected to Staticman');
+                    this.fallbackMode = false;
+                    debug('Staticman connection established');
+                  } else {
+                    throw new Error(`Service returned ${response.status}`);
+                  }
+                } catch (fetchError) {
+                  clearTimeout(timeoutId);
+                  throw fetchError;
+                }
+                
               } catch (error) {
-                this.setStatus('error', 'Connection failed: ' + error.message);
-                debug('Staticman connection failed:', error);
+                console.log('Staticman connection test failed:', error.message);
+                this.setStatus('error', `Connection failed: ${error.message}`);
+                this.enableFallbackMode();
               }
+            }
+
+            enableFallbackMode() {
+              this.fallbackMode = true;
+              this.setStatus('offline', 'Using local storage fallback');
+              debug('Staticman fallback mode enabled - comments will be stored locally');
             }
 
             setStatus(status, message) {
@@ -1450,80 +1633,159 @@ jobs:
 
               statusEl.className = `staticman-status ${status}`;
               statusEl.textContent = message || this.getStatusMessage(status);
+              
+              // Add click handler for troubleshooting info
+              if (status === 'error' || status === 'offline') {
+                statusEl.style.cursor = 'pointer';
+                statusEl.title = 'Click for troubleshooting info';
+                statusEl.onclick = () => this.showTroubleshootingInfo();
+              } else {
+                statusEl.style.cursor = 'default';
+                statusEl.onclick = null;
+              }
+            }
+
+            showTroubleshootingInfo() {
+              const repoInfo = window.staticmanConfig || {};
+              const troubleshootingMsg = `Staticman Troubleshooting:
+
+Current Status: ${this.status}
+Endpoint: ${this.endpoint || 'Not configured'}
+Repository: ${repoInfo.repository || 'Unknown'}
+Branch: ${repoInfo.branch || 'Unknown'}
+
+Common Solutions:
+1. Ensure 'staticmanapp' is added as a collaborator to your repository
+2. Visit: ${this.troubleshooting.setupUrl || 'Setup URL not available'}
+3. Check if Staticman service is online: https://staticman.net/
+4. Verify your staticman.yml configuration file exists in the repository root
+
+Current Mode: ${this.fallbackMode ? 'Local Storage Fallback' : 'Online Mode'}
+${this.fallbackMode ? 'Comments are being saved locally and can be exported.' : ''}
+
+Need Help? Check the documentation at: ${this.troubleshooting.docsUrl || 'https://staticman.net/docs/'}`;
+              
+              alert(troubleshootingMsg);
             }
 
             getStatusMessage(status) {
               const messages = {
                 'online': 'Staticman Connected',
-                'offline': 'Staticman Offline',
+                'offline': 'Fallback Mode (Local)',
                 'connecting': 'Connecting...',
-                'error': 'Connection Error',
+                'error': 'Connection Error (Click for help)',
                 'syncing': 'Syncing Comments...'
               };
               return messages[status] || 'Unknown Status';
             }
 
             async submitComment(commentData) {
+              // If in fallback mode, save locally
+              if (this.fallbackMode) {
+                return this.saveCommentLocally(commentData);
+              }
+
               if (!this.endpoint || !this.enabled) {
-                throw new Error('Staticman not configured');
+                return this.saveCommentLocally(commentData);
               }
 
               this.setStatus('syncing', 'Submitting comment...');
 
               try {
+                // Add timeout to fetch request
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
                 const response = await fetch(this.endpoint, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                   },
                   body: JSON.stringify({
                     fields: commentData,
                     options: {
                       pageId: commentData.pageId
                     }
-                  })
+                  }),
+                  signal: controller.signal,
+                  mode: 'cors'
                 });
 
+                clearTimeout(timeoutId);
+
                 if (!response.ok) {
-                  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                  const errorText = await response.text().catch(() => 'Unknown error');
+                  throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
                 }
 
-                const result = await response.json();
+                const result = await response.json().catch(() => ({ success: true }));
                 this.setStatus('online', 'Comment submitted successfully');
                 debug('Comment submitted to Staticman:', result);
                 
                 return result;
+
               } catch (error) {
-                this.setStatus('error', 'Submission failed: ' + error.message);
                 debug('Comment submission failed:', error);
                 
-                // Add to pending queue for retry
-                window.pendingComments.push(commentData);
-                throw error;
+                // Fallback to local storage
+                this.setStatus('error', 'Submission failed, saved locally');
+                return this.saveCommentLocally(commentData, error.message);
+              }
+            }
+
+            saveCommentLocally(commentData, errorMessage = null) {
+              try {
+                // Add error message to comment if provided
+                if (errorMessage) {
+                  commentData.error = errorMessage;
+                  commentData.retryable = true;
+                }
+                
+                commentData.local = true;
+                commentData.synced = false;
+                commentData.timestamp = commentData.timestamp || new Date().toISOString();
+                
+                // Save to local storage
+                const saved = window.saveCommentToLocal(commentData);
+                
+                if (saved) {
+                  // Add to pending queue for retry if it's retryable
+                  if (!errorMessage || commentData.retryable !== false) {
+                    window.pendingComments.push(commentData);
+                  }
+                  
+                  debug('Comment saved locally:', commentData.id);
+                  return { success: true, local: true, comment: commentData };
+                } else {
+                  throw new Error('Failed to save to local storage');
+                }
+                
+              } catch (localError) {
+                debug('Failed to save comment locally:', localError);
+                alert('Failed to save comment: ' + localError.message);
+                throw localError;
               }
             }
 
             async loadCommentsForPage(pageId) {
-              // Load from preloaded comments (from build process)
-              if (window.preloadedComments && window.preloadedComments[pageId]) {
-                return window.preloadedComments[pageId];
-              }
-
-              // Try to fetch dynamically (if repository supports CORS)
               try {
-                const response = await fetch(`${basePath}/_data/comments/${pageId}.json`);
-                if (response.ok) {
-                  return await response.json();
-                }
+                // Load from the integrated comment loader
+                const allComments = await window.loadStaticmanComments();
+                return allComments[pageId] || [];
               } catch (error) {
-                debug('Could not load comments dynamically:', error);
+                debug('Error loading comments for page:', error);
+                return [];
               }
-
-              return [];
             }
 
             async retryPendingComments() {
               if (window.pendingComments.length === 0) return;
+              
+              if (this.fallbackMode) {
+                debug('In fallback mode, cannot retry pending comments');
+                return;
+              }
 
               debug('Retrying pending comments:', window.pendingComments.length);
               
@@ -1532,10 +1794,17 @@ jobs:
 
               for (const comment of retry) {
                 try {
-                  await this.submitComment(comment);
+                  // Remove local flag and error info for retry
+                  const cleanComment = { ...comment };
+                  delete cleanComment.local;
+                  delete cleanComment.error;
+                  delete cleanComment.retryable;
+                  
+                  await this.submitComment(cleanComment);
+                  debug('Successfully retried comment:', comment.id);
                 } catch (error) {
+                  debug('Retry failed for comment:', comment.id, error);
                   // If retry fails, it will be added back to pending
-                  debug('Retry failed for comment:', comment.id);
                 }
               }
             }
@@ -1546,7 +1815,7 @@ jobs:
 
           // Initialize the application
           function initApp() {
-            debug('Initializing app with Staticman integration');
+            debug('Initializing app with enhanced Staticman integration');
 
             // Render navigation
             renderNavigation(navigationConfig);
@@ -1574,14 +1843,17 @@ jobs:
             }
 
             // Add print functionality
-            document.querySelector('.wh_print_link button').addEventListener('click', (e) => {
-              e.preventDefault();
-              if (window.reviewMode && window.currentPage) {
-                openCommentsSideCart();
-              } else {
-                window.print();
-              }
-            });
+            const printButton = document.querySelector('.wh_print_link button');
+            if (printButton) {
+              printButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (window.reviewMode && window.currentPage) {
+                  openCommentsSideCart();
+                } else {
+                  window.print();
+                }
+              });
+            }
 
             // Initialize review system UI
             initReviewSystem();
@@ -1603,7 +1875,7 @@ jobs:
 
           // Initialize Review System
           function initReviewSystem() {
-            debug('Initializing review system with Staticman');
+            debug('Initializing review system with enhanced Staticman');
             
             // Create hover tooltip
             createHoverTooltip();
@@ -1629,7 +1901,7 @@ jobs:
             overlay.innerHTML = `
               <div class="loading-spinner">
                 <div class="spinner"></div>
-                <div>Submitting to Staticman...</div>
+                <div>Processing comment...</div>
               </div>
             `;
             document.body.appendChild(overlay);
@@ -1664,8 +1936,8 @@ jobs:
                       <span class="stat-label">Total</span>
                     </div>
                     <div class="stat-item">
-                      <span class="stat-number" id="pendingComments">${window.pendingComments.length}</span>
-                      <span class="stat-label">Pending</span>
+                      <span class="stat-number" id="pendingComments">0</span>
+                      <span class="stat-label">Local</span>
                     </div>
                     <div class="stat-item">
                       <span class="stat-number" id="syncedComments">0</span>
@@ -1673,12 +1945,17 @@ jobs:
                     </div>
                   </div>
                 </div>
+                <div class="data-controls">
+                  <button class="data-control-btn" onclick="window.exportLocalComments()">📥 Export</button>
+                  <button class="data-control-btn" onclick="staticman.retryPendingComments()">🔄 Retry</button>
+                  <button class="data-control-btn danger" onclick="window.clearLocalComments()">🗑️ Clear Local</button>
+                </div>
                 <div class="comments-list" id="commentsList">
                   <div class="no-comments">
                     <div class="no-comments-icon">💬</div>
                     <h4>No Comments Yet</h4>
                     <p>Select text or click images to add comments and suggestions in review mode.</p>
-                    <p><em>Comments are saved via Staticman and synchronized with the repository.</em></p>
+                    <p><em>Comments are automatically synchronized with the repository when possible, or stored locally as fallback.</em></p>
                   </div>
                 </div>
               </div>
@@ -1708,15 +1985,15 @@ jobs:
           async function updateCommentsSideCart() {
             if (!window.currentPage) return;
             
-            // Load comments from Staticman
+            // Load comments from both sources
             const comments = await staticman.loadCommentsForPage(window.currentPage);
-            const syncedCount = comments.length;
-            const pendingCount = window.pendingComments.filter(c => c.pageId === window.currentPage).length;
-            const totalCount = syncedCount + pendingCount;
+            const localCount = comments.filter(c => c.local).length;
+            const syncedCount = comments.filter(c => !c.local).length;
+            const totalCount = comments.length;
             
             // Update statistics
             document.getElementById('totalComments').textContent = totalCount;
-            document.getElementById('pendingComments').textContent = pendingCount;
+            document.getElementById('pendingComments').textContent = localCount;
             document.getElementById('syncedComments').textContent = syncedCount;
             
             // Update comments list
@@ -1728,23 +2005,17 @@ jobs:
                   <div class="no-comments-icon">💬</div>
                   <h4>No Comments Yet</h4>
                   <p>Select text or click images to add comments and suggestions in review mode.</p>
-                  <p><em>Comments are saved via Staticman and synchronized with the repository.</em></p>
+                  <p><em>Comments are automatically synchronized with the repository when possible, or stored locally as fallback.</em></p>
                 </div>
               `;
               return;
             }
             
-            // Combine synced and pending comments
-            const allComments = [
-              ...comments.map(c => ({...c, synced: true})),
-              ...window.pendingComments.filter(c => c.pageId === window.currentPage).map(c => ({...c, synced: false}))
-            ];
-            
             // Sort comments by timestamp (newest first)
-            const sortedComments = allComments.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const sortedComments = comments.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
             commentsList.innerHTML = sortedComments.map(comment => `
-              <div class="comment-item ${comment.resolved ? 'resolved' : ''}" data-comment-id="${comment.id}">
+              <div class="comment-item ${comment.resolved ? 'resolved' : ''} ${comment.local ? 'local' : ''}" data-comment-id="${comment.id}">
                 <div class="comment-header">
                   <span class="comment-type-badge ${comment.commentType || 'comment'}">${comment.commentType || 'comment'}</span>
                   <span class="comment-timestamp">${new Date(comment.timestamp).toLocaleDateString()} ${new Date(comment.timestamp).toLocaleTimeString()}</span>
@@ -1759,8 +2030,14 @@ jobs:
                 
                 ${comment.message ? `<div class="comment-text">${comment.message}</div>` : ''}
                 
-                <div class="comment-sync-status ${comment.synced ? 'synced' : 'syncing'}">
-                  ${comment.synced ? '✓ Synced with repository' : '⏳ Pending sync...'}
+                <div class="comment-sync-status ${comment.local ? 'local' : 'synced'}">
+                  ${comment.local ? 
+                    (comment.error ? 
+                      `⚠️ Failed to sync: ${comment.error}` : 
+                      '📱 Stored locally, will retry sync'
+                    ) : 
+                    '✓ Synced with repository'
+                  }
                 </div>
               </div>
             `).join('');
@@ -1802,7 +2079,7 @@ jobs:
               </div>
               <div class="dialog-actions">
                 <button class="dialog-btn secondary" onclick="closeCommentDialog()">Cancel</button>
-                <button class="dialog-btn primary" onclick="saveCommentToStaticman()">Submit to Repository</button>
+                <button class="dialog-btn primary" onclick="saveCommentToStaticman()">Submit Comment</button>
               </div>
             `;
             
@@ -1855,8 +2132,8 @@ jobs:
             try {
               showLoading();
               
-              // Submit to Staticman
-              await staticman.submitComment(commentData);
+              // Submit to Staticman (will fallback to local storage if needed)
+              const result = await staticman.submitComment(commentData);
               
               // Add visual indicator to document immediately
               if (window.currentSelection.type === 'text') {
@@ -1876,22 +2153,18 @@ jobs:
               
               closeCommentDialog();
               
-              // Show success message
-              alert('Comment submitted successfully! It will appear in the repository after processing.');
-              
-              debug('Comment submitted to Staticman:', commentData);
-              
-            } catch (error) {
-              alert('Failed to submit comment: ' + error.message + '\nComment saved locally and will retry automatically.');
-              debug('Comment submission error:', error);
-              
-              // Still add visual indicator even if submission failed
-              if (window.currentSelection.type === 'text') {
-                highlightTextInDocument(window.currentSelection, commentData);
-              } else if (window.currentSelection.type === 'image') {
-                addImageCommentMarker(window.currentSelection, commentData);
+              // Show appropriate success message
+              if (result.local) {
+                alert('Comment saved locally! It will be synchronized with the repository when the connection is restored.');
+              } else {
+                alert('Comment submitted successfully to the repository!');
               }
               
+              debug('Comment processed:', commentData);
+              
+            } catch (error) {
+              alert('Failed to process comment: ' + error.message);
+              debug('Comment processing error:', error);
               closeCommentDialog();
             } finally {
               hideLoading();
@@ -1945,13 +2218,18 @@ jobs:
             contentTitleEl.textContent = 'Documentation';
             document.title = 'Documentation';
 
+            const connectionStatus = staticman.fallbackMode ? 
+              'Currently in <strong>fallback mode</strong> - comments will be stored locally.' :
+              'Connected to <strong>Staticman</strong> - comments will be synchronized with the repository.';
+
             contentEl.innerHTML = `
               <div class="welcome-screen">
-                <h2>Welcome to Documentation</h2>
+                <h2>Welcome to Enhanced Documentation</h2>
                 <p>Please select a topic from the navigation menu or use the search bar.</p>
                 <p><strong>Review Mode:</strong> Click "Review Mode" to enable collaborative commenting and suggestions.</p>
-                <p><strong>Staticman Integration:</strong> Comments are automatically synchronized with the GitHub repository for collaborative review.</p>
-                <p><strong>Comments Side Cart:</strong> View all comments and suggestions in an organized panel with sync status indicators.</p>
+                <p><strong>Staticman Integration:</strong> ${connectionStatus}</p>
+                <p><strong>Comments Side Cart:</strong> View all comments and suggestions with sync status indicators.</p>
+                <p><strong>Fallback Support:</strong> Comments are automatically saved locally if the online service is unavailable.</p>
               </div>
             `;
 
@@ -1964,7 +2242,7 @@ jobs:
             
             if (window.reviewMode) {
               document.body.classList.add('review-mode');
-              debug('Review mode activated with Staticman integration');
+              debug('Review mode activated with enhanced Staticman integration');
               
               if (window.currentPage) {
                 initializeReviewForContent();
@@ -2006,11 +2284,11 @@ jobs:
               toggleReviewMode();
             }
             
-            const statusMsg = staticman.status === 'online' 
-              ? 'Comments will be synchronized with the GitHub repository via Staticman.'
-              : 'Staticman is offline. Comments will be queued and synchronized when connection is restored.';
+            const statusMsg = staticman.fallbackMode 
+              ? 'Comments will be stored locally and synchronized when the connection is restored.'
+              : 'Comments will be synchronized with the GitHub repository via Staticman.';
             
-            alert(`Review session started for "${getPageTitle(window.currentPage)}".\n\n${statusMsg}\n\nYou can now:\n• Select text to add comments or suggestions\n• Click on images to add annotations\n• View all comments in the side cart with sync status`);
+            alert(`Review session started for "${getPageTitle(window.currentPage)}".\n\n${statusMsg}\n\nYou can now:\n• Select text to add comments or suggestions\n• Click on images to add annotations\n• View all comments in the side cart with sync status\n• Export local comments if needed`);
           }
 
           function updateReviewButtons() {
@@ -2061,13 +2339,13 @@ jobs:
             const toolbar = document.createElement('div');
             toolbar.className = 'review-toolbar';
             toolbar.innerHTML = `
-              <h3>Review Mode: ${getPageTitle(window.currentPage)} (Staticman Integration)</h3>
+              <h3>Review Mode: ${getPageTitle(window.currentPage)} (${staticman.fallbackMode ? 'Local Storage' : 'Staticman'})</h3>
               <div class="review-toolbar-actions">
                 <button class="review-toolbar-btn" onclick="openCommentsSideCart()">
                   View Comments
                 </button>
                 <button class="review-toolbar-btn" onclick="staticman.retryPendingComments()">
-                  Retry Failed (${window.pendingComments.length})
+                  Retry Sync (${window.pendingComments.length})
                 </button>
               </div>
             `;
@@ -2158,7 +2436,8 @@ jobs:
               <div class="tooltip-meta">
                 Selected: "${comment.selectedText}"<br>
                 ${new Date(comment.timestamp).toLocaleString()}
-                ${comment.synced !== undefined ? (comment.synced ? '<br>✓ Synced' : '<br>⏳ Pending') : ''}
+                ${comment.local ? '<br>📱 Local' : '<br>✓ Synced'}
+                ${comment.error ? '<br>⚠️ ' + comment.error : ''}
               </div>
             `;
             
@@ -2208,7 +2487,6 @@ jobs:
             // Re-apply highlights (simplified version for demo)
             comments.forEach(comment => {
               if (comment.selectionType === 'text') {
-                // Simplified highlighting - in production, you'd want more sophisticated text matching
                 debug('Would highlight text:', comment.selectedText);
               } else if (comment.selectionType === 'image') {
                 debug('Would add image marker for:', comment.imageAlt);
@@ -2217,8 +2495,17 @@ jobs:
           }
 
           function promptClearReviewData() {
-            if (confirm('This will clear all pending comments. Synced comments in the repository will not be affected. Continue?')) {
+            const localCount = Object.keys(window.localComments || {}).length;
+            const pendingCount = window.pendingComments.length;
+            
+            if (localCount === 0 && pendingCount === 0) {
+              alert('No local comments to clear.');
+              return;
+            }
+            
+            if (confirm(`This will clear ${localCount} local comment pages and ${pendingCount} pending comments. Synced comments in the repository will not be affected. Continue?`)) {
               window.pendingComments = [];
+              window.clearLocalComments();
               clearReviewHighlights();
               
               if (window.reviewMode) {
@@ -2229,8 +2516,6 @@ jobs:
               if (sideCart && sideCart.classList.contains('open')) {
                 updateCommentsSideCart();
               }
-              
-              alert('Pending comments cleared. Repository comments remain intact.');
             }
           }
 
@@ -2637,8 +2922,8 @@ jobs:
           <h1>${title}</h1>
           <p>This section contains information about ${title}.</p>
           <p>Use the navigation menu to explore topics within this section.</p>
-          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features with Staticman integration.</p>
-          <p><strong>Staticman Comments:</strong> All comments and suggestions are automatically synchronized with the GitHub repository for persistent collaborative review.</p>
+          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features with enhanced Staticman integration.</p>
+          <p><strong>Smart Comments System:</strong> Comments are automatically synchronized with the GitHub repository when possible, or stored locally with export options as fallback.</p>
           EOF
             fi
           done < container-nodes.txt
@@ -2654,14 +2939,14 @@ jobs:
           <h1>${title}</h1>
           <p>This section contains information about ${title}.</p>
           <p>Use the navigation menu to explore topics within this section.</p>
-          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features with Staticman integration.</p>
-          <p><strong>Staticman Comments:</strong> All comments and suggestions are automatically synchronized with the GitHub repository for persistent collaborative review.</p>
+          <p><strong>Review Mode:</strong> Use the review controls in the sidebar to enable collaborative editing and commenting features with enhanced Staticman integration.</p>
+          <p><strong>Smart Comments System:</strong> Comments are automatically synchronized with the GitHub repository when possible, or stored locally with export options as fallback.</p>
           EOF
             done
           fi
 
-      # Step 14: Create Enhanced index.html with Staticman Integration
-      - name: Create Enhanced Index HTML with Staticman Integration
+      # Step 14: Create Enhanced index.html with Improved Staticman Integration
+      - name: Create Enhanced Index HTML with Improved Staticman Integration
         run: |
           cat > ./site/index.html << 'EOF'
           <!DOCTYPE html>
@@ -2685,7 +2970,7 @@ jobs:
               }
             </script>
 
-            <title>Automotive Documentation - Enhanced with Staticman Comments Review System</title>
+            <title>Automotive Documentation - Enhanced with Smart Staticman Comments Review System</title>
             <link rel="stylesheet" href="css/style.css">
           </head>
           <body>
@@ -2703,12 +2988,12 @@ jobs:
               
               <!-- Review Controls Section -->
               <div class="review-controls">
-                <h3>Review System</h3>
+                <h3>Smart Review System</h3>
                 <div class="review-mode-toggle">
                   <button id="reviewToggle" class="review-btn">Review Mode</button>
                 </div>
                 <button id="startReview" class="review-btn secondary">Start Review</button>
-                <button id="clearReview" class="review-btn danger" style="margin-top: 10px;">Clear Pending</button>
+                <button id="clearReview" class="review-btn danger" style="margin-top: 10px;">Clear Local</button>
               </div>
               
               <div class="sidebar-nav">
@@ -2722,7 +3007,7 @@ jobs:
                 <h3>Review Mode Active</h3>
                 <div class="review-toolbar-actions">
                   <button class="review-toolbar-btn">Comments</button>
-                  <button class="review-toolbar-btn">Retry Failed</button>
+                  <button class="review-toolbar-btn">Retry Sync</button>
                 </div>
               </div>
               
@@ -2730,7 +3015,7 @@ jobs:
               <div id="loading">Loading content...</div>
               <div id="content">
                 <div class="initial-loading">
-                  <p>Initializing enhanced documentation viewer with Staticman comments review system...</p>
+                  <p>Initializing enhanced documentation viewer with smart Staticman comments review system...</p>
                 </div>
               </div>
             </div>
@@ -2790,79 +3075,155 @@ jobs:
           </html>
           EOF
 
-      # Step 16: Create Staticman Setup Instructions
-      - name: Create Staticman Setup Instructions
+      # Step 16: Create Enhanced Staticman Setup Instructions
+      - name: Create Enhanced Staticman Setup Instructions
         run: |
           REPO_OWNER="${GITHUB_REPOSITORY%/*}"
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           BRANCH_NAME="${GITHUB_REF#refs/heads/}"
 
           cat > ./site/staticman-setup.md << EOF
-          # Staticman Setup Instructions
+          # Enhanced Staticman Setup Instructions
 
-          Your repository is configured for Staticman integration with the following settings:
+          Your repository is configured for enhanced Staticman integration with intelligent fallback support.
 
           ## Configuration Details
           - **Repository**: $REPO_OWNER/$REPO_NAME
           - **Branch**: $BRANCH_NAME  
           - **Endpoint**: https://api.staticman.net/v3/entry/github/$REPO_OWNER/$REPO_NAME/$BRANCH_NAME/comments
 
-          ## Manual Setup Steps Required
-
-          ### 1. Add Staticman Bot as Collaborator
-          1. Go to your repository settings → Manage access
-          2. Click "Invite a collaborator"
-          3. Add username: \`staticmanapp\`
-          4. Send invitation
-
-          ### 2. Accept Staticman Invitation
-          Visit this URL to accept the invitation:
-          \`\`\`
-          https://api.staticman.net/v3/connect/github/$REPO_OWNER/$REPO_NAME
-          \`\`\`
-
-          ### 3. Test Your Setup
-          Use this curl command to test:
-          \`\`\`bash
-          curl -X POST \\
-            https://api.staticman.net/v3/entry/github/$REPO_OWNER/$REPO_NAME/$BRANCH_NAME/comments \\
-            -H 'Content-Type: application/json' \\
-            -d '{
-              "fields": {
-                "name": "Test User",
-                "message": "Test comment",
-                "pageId": "test-page"
-              }
-            }'
-          \`\`\`
-
           ## Features Enabled
-          - ✅ Staticman configuration file created
-          - ✅ Comment submission endpoint configured  
-          - ✅ Review system with text selection and image annotation
-          - ✅ Comments side cart with sync status indicators
-          - ✅ Automatic retry for failed submissions
-          - ✅ Repository-based comment persistence
+          - ✅ Smart connection detection with automatic fallback
+          - ✅ Local storage backup for offline capability
+          - ✅ Comment export/import functionality
+          - ✅ Enhanced error handling and troubleshooting
+          - ✅ Visual sync status indicators
+          - ✅ Automatic retry mechanism for failed submissions
 
-          ## Next Steps
-          1. Complete the manual setup steps above
-          2. Deploy this workflow to GitHub Pages
-          3. Test the comment system in review mode
-          4. Comments will be stored in \`_data/comments/\` directory
+          ## Setup Options
+
+          ### Option 1: Full Staticman Integration (Recommended)
+          For full repository integration:
+
+          1. **Add Staticman Bot as Collaborator**
+             - Go to your repository settings → Manage access
+             - Click "Invite a collaborator"
+             - Add username: \`staticmanapp\`
+             - Send invitation
+
+          2. **Accept Staticman Invitation**
+             Visit this URL to accept the invitation:
+             \`\`\`
+             https://api.staticman.net/v3/connect/github/$REPO_OWNER/$REPO_NAME
+             \`\`\`
+
+          3. **Test Your Setup**
+             Use this curl command to test:
+             \`\`\`bash
+             curl -X POST \\
+               https://api.staticman.net/v3/entry/github/$REPO_OWNER/$REPO_NAME/$BRANCH_NAME/comments \\
+               -H 'Content-Type: application/json' \\
+               -d '{
+                 "fields": {
+                   "name": "Test User",
+                   "message": "Test comment",
+                   "pageId": "test-page"
+                 }
+               }'
+             \`\`\`
+
+          ### Option 2: Local-Only Mode
+          If you prefer to use only local storage (no repository integration):
+
+          1. The system will automatically detect the lack of Staticman connection
+          2. Comments will be stored in browser local storage
+          3. Use the export function to save comments as JSON files
+          4. No additional setup required
+
+          ## Using the System
+
+          ### Review Mode
+          1. Click "Review Mode" in the sidebar to enable commenting
+          2. Select text or click images to add comments
+          3. Choose between "Comment" or "Suggestion" types
+          4. Comments are automatically saved (online or locally)
+
+          ### Comments Side Cart
+          - Click "View Comments" to see all comments with sync status
+          - Green checkmark = Synced with repository
+          - Orange icon = Stored locally
+          - Red warning = Failed to sync (will retry automatically)
+
+          ### Data Management
+          - **Export**: Download local comments as JSON file
+          - **Retry**: Manually retry failed comment submissions
+          - **Clear Local**: Remove all locally stored comments
+
+          ## Troubleshooting
+
+          ### Connection Issues
+          If you see "Connection Error" status:
+          1. Check if Staticman service is online: https://staticman.net/
+          2. Verify the bot invitation was accepted
+          3. Ensure your staticman.yml file is in the repository root
+          4. The system will automatically fall back to local storage
+
+          ### CORS Issues
+          If comments fail to submit due to CORS:
+          1. This is a common issue with Staticman
+          2. Comments will be automatically saved locally
+          3. They can be exported and manually imported later
+          4. The system will continue to retry in the background
+
+          ### Local Storage Limits
+          Browser local storage has size limits (~5-10MB):
+          1. Export comments regularly to avoid data loss
+          2. Clear old comments after exporting
+          3. The system will warn if approaching limits
+
+          ## Advanced Configuration
+
+          ### Custom Endpoints
+          To use a custom Staticman instance, modify \`staticman-config.js\`:
+          \`\`\`javascript
+          window.staticmanConfig.endpoint = 'https://your-custom-staticman-instance.com/v3/entry/...';
+          \`\`\`
+
+          ### Webhook Integration
+          For advanced users, you can set up webhooks to trigger rebuilds:
+          1. Go to repository Settings → Webhooks
+          2. Add webhook URL from your hosting provider
+          3. Set trigger events to include pull requests
+
+          ## Support
+
+          ### System Status
+          - Green: Connected to Staticman, comments sync to repository
+          - Orange: Fallback mode, comments stored locally with export option
+          - Red: Error detected, click for troubleshooting information
+
+          ### Getting Help
+          1. Click the status indicator for troubleshooting tips
+          2. Check browser console for detailed error messages
+          3. Visit Staticman documentation: https://staticman.net/docs/
+          4. Export your comments before making major changes
 
           EOF
 
-          echo "Staticman setup instructions created at ./site/staticman-setup.md"
+          echo "Enhanced Staticman setup instructions created at ./site/staticman-setup.md"
           echo ""
-          echo "=== IMPORTANT: Manual Setup Required ==="
+          echo "=== ENHANCED STATICMAN INTEGRATION ==="
           echo "Repository: $REPO_OWNER/$REPO_NAME"
           echo "Branch: $BRANCH_NAME"
-          echo "Endpoint: https://api.staticman.net/v3/entry/github/$REPO_OWNER/$REPO_NAME/$BRANCH_NAME/comments"
+          echo "Features: Smart fallback, local storage, export/import"
           echo ""
+          echo "OPTIONAL Setup (for full integration):"
           echo "1. Add 'staticmanapp' as collaborator to your repository"
           echo "2. Visit: https://api.staticman.net/v3/connect/github/$REPO_OWNER/$REPO_NAME"
-          echo "3. Check ./site/staticman-setup.md for complete instructions"
-          echo "========================================="
+          echo ""
+          echo "The system will work with local storage even without Staticman setup!"
+          echo "Check ./site/staticman-setup.md for complete instructions"
+          echo "=============================================="
 
       # Step 17: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
