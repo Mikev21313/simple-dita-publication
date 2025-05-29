@@ -1,0 +1,150 @@
+/* Complete Fixed Archive Viewer Styles */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.5; background: #f5f5f5; color: #333;
+}
+
+.archive-header {
+  background: linear-gradient(135deg, #673ab7, #512da8); color: white;
+  padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.archive-title {
+  font-size: 1.5em; font-weight: 600; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 10px;
+}
+.archive-title::before { content: "📁"; font-size: 1.4em; }
+
+.archive-stats {
+  opacity: 0.9; font-size: 0.9em;
+}
+
+.archive-controls {
+  margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;
+}
+
+.archive-btn {
+  padding: 8px 16px; background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3); color: white;
+  border-radius: 5px; cursor: pointer; font-size: 0.9em;
+  transition: all 0.3s;
+}
+.archive-btn:hover {
+  background: rgba(255,255,255,0.3); transform: translateY(-1px);
+}
+
+.archive-content {
+  padding: 20px; max-width: 1200px; margin: 0 auto;
+}
+
+.page-group {
+  background: white; border-radius: 8px; margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden;
+}
+
+.page-header {
+  background: #f8f9fa; padding: 15px 20px; border-bottom: 1px solid #e9ecef;
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+.page-title {
+  font-weight: 600; color: #495057; font-size: 1.1em;
+}
+
+.page-stats {
+  font-size: 0.85em; color: #6c757d;
+}
+
+.archive-list {
+  padding: 0;
+}
+
+.archive-item {
+  padding: 15px 20px; border-bottom: 1px solid #f1f3f4;
+  display: flex; justify-content: space-between; align-items: center;
+  transition: background-color 0.2s;
+}
+.archive-item:hover { background: #f8f9fa; }
+.archive-item:last-child { border-bottom: none; }
+
+.archive-info {
+  flex: 1;
+}
+
+.archive-version {
+  font-weight: 500; color: #495057; margin-bottom: 4px;
+}
+
+.archive-meta {
+  font-size: 0.85em; color: #6c757d; display: flex; gap: 15px; flex-wrap: wrap;
+}
+
+.archive-status {
+  padding: 2px 8px; border-radius: 12px; font-size: 0.75em;
+  font-weight: bold; text-transform: uppercase;
+}
+.status-active { background: #e3f2fd; color: #1976d2; }
+.status-resolved { background: #e8f5e8; color: #2e7d32; }
+
+.archive-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+
+.action-btn {
+  padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px;
+  background: white; cursor: pointer; font-size: 0.8em;
+  transition: all 0.2s; display: flex; align-items: center; gap: 4px;
+  white-space: nowrap;
+}
+.action-btn:hover { background: #f8f9fa; transform: translateY(-1px); }
+.action-btn.view { border-color: #2196f3; color: #2196f3; }
+.action-btn.view:hover { background: #2196f3; color: white; }
+.action-btn.download { border-color: #4caf50; color: #4caf50; }
+.action-btn.download:hover { background: #4caf50; color: white; }
+.action-btn.download-with-comments { border-color: #ff9800; color: #ff9800; }
+.action-btn.download-with-comments:hover { background: #ff9800; color: white; }
+.action-btn.download-comments { border-color: #9c27b0; color: #9c27b0; }
+.action-btn.download-comments:hover { background: #9c27b0; color: white; }
+.action-btn.delete { border-color: #f44336; color: #f44336; }
+.action-btn.delete:hover { background: #f44336; color: white; }
+
+.no-archives {
+  text-align: center; padding: 40px 20px; color: #6c757d;
+  font-style: italic; background: white; border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.no-archives h3 {
+  color: #495057; margin-bottom: 15px;
+}
+
+.no-archives ul, .no-archives ol {
+  display: inline-block; text-align: left; margin-top: 10px;
+}
+
+.search-archives {
+  margin-bottom: 20px; display: flex; gap: 10px;
+}
+.search-archives input {
+  flex: 1; padding: 10px; border: 1px solid #ddd;
+  border-radius: 5px; font-size: 0.9em;
+}
+.search-archives button {
+  padding: 10px 15px; background: #673ab7; color: white;
+  border: none; border-radius: 5px; cursor: pointer;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .archive-item {
+    flex-direction: column; align-items: flex-start; gap: 10px;
+  }
+  .archive-actions {
+    width: 100%; justify-content: flex-start;
+  }
+  .action-btn {
+    font-size: 0.75em; padding: 4px 8px;
+  }
+}
