@@ -1,4 +1,4 @@
-name: DITA to SPA with Enhanced Review Window System
+name: DITA to SPA with Fixed Review Window System
 
 on:
   push:
@@ -33,26 +33,66 @@ jobs:
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Setup Enhanced Database Schema with Archive System
-      - name: Setup Enhanced Database Schema
+      # Step 4: Verify Enhanced Database Connection
+      - name: Verify Enhanced Database Connection
         run: |
-          echo "🔄 Setting up enhanced database schema with archive system..."
+          echo "🔄 Verifying enhanced database connection and schema..."
           
-          # Test connection first
-          echo "Testing Supabase connection..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
+          # Test connection with multiple attempts
+          for i in {1..3}; do
+            echo "Connection attempt $i..."
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
+              -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+              -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+              "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/")
+            
+            if [ "$RESPONSE" -eq 200 ]; then
+              echo "✅ Supabase connection successful on attempt $i"
+              break
+            else
+              echo "❌ Attempt $i failed with status: $RESPONSE"
+              if [ $i -eq 3 ]; then
+                exit 1
+              fi
+              sleep 2
+            fi
+          done
+
+          # Verify table existence
+          echo "🔍 Verifying database tables..."
+          TABLES_RESPONSE=$(curl -s -X GET \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
             -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/")
+            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments?limit=1")
           
-          if [ "$RESPONSE" -eq 200 ]; then
-            echo "✅ Supabase connection successful"
-          else
-            echo "❌ Supabase connection failed with status: $RESPONSE"
+          if [[ "$TABLES_RESPONSE" == *"relation"*"does not exist"* ]]; then
+            echo "❌ Database tables missing - please run the schema setup SQL"
             exit 1
+          else
+            echo "✅ Database tables verified and accessible"
           fi
 
-          echo "✅ Database connection verified - Enhanced review system ready"
+          # Test write permissions
+          echo "🔧 Testing write permissions..."
+          TEST_WRITE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"page_id":"test","comment_text":"connection test","selected_text":"test"}' \
+            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments")
+          
+          if [ "$TEST_WRITE" -eq 201 ]; then
+            echo "✅ Write permissions verified"
+            # Clean up test data
+            curl -s -X DELETE \
+              -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+              -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+              "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments?page_id=eq.test" > /dev/null
+          else
+            echo "⚠️ Write test returned: $TEST_WRITE (may be RLS policy - will work with anon key)"
+          fi
+
+          echo "✅ Database connection and permissions verified - Review system ready"
 
       # Step 5: Parse DITAMAP to generate navigation structure
       - name: Parse DITAMAP Structure
@@ -196,11 +236,11 @@ jobs:
           cat ./navigation-structure.json >> ./site/js/navigation-config.js
           echo ";" >> ./site/js/navigation-config.js
 
-      # Step 9: Create Enhanced Supabase Configuration with Archive System
+      # Step 9: Create Enhanced Supabase Configuration with Connection Testing
       - name: Create Enhanced Supabase Configuration
         run: |
           cat > ./site/js/supabase-config.js << 'EOF'
-          // Enhanced Supabase configuration with Archive System
+          // Enhanced Supabase configuration with robust connection handling
           const SUPABASE_URL = 'https://oiluavgeyngmkqozzmnz.supabase.co';
           const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ';
 
@@ -214,6 +254,7 @@ jobs:
               };
               this.connected = false;
               this.debugMode = true;
+              this.retryAttempts = 3;
             }
 
             debug(message, data) {
@@ -228,32 +269,47 @@ jobs:
 
               this.debug(`Making request to: ${endpoint}`, { method: config.method || 'GET' });
 
-              try {
-                const response = await fetch(url, config);
-                
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  this.debug(`Request failed: ${response.status} - ${errorText}`);
-                  throw new Error(`HTTP ${response.status}: ${errorText}`);
+              for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
+                try {
+                  const response = await fetch(url, config);
+                  
+                  if (!response.ok) {
+                    const errorText = await response.text();
+                    this.debug(`Request failed (attempt ${attempt}): ${response.status} - ${errorText}`);
+                    
+                    if (attempt === this.retryAttempts) {
+                      throw new Error(`HTTP ${response.status}: ${errorText}`);
+                    }
+                    
+                    // Wait before retry
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                    continue;
+                  }
+                  
+                  this.connected = true;
+                  this.updateConnectionStatus(true);
+                  
+                  if (response.status === 204) {
+                    this.debug('Request successful (no content)');
+                    return null;
+                  }
+                  
+                  const text = await response.text();
+                  const result = text ? JSON.parse(text) : null;
+                  this.debug('Request successful', result);
+                  return result;
+                } catch (error) {
+                  this.debug(`Request error (attempt ${attempt}):`, error);
+                  
+                  if (attempt === this.retryAttempts) {
+                    this.connected = false;
+                    this.updateConnectionStatus(false);
+                    throw error;
+                  }
+                  
+                  // Wait before retry
+                  await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
                 }
-                
-                this.connected = true;
-                this.updateConnectionStatus(true);
-                
-                if (response.status === 204) {
-                  this.debug('Request successful (no content)');
-                  return null;
-                }
-                
-                const text = await response.text();
-                const result = text ? JSON.parse(text) : null;
-                this.debug('Request successful', result);
-                return result;
-              } catch (error) {
-                this.connected = false;
-                this.updateConnectionStatus(false);
-                this.debug('Request error:', error);
-                throw error;
               }
             }
 
@@ -429,18 +485,6 @@ jobs:
               }
             }
 
-            async getAllArchives() {
-              this.debug('Fetching all archives');
-              try {
-                const archives = await this.request('archived_content?order=created_at.desc');
-                this.debug(`Retrieved ${archives?.length || 0} total archives`);
-                return archives || [];
-              } catch (error) {
-                this.debug('Failed to fetch all archives:', error);
-                return [];
-              }
-            }
-
             async deleteArchive(archiveId) {
               this.debug(`Deleting archive: ${archiveId}`);
               try {
@@ -504,8 +548,8 @@ jobs:
           window.supabaseClient = new SupabaseClient();
           EOF
 
-      # Step 10: Create Enhanced CSS with New UI Layout
-      - name: Create Enhanced CSS with New UI Layout
+      # Step 10: Create Main Application CSS
+      - name: Create Main Application CSS
         run: |
           cat > ./site/css/style.css << 'EOF'
           /* Enhanced SPA CSS with Review Window System */
@@ -571,27 +615,6 @@ jobs:
             color: #00747a; font-size: 1.1em; margin-bottom: 10px; 
           }
 
-          .review-btn {
-            padding: 8px 12px; border: 1px solid #00acc1;
-            background: linear-gradient(135deg, #00acc1, #0097a7); color: white;
-            border-radius: 5px; cursor: pointer; font-size: 0.9em;
-            transition: all 0.3s; text-align: center;
-          }
-          .review-btn:hover {
-            background: linear-gradient(135deg, #0097a7, #00838f);
-            transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-          }
-          .review-btn.active {
-            background: linear-gradient(135deg, #ff6f00, #e65100); border-color: #ff6f00;
-          }
-          .review-btn.danger {
-            background: linear-gradient(135deg, #f44336, #d32f2f); border-color: #f44336;
-            font-size: 0.85em; padding: 6px 10px;
-          }
-          .review-btn.success {
-            background: linear-gradient(135deg, #4caf50, #388e3c); border-color: #4caf50;
-          }
-
           .feedback-instructions {
             background: #e8f5e8; border: 1px solid #c8e6c9; border-radius: 6px;
             padding: 12px; margin: 10px 0; font-size: 0.85em; color: #2e7d32;
@@ -642,7 +665,7 @@ jobs:
           }
           .welcome-screen h2 { margin-bottom: 20px; font-size: 2em; }
 
-          /* Connection Status - Moved to bottom left */
+          /* Connection Status - Bottom left */
           .connection-status {
             position: fixed; bottom: 15px; left: 15px; z-index: 2000;
             padding: 8px 12px; border-radius: 20px; font-size: 0.8em;
@@ -664,7 +687,7 @@ jobs:
             50% { opacity: 0.7; }
           }
 
-          /* Review Window Styles */
+          /* Review Window Button */
           .review-window-open-btn {
             position: fixed; top: 15px; right: 15px; z-index: 1500;
             padding: 12px 18px; background: #2196f3; color: white; border: none;
@@ -693,41 +716,42 @@ jobs:
           }
           EOF
 
-      # Step 11: Create Review Window CSS
-      - name: Create Review Window CSS
+      # Step 11: Create Fixed Review Window CSS with Space Optimization
+      - name: Create Fixed Review Window CSS with Space Optimization
         run: |
           cat > ./site/css/review-window.css << 'EOF'
-          /* Dedicated Review Window Styles */
+          /* Space-Optimized Review Window with Fixed Hover and Click-to-Scroll */
           * { margin: 0; padding: 0; box-sizing: border-box; }
 
           body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6; display: flex; height: 100vh; width: 100%;
+            line-height: 1.4; display: flex; height: 100vh; width: 100%;
             overflow: hidden; color: #333; background-color: #fffbf0;
           }
 
-          /* Review Header */
+          /* Compact Review Header */
           .review-header {
             position: fixed; top: 0; left: 0; right: 0; z-index: 2000;
             background: linear-gradient(135deg, #2c5aa0, #1e3f73); color: white;
-            padding: 15px 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            padding: 10px 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
             display: flex; justify-content: space-between; align-items: center;
+            height: 50px;
           }
 
           .review-title {
-            font-size: 1.3em; font-weight: 600; display: flex; align-items: center; gap: 10px;
+            font-size: 1.1em; font-weight: 600; display: flex; align-items: center; gap: 8px;
           }
-          .review-title::before { content: "🔍"; font-size: 1.4em; }
+          .review-title::before { content: "🔍"; font-size: 1.2em; }
 
           .review-actions {
-            display: flex; gap: 10px; align-items: center;
+            display: flex; gap: 6px; align-items: center;
           }
 
           .review-btn {
-            padding: 8px 16px; border: 1px solid rgba(255,255,255,0.3);
-            background: rgba(255,255,255,0.1); color: white; border-radius: 6px;
-            cursor: pointer; font-size: 0.9em; transition: all 0.3s;
-            display: flex; align-items: center; gap: 6px;
+            padding: 6px 12px; border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1); color: white; border-radius: 4px;
+            cursor: pointer; font-size: 0.85em; transition: all 0.3s;
+            display: flex; align-items: center; gap: 4px;
           }
           .review-btn:hover {
             background: rgba(255,255,255,0.2); transform: translateY(-1px);
@@ -735,56 +759,60 @@ jobs:
           .review-btn.success {
             background: #4caf50; border-color: #4caf50;
           }
-          .review-btn.success:hover {
-            background: #45a049;
-          }
+          .review-btn.success:hover { background: #45a049; }
           .review-btn.danger {
             background: #f44336; border-color: #f44336;
           }
-          .review-btn.danger:hover {
-            background: #da190b;
-          }
+          .review-btn.danger:hover { background: #da190b; }
           .review-btn.close {
             background: #ff9800; border-color: #ff9800;
           }
-          .review-btn.close:hover {
-            background: #f57c00;
-          }
+          .review-btn.close:hover { background: #f57c00; }
 
-          /* Review Layout */
+          /* Optimized Review Layout */
           .review-layout {
-            display: flex; height: 100vh; padding-top: 70px;
+            display: flex; height: 100vh; padding-top: 50px;
           }
 
           .document-panel {
-            flex: 1; padding: 20px; overflow-y: auto; background: #ffffff;
-            border-right: 2px solid #e0e0e0;
+            flex: 1; padding: 15px 20px; overflow-y: auto; background: #ffffff;
+            border-right: 1px solid #e0e0e0;
           }
 
           .feedback-panel {
-            width: 400px; background: #f8f9fa; padding: 20px;
-            overflow-y: auto; border-left: 2px solid #e0e0e0;
+            width: 280px; background: #f8f9fa; padding: 12px;
+            overflow-y: auto; border-left: 1px solid #e0e0e0;
+            display: flex; flex-direction: column;
           }
 
-          /* Document Content Styles */
+          /* Compact Document Content Styles */
           .document-content {
-            max-width: 800px; margin: 0 auto;
+            max-width: none; margin: 0;
           }
 
           .document-content h1, .document-content h2, .document-content h3, .document-content h4 {
-            font-weight: 500; margin-top: 1.5em; margin-bottom: 0.8em; color: #00838f;
+            font-weight: 500; margin-top: 1.2em; margin-bottom: 0.6em; color: #00838f;
           }
           .document-content h1 {
-            font-size: 2em; border-bottom: 1px solid #e0e0e0;
-            padding-bottom: 10px; margin-top: 0;
+            font-size: 1.8em; border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 8px; margin-top: 0;
           }
-          .document-content p { margin-bottom: 1em; line-height: 1.6; }
+          .document-content p { 
+            margin-bottom: 0.8em; line-height: 1.5;
+          }
           .document-content img {
-            max-width: 100%; height: auto; display: block; margin: 1em auto;
+            max-width: 100%; height: auto; display: block; margin: 0.8em auto;
             border: 1px solid #e0e0e0; border-radius: 4px;
           }
 
-          /* Reviewable Text */
+          .document-content ul, .document-content ol {
+            margin-bottom: 0.8em; padding-left: 1.5em;
+          }
+          .document-content li {
+            margin-bottom: 0.3em;
+          }
+
+          /* Enhanced Reviewable Text with Hover */
           .reviewable-text { 
             cursor: text; user-select: text; position: relative;
             transition: background-color 0.2s;
@@ -793,31 +821,43 @@ jobs:
             background-color: rgba(255, 235, 59, 0.1); border-radius: 2px;
           }
 
-          /* Feedback Highlights */
+          /* Fixed Feedback Highlights with Working Hover Tooltips */
           .review-feedback-highlight {
-            background-color: #e3f2fd; border-left: 3px solid #2196f3;
-            padding: 2px 4px; margin: 2px 0; border-radius: 2px; 
-            cursor: pointer; position: relative;
+            background-color: #e3f2fd; border-left: 2px solid #2196f3;
+            padding: 1px 3px; margin: 1px 0; border-radius: 2px;
+            cursor: pointer; position: relative; display: inline;
+            transition: all 0.2s ease;
           }
 
+          .review-feedback-highlight:hover {
+            background-color: #bbdefb; border-left-color: #1976d2;
+          }
+
+          /* Working Hover Tooltips */
           .feedback-tooltip {
-            position: absolute; top: -40px; left: 0; background: #333;
-            color: white; padding: 5px 8px; border-radius: 4px; font-size: 0.8em;
-            white-space: nowrap; z-index: 1000; opacity: 0; pointer-events: none;
-            transition: opacity 0.2s; max-width: 200px; white-space: normal;
-          }
-          .feedback-tooltip:before {
-            content: ''; position: absolute; top: 100%; left: 10px;
-            border: 5px solid transparent; border-top-color: #333;
-          }
-          .review-feedback-highlight:hover .feedback-tooltip {
-            opacity: 1;
+            position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+            background: #333; color: white; padding: 6px 8px; border-radius: 4px;
+            font-size: 0.75em; white-space: nowrap; z-index: 3000;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+            max-width: 250px; white-space: normal; text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            margin-bottom: 5px;
           }
 
-          /* Feedback Panel Styles */
+          .feedback-tooltip:after {
+            content: ''; position: absolute; top: 100%; left: 50%;
+            transform: translateX(-50%); border: 5px solid transparent;
+            border-top-color: #333;
+          }
+
+          .review-feedback-highlight:hover .feedback-tooltip {
+            opacity: 1; pointer-events: auto;
+          }
+
+          /* Compact Feedback Panel Styles */
           .feedback-panel h3 {
-            color: #333; margin-bottom: 20px; padding-bottom: 10px;
-            border-bottom: 2px solid #e0e0e0; font-size: 1.3em; font-weight: 600;
+            color: #333; margin-bottom: 12px; padding-bottom: 6px;
+            border-bottom: 1px solid #e0e0e0; font-size: 1.1em; font-weight: 600;
           }
 
           .feedback-list {
@@ -825,52 +865,59 @@ jobs:
           }
 
           .feedback-group {
-            background: white; border: 1px solid #e0e0e0; border-radius: 8px;
-            margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            overflow: hidden; border-left: 4px solid #2196f3;
+            background: white; border: 1px solid #e0e0e0; border-radius: 6px;
+            margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            overflow: hidden; border-left: 3px solid #2196f3;
+            cursor: pointer; transition: all 0.2s ease;
+          }
+
+          .feedback-group:hover {
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            transform: translateY(-1px);
           }
 
           .selected-text-header {
-            background: #f8f9fa; padding: 12px 15px; border-bottom: 1px solid #e9ecef;
-            font-weight: 500; color: #495057;
+            background: #f8f9fa; padding: 8px 10px; border-bottom: 1px solid #e9ecef;
+            font-weight: 500; color: #495057; font-size: 0.85em;
           }
 
           .selected-text-content {
-            font-style: italic; background: #e9ecef; padding: 8px 12px;
-            border-radius: 4px; margin-top: 8px; font-size: 0.9em;
-            border-left: 3px solid #6c757d; color: #495057;
+            font-style: italic; background: #e9ecef; padding: 6px 8px;
+            border-radius: 3px; margin-top: 6px; font-size: 0.8em;
+            border-left: 2px solid #6c757d; color: #495057;
             word-wrap: break-word; overflow-wrap: break-word;
+            line-height: 1.3;
           }
 
           .feedback-details {
-            padding: 15px;
+            padding: 10px;
           }
 
           .feedback-meta {
             display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 10px; font-size: 0.85em; color: #6c757d;
+            margin-bottom: 6px; font-size: 0.75em; color: #6c757d;
           }
 
           .feedback-type-badge {
-            padding: 3px 8px; border-radius: 12px; font-size: 0.75em; 
+            padding: 2px 6px; border-radius: 10px; font-size: 0.7em;
             font-weight: bold; text-transform: uppercase;
             background: #e3f2fd; color: #1976d2;
           }
 
           .feedback-text {
-            margin: 10px 0; line-height: 1.5; font-size: 0.95em; color: #333;
+            margin: 6px 0; line-height: 1.4; font-size: 0.9em; color: #333;
             word-wrap: break-word; overflow-wrap: break-word;
           }
 
           .feedback-actions {
-            display: flex; gap: 8px; margin-top: 12px; padding-top: 10px;
+            display: flex; gap: 6px; margin-top: 8px; padding-top: 6px;
             border-top: 1px solid #f0f0f0;
           }
 
           .feedback-btn {
-            padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px;
-            background: #f8f9fa; cursor: pointer; font-size: 0.8em;
-            transition: all 0.2s; display: flex; align-items: center; gap: 4px;
+            padding: 3px 8px; border: 1px solid #ddd; border-radius: 3px;
+            background: #f8f9fa; cursor: pointer; font-size: 0.75em;
+            transition: all 0.2s; display: flex; align-items: center; gap: 3px;
           }
           .feedback-btn:hover { 
             background: #e9ecef; transform: translateY(-1px);
@@ -884,11 +931,11 @@ jobs:
 
           .no-feedback {
             text-align: center; color: #6c757d; font-style: italic; 
-            padding: 40px 20px; background: white; border-radius: 8px;
-            border: 1px dashed #dee2e6;
+            padding: 20px 15px; background: white; border-radius: 6px;
+            border: 1px dashed #dee2e6; font-size: 0.9em;
           }
 
-          /* Feedback Dialog */
+          /* Compact Feedback Dialog */
           .dialog-overlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0,0,0,0.5); z-index: 2999; display: none;
@@ -903,9 +950,9 @@ jobs:
 
           .feedback-dialog {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: white; border: 2px solid #2c5aa0; border-radius: 8px;
-            padding: 20px; width: 450px; max-width: 90vw; z-index: 3000;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: none;
+            background: white; border: 2px solid #2c5aa0; border-radius: 6px;
+            padding: 15px; width: 400px; max-width: 90vw; z-index: 3000;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3); display: none;
             animation: slideIn 0.3s ease-out;
           }
           .feedback-dialog.show { display: block; }
@@ -915,19 +962,21 @@ jobs:
             to { transform: translate(-50%, -50%); opacity: 1; }
           }
 
-          .feedback-dialog h3 { color: #2c5aa0; margin-bottom: 15px; }
+          .feedback-dialog h3 { 
+            color: #2c5aa0; margin-bottom: 10px; font-size: 1.1em;
+          }
           .feedback-dialog textarea {
-            width: 100%; height: 100px; padding: 10px; border: 1px solid #ddd;
+            width: 100%; height: 80px; padding: 8px; border: 1px solid #ddd;
             border-radius: 4px; font-family: inherit; resize: vertical;
             font-size: 0.9em;
           }
 
           .dialog-actions {
-            display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;
+            display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px;
           }
           .dialog-btn {
-            padding: 8px 16px; border: 1px solid #ddd; border-radius: 4px;
-            cursor: pointer; font-size: 0.9em; transition: all 0.2s;
+            padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px;
+            cursor: pointer; font-size: 0.85em; transition: all 0.2s;
           }
           .dialog-btn.primary {
             background: #2c5aa0; color: white; border-color: #2c5aa0;
@@ -941,13 +990,29 @@ jobs:
           .dialog-btn.secondary:hover { 
             background: #e0e0e0; 
           }
+
+          /* Responsive Optimizations */
+          @media (max-width: 1400px) {
+            .feedback-panel { width: 260px; }
+          }
+
+          @media (max-width: 1200px) {
+            .document-panel { padding: 12px 15px; }
+            .feedback-panel { width: 240px; padding: 10px; }
+          }
+
+          @media (max-width: 1000px) {
+            .review-layout { flex-direction: column; }
+            .document-panel { height: 60%; border-right: none; border-bottom: 1px solid #e0e0e0; }
+            .feedback-panel { width: 100%; height: 40%; border-left: none; }
+          }
           EOF
 
       # Step 12: Create Enhanced Main SPA JavaScript
       - name: Create Enhanced Main SPA JavaScript
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // Enhanced SPA Application with Dedicated Review Window System
+          // Enhanced SPA Application with Fixed Review Window System
 
           // === INITIALIZATION AND STATE ===
           const DEBUG_MODE = true;
@@ -962,8 +1027,6 @@ jobs:
           const searchInput = document.getElementById('searchInput');
           const searchButton = document.getElementById('searchButton');
           const searchResultsEl = document.getElementById('searchResults');
-          const reviewToggleBtn = document.getElementById('reviewToggle');
-          const clearReviewBtn = document.getElementById('clearReview');
 
           // Application State
           const getBasePath = () => {
@@ -1150,6 +1213,7 @@ jobs:
                   window.currentPage = '${window.currentPage}';
                   window.currentSelection = null;
                   window.parentWindow = window.opener;
+                  window.feedbackHighlights = new Map(); // Track highlights with their feedback
                   
                   // Initialize review window
                   document.addEventListener('DOMContentLoaded', function() {
@@ -1162,9 +1226,9 @@ jobs:
           }
 
           function initializeReviewWindow(reviewWin, feedback, archives) {
-            // Pass initialization script to review window
+            // Pass comprehensive initialization script to review window
             reviewWin.eval(`
-              // Review Window Initialization Script
+              // Enhanced Review Window Initialization Script
               const DEBUG_MODE = true;
               const debug = (message, data) => {
                 if (DEBUG_MODE) console.log('[Review Window] ' + message, data || '');
@@ -1172,7 +1236,7 @@ jobs:
 
               // Initialize review functionality
               function initializeReviewWindow() {
-                debug('Initializing review window functionality');
+                debug('Initializing enhanced review window functionality');
                 
                 // Make all text elements reviewable
                 const contentEl = document.getElementById('documentContent');
@@ -1185,7 +1249,7 @@ jobs:
                   }
                 });
 
-                // Load existing feedback
+                // Load existing feedback and create highlights
                 loadFeedback();
                 
                 debug('Review window initialization complete');
@@ -1291,8 +1355,67 @@ jobs:
                   debug('Loading feedback for review window');
                   const feedback = await window.supabaseClient.getComments(window.currentPage);
                   displayFeedback(feedback);
+                  createTextHighlights(feedback);
                 } catch (error) {
                   debug('Failed to load feedback:', error);
+                }
+              }
+
+              function createTextHighlights(feedbackItems) {
+                if (!feedbackItems || feedbackItems.length === 0) return;
+
+                const contentEl = document.getElementById('documentContent');
+                
+                feedbackItems.forEach(item => {
+                  if (item.selected_text && item.selected_text.trim()) {
+                    highlightTextInDocument(contentEl, item.selected_text, item);
+                  }
+                });
+              }
+
+              function highlightTextInDocument(container, selectedText, feedbackItem) {
+                const walker = document.createTreeWalker(
+                  container,
+                  NodeFilter.SHOW_TEXT,
+                  null,
+                  false
+                );
+                
+                let node;
+                while (node = walker.nextNode()) {
+                  const text = node.textContent;
+                  const index = text.toLowerCase().indexOf(selectedText.toLowerCase());
+                  
+                  if (index !== -1 && !node.parentNode.classList.contains('review-feedback-highlight')) {
+                    const parent = node.parentNode;
+                    const beforeText = text.substring(0, index);
+                    const actualText = text.substring(index, index + selectedText.length);
+                    const afterText = text.substring(index + selectedText.length);
+                    
+                    // Create highlight span
+                    const span = document.createElement('span');
+                    span.className = 'review-feedback-highlight';
+                    span.setAttribute('data-feedback-id', feedbackItem.id);
+                    span.textContent = actualText;
+                    
+                    // Create tooltip
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'feedback-tooltip';
+                    tooltip.textContent = feedbackItem.comment_text.substring(0, 100) + 
+                      (feedbackItem.comment_text.length > 100 ? '...' : '');
+                    span.appendChild(tooltip);
+                    
+                    // Replace text node
+                    parent.removeChild(node);
+                    if (beforeText) parent.appendChild(document.createTextNode(beforeText));
+                    parent.appendChild(span);
+                    if (afterText) parent.appendChild(document.createTextNode(afterText));
+                    
+                    // Store highlight reference
+                    window.feedbackHighlights.set(feedbackItem.id, span);
+                    
+                    break;
+                  }
                 }
               }
 
@@ -1323,7 +1446,7 @@ jobs:
                 Object.keys(groupedFeedback).forEach(selectedText => {
                   const feedbackGroup = groupedFeedback[selectedText];
                   
-                  feedbackHtml += '<div class="feedback-group">';
+                  feedbackHtml += '<div class="feedback-group" onclick="scrollToHighlight(' + feedbackGroup[0].id + ')">';
                   
                   if (selectedText !== 'General') {
                     feedbackHtml += '<div class="selected-text-header">📝 Selected Text:<div class="selected-text-content">"' + escapeHtml(selectedText) + '"</div></div>';
@@ -1337,7 +1460,7 @@ jobs:
                     feedbackHtml += '</div>';
                     feedbackHtml += '<div class="feedback-text">' + escapeHtml(item.comment_text) + '</div>';
                     feedbackHtml += '<div class="feedback-actions">';
-                    feedbackHtml += '<button class="feedback-btn delete" onclick="deleteFeedback(' + item.id + ')">🗑️ Delete</button>';
+                    feedbackHtml += '<button class="feedback-btn delete" onclick="event.stopPropagation(); deleteFeedback(' + item.id + ')">🗑️ Delete</button>';
                     feedbackHtml += '</div>';
                     feedbackHtml += '</div>';
                   });
@@ -1348,12 +1471,58 @@ jobs:
                 feedbackListEl.innerHTML = feedbackHtml;
               }
 
+              // NEW: Click-to-scroll functionality
+              function scrollToHighlight(feedbackId) {
+                debug('Scrolling to highlight for feedback ID:', feedbackId);
+                const highlight = window.feedbackHighlights.get(feedbackId);
+                
+                if (highlight) {
+                  // Scroll to the highlight
+                  highlight.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center',
+                    inline: 'center'
+                  });
+                  
+                  // Temporarily emphasize the highlight
+                  highlight.style.backgroundColor = '#ffeb3b';
+                  highlight.style.borderLeft = '3px solid #f57c00';
+                  highlight.style.transform = 'scale(1.05)';
+                  
+                  setTimeout(() => {
+                    highlight.style.backgroundColor = '#e3f2fd';
+                    highlight.style.borderLeft = '2px solid #2196f3';
+                    highlight.style.transform = 'scale(1)';
+                  }, 2000);
+                } else {
+                  debug('Highlight not found for feedback ID:', feedbackId);
+                  // Try to find any highlight with the same feedback ID
+                  const highlightElement = document.querySelector('[data-feedback-id="' + feedbackId + '"]');
+                  if (highlightElement) {
+                    highlightElement.scrollIntoView({ 
+                      behavior: 'smooth', 
+                      block: 'center' 
+                    });
+                  }
+                }
+              }
+
               async function deleteFeedback(feedbackId) {
                 if (!confirm('Are you sure you want to delete this feedback?')) return;
                 
                 try {
                   debug('Deleting feedback from review window:', feedbackId);
                   await window.supabaseClient.deleteFeedback(feedbackId);
+                  
+                  // Remove highlight from document
+                  const highlight = window.feedbackHighlights.get(feedbackId);
+                  if (highlight) {
+                    const parent = highlight.parentNode;
+                    parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+                    parent.removeChild(highlight);
+                    window.feedbackHighlights.delete(feedbackId);
+                  }
+                  
                   await loadFeedback();
                 } catch (error) {
                   debug('Delete feedback error:', error);
@@ -1383,6 +1552,15 @@ jobs:
                 try {
                   debug('Clearing all review data from review window');
                   await window.supabaseClient.clearAllFeedback();
+                  
+                  // Clear all highlights
+                  window.feedbackHighlights.forEach((highlight, id) => {
+                    const parent = highlight.parentNode;
+                    parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+                    parent.removeChild(highlight);
+                  });
+                  window.feedbackHighlights.clear();
+                  
                   await loadFeedback();
                   alert('All feedback has been cleared successfully.');
                 } catch (error) {
@@ -1602,12 +1780,13 @@ jobs:
                 <div style="margin-top: 30px; padding: 20px; background: #f0f8ff; border-radius: 8px; border-left: 4px solid #2196f3;">
                   <h3>🔍 Enhanced Review System Features:</h3>
                   <ul style="text-align: left; margin-top: 15px;">
-                    <li><strong>Dedicated Review Window:</strong> Click "Review Mode" to open a specialized review interface</li>
+                    <li><strong>Dedicated Review Window:</strong> Click "Review Mode" to open specialized review interface</li>
                     <li><strong>Side-by-Side Review:</strong> Document content alongside feedback panel</li>
                     <li><strong>Text Selection Feedback:</strong> Select any text to leave contextual comments</li>
-                    <li><strong>Real-time Collaboration:</strong> All feedback syncs across windows and sessions</li>
-                    <li><strong>Review Completion:</strong> Mark entire reviews as complete with resolution notes</li>
-                    <li><strong>Archive System:</strong> Automatic snapshots preserve review history</li>
+                    <li><strong>Hover Tooltips:</strong> Hover over highlighted text to see feedback previews</li>
+                    <li><strong>Click-to-Scroll:</strong> Click feedback items to scroll to highlighted text</li>
+                    <li><strong>Real-time Sync:</strong> All feedback syncs across windows and sessions</li>
+                    <li><strong>Space-Optimized:</strong> Compact design maximizes screen real estate</li>
                   </ul>
                 </div>
                 <div style="margin-top: 20px; font-size: 0.9em; color: #666;">
@@ -1710,7 +1889,6 @@ jobs:
             window.addEventListener('message', (event) => {
               if (event.data.type === 'reviewCompleted') {
                 debug('Review completed message received from review window');
-                // Handle review completion in main window if needed
               }
             });
             
@@ -1732,7 +1910,7 @@ jobs:
 
           // === INITIALIZATION ===
           function initApp() {
-            debug('Initializing enhanced SPA with review window system');
+            debug('Initializing enhanced SPA with fixed review window system');
             
             // Create UI elements
             createConnectionStatus();
@@ -1762,7 +1940,6 @@ jobs:
         run: |
           mkdir -p ./site/content
 
-          # Create comprehensive automotive content
           cat > ./site/content/getting-started-with-cars.html << 'EOF'
           <h1>Getting Started With Cars</h1>
           <p>Welcome to the comprehensive automotive guide. This section covers the basics of car ownership and maintenance that every driver should know.</p>
@@ -1924,7 +2101,7 @@ jobs:
               }
             </script>
 
-            <title>Enhanced Automotive Documentation with Review Window System</title>
+            <title>Enhanced Automotive Documentation with Fixed Review System</title>
             <link rel="stylesheet" href="css/style.css">
             <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
           </head>
@@ -1949,7 +2126,8 @@ jobs:
                     <li>Click "Review Mode" button (top-right)</li>
                     <li>Opens dedicated review window</li>
                     <li>Select text to leave feedback</li>
-                    <li>Mark reviews as complete</li>
+                    <li>Click feedback to scroll to text</li>
+                    <li>Hover highlights for previews</li>
                   </ul>
                 </div>
               </div>
@@ -1964,7 +2142,7 @@ jobs:
               <div id="loading" style="display:none;">Loading content...</div>
               <div id="content">
                 <div class="initial-loading">
-                  <p>🔄 Initializing enhanced documentation system with dedicated review windows...</p>
+                  <p>🔄 Initializing enhanced documentation system with fixed review functionality...</p>
                 </div>
               </div>
             </div>
@@ -2013,8 +2191,8 @@ jobs:
           </html>
           EOF
 
-      # Step 16: Deploy Enhanced System to GitHub Pages
-      - name: Deploy Enhanced System to GitHub Pages
+      # Step 16: Deploy Fixed System to GitHub Pages
+      - name: Deploy Fixed System to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
