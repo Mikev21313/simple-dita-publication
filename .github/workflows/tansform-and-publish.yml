@@ -1,4 +1,4 @@
-name: DITA to SPA with Enhanced Archive System
+name: DITA to SPA with Enhanced Review Window System
 
 on:
   push:
@@ -52,26 +52,7 @@ jobs:
             exit 1
           fi
 
-          # Clear existing comments to reset system
-          echo "🧹 Clearing existing comments..."
-          curl -X DELETE \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments" || echo "No existing comments to clear"
-
-          # Clear existing archives 
-          echo "🧹 Clearing existing archives..."
-          curl -X DELETE \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/archived_content" || echo "No existing archives to clear"
-
-          curl -X DELETE \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/archive_sessions" || echo "No existing archive sessions to clear"
-
-          echo "✅ Database reset completed - Ready for enhanced archive system"
+          echo "✅ Database connection verified - Enhanced review system ready"
 
       # Step 5: Parse DITAMAP to generate navigation structure
       - name: Parse DITAMAP Structure
@@ -138,7 +119,7 @@ jobs:
         run: |
           ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site || echo "DITA transformation completed"
           
-          mkdir -p ./site/content ./site/images ./site/js ./site/css ./site/archives
+          mkdir -p ./site/content ./site/images ./site/js ./site/css ./site/archives ./site/review
 
           # Copy images
           find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \; || echo "No images found"
@@ -152,7 +133,7 @@ jobs:
       - name: Process HTML Content
         run: |
           # Process HTML files to create SPA content
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
+          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | grep -v "review.html" | while read file; do
             if [[ "$file" == "./site/index.html" ]]; then continue; fi
 
             filename=$(basename "$file")
@@ -183,7 +164,7 @@ jobs:
           echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
           echo "const contentIdMap = {" >> ./site/js/content-id-map.js
 
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | while read file; do
+          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | grep -v "review.html" | while read file; do
             filename=$(basename "$file" .html)
             id="${filename//_/-}"
             original_filename="$filename"
@@ -527,7 +508,7 @@ jobs:
       - name: Create Enhanced CSS with New UI Layout
         run: |
           cat > ./site/css/style.css << 'EOF'
-          /* Enhanced SPA CSS with Archive System and Repositioned UI Elements */
+          /* Enhanced SPA CSS with Review Window System */
           * { margin: 0; padding: 0; box-sizing: border-box; }
 
           body {
@@ -546,14 +527,6 @@ jobs:
             flex: 1; padding: 30px; height: 100vh; overflow-y: auto;
             background-color: #ffffff; position: relative;
           }
-
-          .feedback-sidebar {
-            width: 380px; background-color: #f8f9fa; padding: 20px;
-            height: 100vh; overflow-y: auto; border-left: 1px solid #e0e0e0;
-            display: none; flex-direction: column; box-shadow: -2px 0 5px rgba(0,0,0,0.05);
-          }
-
-          .feedback-sidebar.show { display: flex; }
 
           .sidebar h2 {
             font-weight: 500; margin-bottom: 15px; color: #00747a;
@@ -617,16 +590,6 @@ jobs:
           }
           .review-btn.success {
             background: linear-gradient(135deg, #4caf50, #388e3c); border-color: #4caf50;
-          }
-
-          /* Hide review controls in read-only mode */
-          .review-controls .review-btn:not(#reviewToggle),
-          .feedback-instructions {
-            display: none;
-          }
-          .review-mode .review-controls .review-btn:not(#reviewToggle),
-          .review-mode .feedback-instructions {
-            display: block;
           }
 
           .feedback-instructions {
@@ -701,12 +664,132 @@ jobs:
             50% { opacity: 0.7; }
           }
 
-          /* Review Mode Styles */
-          .review-mode .main-content { background-color: #fffbf0; }
-          .review-mode .reviewable-text { 
-            cursor: text; user-select: text; position: relative;
+          /* Review Window Styles */
+          .review-window-open-btn {
+            position: fixed; top: 15px; right: 15px; z-index: 1500;
+            padding: 12px 18px; background: #2196f3; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-size: 1em; font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: all 0.3s;
+            display: flex; align-items: center; gap: 8px;
           }
-          .review-mode .reviewable-text:hover {
+          .review-window-open-btn:hover { 
+            background: #1976d2; transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+          }
+          .review-window-open-btn::before {
+            content: "🔍"; font-size: 1.2em;
+          }
+
+          /* Responsive */
+          @media (max-width: 1200px) {
+            .sidebar { width: 280px; }
+          }
+
+          @media (max-width: 768px) {
+            body { flex-direction: column; height: auto; }
+            .sidebar { width: 100%; height: auto; max-height: 40vh; }
+            .main-content { height: auto; min-height: 60vh; }
+            .connection-status { position: relative; margin-bottom: 10px; }
+          }
+          EOF
+
+      # Step 11: Create Review Window CSS
+      - name: Create Review Window CSS
+        run: |
+          cat > ./site/css/review-window.css << 'EOF'
+          /* Dedicated Review Window Styles */
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+
+          body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6; display: flex; height: 100vh; width: 100%;
+            overflow: hidden; color: #333; background-color: #fffbf0;
+          }
+
+          /* Review Header */
+          .review-header {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 2000;
+            background: linear-gradient(135deg, #2c5aa0, #1e3f73); color: white;
+            padding: 15px 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            display: flex; justify-content: space-between; align-items: center;
+          }
+
+          .review-title {
+            font-size: 1.3em; font-weight: 600; display: flex; align-items: center; gap: 10px;
+          }
+          .review-title::before { content: "🔍"; font-size: 1.4em; }
+
+          .review-actions {
+            display: flex; gap: 10px; align-items: center;
+          }
+
+          .review-btn {
+            padding: 8px 16px; border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1); color: white; border-radius: 6px;
+            cursor: pointer; font-size: 0.9em; transition: all 0.3s;
+            display: flex; align-items: center; gap: 6px;
+          }
+          .review-btn:hover {
+            background: rgba(255,255,255,0.2); transform: translateY(-1px);
+          }
+          .review-btn.success {
+            background: #4caf50; border-color: #4caf50;
+          }
+          .review-btn.success:hover {
+            background: #45a049;
+          }
+          .review-btn.danger {
+            background: #f44336; border-color: #f44336;
+          }
+          .review-btn.danger:hover {
+            background: #da190b;
+          }
+          .review-btn.close {
+            background: #ff9800; border-color: #ff9800;
+          }
+          .review-btn.close:hover {
+            background: #f57c00;
+          }
+
+          /* Review Layout */
+          .review-layout {
+            display: flex; height: 100vh; padding-top: 70px;
+          }
+
+          .document-panel {
+            flex: 1; padding: 20px; overflow-y: auto; background: #ffffff;
+            border-right: 2px solid #e0e0e0;
+          }
+
+          .feedback-panel {
+            width: 400px; background: #f8f9fa; padding: 20px;
+            overflow-y: auto; border-left: 2px solid #e0e0e0;
+          }
+
+          /* Document Content Styles */
+          .document-content {
+            max-width: 800px; margin: 0 auto;
+          }
+
+          .document-content h1, .document-content h2, .document-content h3, .document-content h4 {
+            font-weight: 500; margin-top: 1.5em; margin-bottom: 0.8em; color: #00838f;
+          }
+          .document-content h1 {
+            font-size: 2em; border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 10px; margin-top: 0;
+          }
+          .document-content p { margin-bottom: 1em; line-height: 1.6; }
+          .document-content img {
+            max-width: 100%; height: auto; display: block; margin: 1em auto;
+            border: 1px solid #e0e0e0; border-radius: 4px;
+          }
+
+          /* Reviewable Text */
+          .reviewable-text { 
+            cursor: text; user-select: text; position: relative;
+            transition: background-color 0.2s;
+          }
+          .reviewable-text:hover {
             background-color: rgba(255, 235, 59, 0.1); border-radius: 2px;
           }
 
@@ -731,62 +814,8 @@ jobs:
             opacity: 1;
           }
 
-          /* Feedback Dialog */
-          .dialog-overlay {
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.5); z-index: 1999; display: none;
-            animation: fadeIn 0.2s ease-out;
-          }
-          .dialog-overlay.show { display: block; }
-
-          @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-          }
-
-          .feedback-dialog {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: white; border: 2px solid #2c5aa0; border-radius: 8px;
-            padding: 20px; width: 450px; max-width: 90vw; z-index: 2000;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: none;
-            animation: slideIn 0.3s ease-out;
-          }
-          .feedback-dialog.show { display: block; }
-
-          @keyframes slideIn {
-            from { transform: translate(-50%, -60%); opacity: 0; }
-            to { transform: translate(-50%, -50%); opacity: 1; }
-          }
-
-          .feedback-dialog h3 { color: #2c5aa0; margin-bottom: 15px; }
-          .feedback-dialog textarea {
-            width: 100%; height: 100px; padding: 10px; border: 1px solid #ddd;
-            border-radius: 4px; font-family: inherit; resize: vertical;
-            font-size: 0.9em;
-          }
-
-          .dialog-actions {
-            display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;
-          }
-          .dialog-btn {
-            padding: 8px 16px; border: 1px solid #ddd; border-radius: 4px;
-            cursor: pointer; font-size: 0.9em; transition: all 0.2s;
-          }
-          .dialog-btn.primary {
-            background: #2c5aa0; color: white; border-color: #2c5aa0;
-          }
-          .dialog-btn.primary:hover {
-            background: #1e3f73; border-color: #1e3f73;
-          }
-          .dialog-btn.secondary { 
-            background: #f5f5f5; 
-          }
-          .dialog-btn.secondary:hover { 
-            background: #e0e0e0; 
-          }
-
-          /* Enhanced Feedback Sidebar Styles */
-          .feedback-sidebar h3 {
+          /* Feedback Panel Styles */
+          .feedback-panel h3 {
             color: #333; margin-bottom: 20px; padding-bottom: 10px;
             border-bottom: 2px solid #e0e0e0; font-size: 1.3em; font-weight: 600;
           }
@@ -853,122 +882,72 @@ jobs:
             background: #dc3545; color: white; 
           }
 
-          /* Archive Management Styles */
-          .archive-section {
-            margin-top: 20px; padding-top: 15px; border-top: 2px solid #e0e0e0;
-          }
-
-          .archive-header {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 15px;
-          }
-
-          .archive-list {
-            max-height: 300px; overflow-y: auto;
-          }
-
-          .archive-item {
-            background: white; border: 1px solid #e0e0e0; border-radius: 6px;
-            padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          }
-
-          .archive-item-header {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 8px;
-          }
-
-          .archive-version {
-            font-weight: bold; color: #2c5aa0; font-size: 0.9em;
-          }
-
-          .archive-status {
-            padding: 2px 6px; border-radius: 10px; font-size: 0.7em;
-            font-weight: bold; text-transform: uppercase;
-          }
-
-          .archive-status.active { background: #fff3cd; color: #856404; }
-          .archive-status.resolved { background: #d4edda; color: #155724; }
-
-          .archive-meta {
-            font-size: 0.8em; color: #6c757d; margin-bottom: 8px;
-          }
-
-          .archive-actions {
-            display: flex; gap: 6px; flex-wrap: wrap;
-          }
-
-          .archive-btn {
-            padding: 4px 8px; border: 1px solid #ddd; border-radius: 3px;
-            background: #f8f9fa; cursor: pointer; font-size: 0.75em;
-            transition: all 0.2s;
-          }
-          .archive-btn:hover { background: #e9ecef; }
-          .archive-btn.view { border-color: #007bff; color: #007bff; }
-          .archive-btn.view:hover { background: #007bff; color: white; }
-          .archive-btn.download { border-color: #28a745; color: #28a745; }
-          .archive-btn.download:hover { background: #28a745; color: white; }
-          .archive-btn.delete { border-color: #dc3545; color: #dc3545; }
-          .archive-btn.delete:hover { background: #dc3545; color: white; }
-
-          /* Hide feedback toggle in read-only mode */
-          .feedback-toggle {
-            position: fixed; top: 60px; right: 20px; z-index: 1500;
-            padding: 10px 15px; background: #2196f3; color: white; border: none;
-            border-radius: 6px; cursor: pointer; font-size: 0.9em; font-weight: 500;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15); transition: all 0.2s;
-            display: none;
-          }
-          .feedback-toggle:hover { 
-            background: #1976d2; transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-          }
-          .review-mode .feedback-toggle { display: block; }
-
-          .no-feedback, .no-archives {
+          .no-feedback {
             text-align: center; color: #6c757d; font-style: italic; 
             padding: 40px 20px; background: white; border-radius: 8px;
             border: 1px dashed #dee2e6;
           }
 
-          /* Review Complete Dialog */
-          .review-complete-dialog {
+          /* Feedback Dialog */
+          .dialog-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.5); z-index: 2999; display: none;
+            animation: fadeIn 0.2s ease-out;
+          }
+          .dialog-overlay.show { display: block; }
+
+          @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+
+          .feedback-dialog {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: white; border: 2px solid #28a745; border-radius: 8px;
-            padding: 25px; width: 500px; max-width: 90vw; z-index: 2000;
+            background: white; border: 2px solid #2c5aa0; border-radius: 8px;
+            padding: 20px; width: 450px; max-width: 90vw; z-index: 3000;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: none;
+            animation: slideIn 0.3s ease-out;
           }
-          .review-complete-dialog.show { display: block; }
+          .feedback-dialog.show { display: block; }
 
-          .review-complete-dialog h3 { color: #28a745; margin-bottom: 15px; }
-          .review-complete-dialog textarea {
-            width: 100%; height: 80px; padding: 10px; border: 1px solid #ddd;
+          @keyframes slideIn {
+            from { transform: translate(-50%, -60%); opacity: 0; }
+            to { transform: translate(-50%, -50%); opacity: 1; }
+          }
+
+          .feedback-dialog h3 { color: #2c5aa0; margin-bottom: 15px; }
+          .feedback-dialog textarea {
+            width: 100%; height: 100px; padding: 10px; border: 1px solid #ddd;
             border-radius: 4px; font-family: inherit; resize: vertical;
-            font-size: 0.9em; placeholder: 'Optional resolution notes...';
+            font-size: 0.9em;
           }
 
-          /* Responsive */
-          @media (max-width: 1200px) {
-            .feedback-sidebar { width: 350px; }
+          .dialog-actions {
+            display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;
           }
-
-          @media (max-width: 768px) {
-            body { flex-direction: column; height: auto; }
-            .sidebar { width: 100%; height: auto; max-height: 40vh; }
-            .main-content { height: auto; min-height: 60vh; }
-            .feedback-sidebar { 
-              position: fixed; top: 0; right: -100%; width: 100%; height: 100vh;
-              transition: right 0.3s ease-out; z-index: 2500;
-            }
-            .feedback-sidebar.show { right: 0; }
-            .connection-status { position: relative; margin-bottom: 10px; }
+          .dialog-btn {
+            padding: 8px 16px; border: 1px solid #ddd; border-radius: 4px;
+            cursor: pointer; font-size: 0.9em; transition: all 0.2s;
+          }
+          .dialog-btn.primary {
+            background: #2c5aa0; color: white; border-color: #2c5aa0;
+          }
+          .dialog-btn.primary:hover {
+            background: #1e3f73; border-color: #1e3f73;
+          }
+          .dialog-btn.secondary { 
+            background: #f5f5f5; 
+          }
+          .dialog-btn.secondary:hover { 
+            background: #e0e0e0; 
           }
           EOF
 
-      # Step 11: Create Enhanced SPA JavaScript with Archive System
-      - name: Create Enhanced SPA JavaScript with Archive System
+      # Step 12: Create Enhanced Main SPA JavaScript
+      - name: Create Enhanced Main SPA JavaScript
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // Enhanced SPA Application with Archive System and Streamlined Code
+          // Enhanced SPA Application with Dedicated Review Window System
 
           // === INITIALIZATION AND STATE ===
           const DEBUG_MODE = true;
@@ -1002,6 +981,7 @@ jobs:
           window.archives = {};
           const basePath = getBasePath();
           let connectionStatus = 'connecting';
+          let reviewWindow = null;
 
           // === CONNECTION MANAGEMENT ===
           function createConnectionStatus() {
@@ -1045,10 +1025,6 @@ jobs:
             try {
               const connected = await window.supabaseClient.testConnection();
               updateConnectionStatus(connected);
-              if (connected) {
-                await loadFeedbackForCurrentPage();
-                await loadArchivesForCurrentPage();
-              }
               return connected;
             } catch (error) {
               debug('Connection test error:', error);
@@ -1057,691 +1033,380 @@ jobs:
             }
           }
 
-          // === FEEDBACK SIDEBAR MANAGEMENT ===
-          function createFeedbackSidebar() {
-            const sidebar = document.createElement('div');
-            sidebar.className = 'feedback-sidebar';
-            sidebar.id = 'feedbackSidebar';
-            sidebar.innerHTML = `
-              <h3>💬 Document Feedback & Archives</h3>
-              
-              <div class="feedback-list" id="feedbackList">
-                <div class="no-feedback">
-                  <p>No feedback yet.</p>
-                  <p>Enable review mode and select text to leave feedback.</p>
-                </div>
-              </div>
-
-              <div class="archive-section" id="archiveSection">
-                <div class="archive-header">
-                  <h4>📁 Archive Management</h4>
-                  <button class="archive-btn view" onclick="openArchiveManager()">
-                    📋 Manage All
-                  </button>
-                </div>
-                <div class="archive-list" id="archiveList">
-                  <div class="no-archives">
-                    <p>No archived versions available.</p>
-                  </div>
-                </div>
-              </div>
-            `;
-            document.body.appendChild(sidebar);
-            
-            // Create toggle button (hidden by default)
-            const toggleBtn = document.createElement('button');
-            toggleBtn.className = 'feedback-toggle';
-            toggleBtn.id = 'feedbackToggle';
-            toggleBtn.innerHTML = '💬 Feedback';
-            toggleBtn.addEventListener('click', toggleFeedbackSidebar);
-            document.body.appendChild(toggleBtn);
-            
-            debug('Feedback sidebar created');
-            return sidebar;
+          // === REVIEW WINDOW SYSTEM ===
+          function createReviewButton() {
+            const reviewBtn = document.createElement('button');
+            reviewBtn.className = 'review-window-open-btn';
+            reviewBtn.id = 'openReviewWindow';
+            reviewBtn.innerHTML = 'Review Mode';
+            reviewBtn.title = 'Open dedicated review window for this document';
+            reviewBtn.addEventListener('click', openReviewWindow);
+            document.body.appendChild(reviewBtn);
+            debug('Review window button created');
+            return reviewBtn;
           }
 
-          function toggleFeedbackSidebar() {
-            const sidebar = document.getElementById('feedbackSidebar');
-            const toggleBtn = document.getElementById('feedbackToggle');
-            
-            if (sidebar) {
-              sidebar.classList.toggle('show');
-              toggleBtn.innerHTML = sidebar.classList.contains('show') ? 
-                '✕ Close' : '💬 Feedback';
-              
-              if (sidebar.classList.contains('show')) {
-                loadFeedbackForCurrentPage();
-                loadArchivesForCurrentPage();
-              }
-            }
-          }
-
-          // === FEEDBACK MANAGEMENT ===
-          async function loadFeedbackForCurrentPage() {
-            if (!window.currentPage || !window.supabaseClient) {
-              debug('No current page or client available for feedback loading');
-              return;
-            }
-            
-            try {
-              debug(`Loading feedback for page: ${window.currentPage}`);
-              const feedback = await window.supabaseClient.getComments(window.currentPage);
-              
-              const cleanFeedback = feedback ? feedback.filter(item => {
-                return item && 
-                       typeof item.comment_text === 'string' && 
-                       item.comment_text.trim().length > 0 &&
-                       (!item.selected_text || typeof item.selected_text === 'string');
-              }) : [];
-              
-              debug(`Loaded ${cleanFeedback.length} feedback items`);
-              window.feedback[window.currentPage] = cleanFeedback;
-              displayFeedbackGrouped(cleanFeedback);
-              
-              if (window.reviewMode) {
-                highlightFeedbackInContent(cleanFeedback);
-              }
-            } catch (error) {
-              debug('Failed to load feedback:', error);
-              displayFeedbackGrouped([]);
-            }
-          }
-
-          function displayFeedbackGrouped(feedbackItems) {
-            const feedbackListEl = document.getElementById('feedbackList');
-            if (!feedbackListEl) return;
-            
-            if (!feedbackItems || feedbackItems.length === 0) {
-              feedbackListEl.innerHTML = `
-                <div class="no-feedback">
-                  <p>No feedback for this page yet.</p>
-                  <p>Enable review mode and select text to leave feedback.</p>
-                </div>
-              `;
-              return;
-            }
-            
-            // Group feedback by selected text
-            const groupedFeedback = {};
-            feedbackItems.forEach(item => {
-              if (!item || !item.comment_text) return;
-              
-              const key = item.selected_text && item.selected_text.trim() ? 
-                         item.selected_text.trim() : 'General';
-              if (!groupedFeedback[key]) {
-                groupedFeedback[key] = [];
-              }
-              groupedFeedback[key].push(item);
-            });
-            
-            let feedbackHtml = '';
-            
-            Object.keys(groupedFeedback).forEach(selectedText => {
-              const feedbackGroup = groupedFeedback[selectedText];
-              
-              feedbackHtml += `
-                <div class="feedback-group">
-                  ${selectedText !== 'General' ? `
-                    <div class="selected-text-header">
-                      📝 Selected Text:
-                      <div class="selected-text-content">"${escapeHtml(selectedText)}"</div>
-                    </div>
-                  ` : ''}
-                  
-                  ${feedbackGroup.map(item => `
-                    <div class="feedback-details">
-                      <div class="feedback-meta">
-                        <span class="feedback-type-badge">💬 feedback</span>
-                        <span class="feedback-date">${formatDate(item.created_at)}</span>
-                      </div>
-                      <div class="feedback-text">${escapeHtml(item.comment_text)}</div>
-                      <div class="feedback-actions">
-                        <button class="feedback-btn delete" onclick="deleteFeedback(${item.id})">
-                          🗑️ Delete
-                        </button>
-                      </div>
-                    </div>
-                  `).join('')}
-                </div>
-              `;
-            });
-            
-            feedbackListEl.innerHTML = feedbackHtml;
-          }
-
-          function highlightFeedbackInContent(feedbackItems) {
-            if (!feedbackItems || !window.reviewMode) return;
-            
-            clearReviewHighlights();
-            
-            feedbackItems.forEach(item => {
-              if (item && item.selected_text && item.selected_text.trim()) {
-                highlightTextInContent(item.selected_text, item);
-              }
-            });
-          }
-
-          function highlightTextInContent(selectedText, feedbackItem) {
-            if (!selectedText || !contentEl || !feedbackItem) return;
-            
-            const walker = document.createTreeWalker(
-              contentEl,
-              NodeFilter.SHOW_TEXT,
-              null,
-              false
-            );
-            
-            let node;
-            while (node = walker.nextNode()) {
-              const text = node.textContent;
-              const index = text.toLowerCase().indexOf(selectedText.toLowerCase());
-              
-              if (index !== -1) {
-                const parent = node.parentNode;
-                const beforeText = text.substring(0, index);
-                const actualText = text.substring(index, index + selectedText.length);
-                const afterText = text.substring(index + selectedText.length);
-                
-                const span = document.createElement('span');
-                span.className = 'review-feedback-highlight';
-                span.setAttribute('data-feedback-id', feedbackItem.id);
-                span.textContent = actualText;
-                span.addEventListener('click', () => showFeedbackDetails(feedbackItem));
-                
-                const tooltip = document.createElement('div');
-                tooltip.className = 'feedback-tooltip';
-                tooltip.textContent = feedbackItem.comment_text.substring(0, 50) + 
-                  (feedbackItem.comment_text.length > 50 ? '...' : '');
-                span.appendChild(tooltip);
-                
-                parent.removeChild(node);
-                if (beforeText) parent.appendChild(document.createTextNode(beforeText));
-                parent.appendChild(span);
-                if (afterText) parent.appendChild(document.createTextNode(afterText));
-                
-                break;
-              }
-            }
-          }
-
-          function showFeedbackDetails(feedbackItem) {
-            if (!feedbackItem) return;
-            
-            const message = `FEEDBACK: ${feedbackItem.comment_text}\n\nSelected Text: "${feedbackItem.selected_text || 'General'}"\n\nCreated: ${formatDate(feedbackItem.created_at)}`;
-            alert(message);
-          }
-
-          async function deleteFeedback(feedbackId) {
-            if (!window.reviewMode) {
-              alert('Delete is only available in Review Mode. Please enable Review Mode first.');
-              return;
-            }
-            
-            if (!confirm('Are you sure you want to delete this feedback?')) return;
-            
-            try {
-              debug(`Deleting feedback: ${feedbackId}`);
-              await window.supabaseClient.deleteFeedback(feedbackId);
-              await loadFeedbackForCurrentPage();
-            } catch (error) {
-              debug('Delete feedback error:', error);
-              alert('Failed to delete feedback. Please check your connection and try again.');
-            }
-          }
-
-          // === ARCHIVE MANAGEMENT ===
-          async function loadArchivesForCurrentPage() {
-            if (!window.currentPage || !window.supabaseClient) {
-              debug('No current page or client available for archive loading');
-              return;
-            }
-            
-            try {
-              debug(`Loading archives for page: ${window.currentPage}`);
-              const archives = await window.supabaseClient.getArchives(window.currentPage);
-              
-              debug(`Loaded ${archives.length} archive items`);
-              window.archives[window.currentPage] = archives;
-              displayArchiveList(archives);
-            } catch (error) {
-              debug('Failed to load archives:', error);
-              displayArchiveList([]);
-            }
-          }
-
-          function displayArchiveList(archiveItems) {
-            const archiveListEl = document.getElementById('archiveList');
-            if (!archiveListEl) return;
-            
-            if (!archiveItems || archiveItems.length === 0) {
-              archiveListEl.innerHTML = `
-                <div class="no-archives">
-                  <p>No archived versions available.</p>
-                </div>
-              `;
-              return;
-            }
-            
-            let archiveHtml = '';
-            
-            archiveItems.forEach(archive => {
-              archiveHtml += `
-                <div class="archive-item">
-                  <div class="archive-item-header">
-                    <span class="archive-version">📄 ${archive.archive_version}</span>
-                    <span class="archive-status ${archive.resolution_status}">${archive.resolution_status}</span>
-                  </div>
-                  <div class="archive-meta">
-                    Created: ${formatDate(archive.created_at)}
-                    ${archive.resolution_date ? `• Resolved: ${formatDate(archive.resolution_date)}` : ''}
-                  </div>
-                  <div class="archive-actions">
-                    <button class="archive-btn view" onclick="viewArchive(${archive.id})">
-                      👁️ View
-                    </button>
-                    <button class="archive-btn download" onclick="downloadArchive(${archive.id})">
-                      💾 Download
-                    </button>
-                    <button class="archive-btn delete" onclick="deleteArchive(${archive.id})">
-                      🗑️ Delete
-                    </button>
-                  </div>
-                </div>
-              `;
-            });
-            
-            archiveListEl.innerHTML = archiveHtml;
-          }
-
-          async function viewArchive(archiveId) {
-            try {
-              const archives = window.archives[window.currentPage] || [];
-              const archive = archives.find(a => a.id === archiveId);
-              
-              if (!archive) {
-                alert('Archive not found');
-                return;
-              }
-              
-              debug(`Opening archive view for: ${archive.archive_version}`);
-              
-              // Open archive in new window
-              const newWindow = window.open('', '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
-              
-              if (!newWindow) {
-                alert('Please allow popups to view archives');
-                return;
-              }
-              
-              newWindow.document.write(`
-                <!DOCTYPE html>
-                <html lang="en">
-                <head>
-                  <meta charset="UTF-8">
-                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                  <title>Archive: ${archive.archive_version} - ${window.currentPage}</title>
-                  <style>
-                    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-                    .archive-header { 
-                      background: #f8f9fa; padding: 15px; border-bottom: 2px solid #e9ecef;
-                      position: sticky; top: 0; z-index: 100;
-                    }
-                    .archive-info { color: #6c757d; font-size: 0.9em; }
-                    .archive-content { padding: 20px; max-width: 1000px; margin: 0 auto; }
-                    .archive-content img { max-width: 100%; height: auto; }
-                    .close-btn { 
-                      float: right; background: #dc3545; color: white; border: none;
-                      padding: 8px 12px; border-radius: 4px; cursor: pointer;
-                    }
-                    .close-btn:hover { background: #c82333; }
-                  </style>
-                </head>
-                <body>
-                  <div class="archive-header">
-                    <button class="close-btn" onclick="window.close()">✕ Close</button>
-                    <h2>📄 Archive View: ${archive.archive_version}</h2>
-                    <div class="archive-info">
-                      Page: ${window.currentPage} | Created: ${formatDate(archive.created_at)} | Status: ${archive.resolution_status}
-                    </div>
-                  </div>
-                  <div class="archive-content">
-                    ${archive.content_html}
-                  </div>
-                </body>
-                </html>
-              `);
-              
-              newWindow.document.close();
-              
-            } catch (error) {
-              debug('Failed to view archive:', error);
-              alert('Failed to open archive view');
-            }
-          }
-
-          async function downloadArchive(archiveId) {
-            try {
-              const archives = window.archives[window.currentPage] || [];
-              const archive = archives.find(a => a.id === archiveId);
-              
-              if (!archive) {
-                alert('Archive not found');
-                return;
-              }
-              
-              debug(`Downloading archive: ${archive.archive_version}`);
-              window.supabaseClient.downloadArchive(archive);
-            } catch (error) {
-              debug('Failed to download archive:', error);
-              alert('Failed to download archive');
-            }
-          }
-
-          async function deleteArchive(archiveId) {
-            if (!confirm('Are you sure you want to delete this archive? This cannot be undone.')) return;
-            
-            try {
-              debug(`Deleting archive: ${archiveId}`);
-              await window.supabaseClient.deleteArchive(archiveId);
-              await loadArchivesForCurrentPage();
-            } catch (error) {
-              debug('Failed to delete archive:', error);
-              alert('Failed to delete archive');
-            }
-          }
-
-          function openArchiveManager() {
-            alert('Archive Manager - Feature coming soon!\n\nThis will open a comprehensive view of all archived versions across all documents.');
-          }
-
-          // === REVIEW SYSTEM ===
-          function initReviewSystem() {
-            debug('Initializing review system');
-            createFeedbackDialog();
-            createReviewCompleteDialog();
-            updateReviewButtons();
-          }
-
-          function createFeedbackDialog() {
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            overlay.id = 'dialogOverlay';
-            overlay.addEventListener('click', closeFeedbackDialog);
-
-            const dialog = document.createElement('div');
-            dialog.className = 'feedback-dialog';
-            dialog.id = 'feedbackDialog';
-            dialog.innerHTML = `
-              <h3>📝 Leave Feedback</h3>
-              <div style="margin: 15px 0;">
-                <textarea id="feedbackText" placeholder="Enter your feedback about the selected text..."></textarea>
-              </div>
-              <div class="dialog-actions">
-                <button class="dialog-btn secondary" onclick="closeFeedbackDialog()">Cancel</button>
-                <button class="dialog-btn primary" onclick="saveFeedback()">Save Feedback</button>
-              </div>
-            `;
-
-            document.body.appendChild(overlay);
-            document.body.appendChild(dialog);
-            debug('Feedback dialog created');
-          }
-
-          function createReviewCompleteDialog() {
-            const overlay = document.createElement('div');
-            overlay.className = 'dialog-overlay';
-            overlay.id = 'reviewCompleteOverlay';
-            overlay.addEventListener('click', closeReviewCompleteDialog);
-
-            const dialog = document.createElement('div');
-            dialog.className = 'review-complete-dialog';
-            dialog.id = 'reviewCompleteDialog';
-            dialog.innerHTML = `
-              <h3>✅ Mark Review Complete</h3>
-              <p>This will mark all current feedback as resolved and create a final archive.</p>
-              <div style="margin: 15px 0;">
-                <textarea id="resolutionNotes" placeholder="Optional resolution notes..."></textarea>
-              </div>
-              <div class="dialog-actions">
-                <button class="dialog-btn secondary" onclick="closeReviewCompleteDialog()">Cancel</button>
-                <button class="dialog-btn success" onclick="completeReview()">Mark Complete</button>
-              </div>
-            `;
-
-            document.body.appendChild(overlay);
-            document.body.appendChild(dialog);
-            debug('Review complete dialog created');
-          }
-
-          function toggleReviewMode() {
-            window.reviewMode = !window.reviewMode;
-            
-            if (window.reviewMode) {
-              document.body.classList.add('review-mode');
-              initializeReviewForContent();
-              debug('Review mode activated');
-              
-              // Show feedback sidebar
-              const sidebar = document.getElementById('feedbackSidebar');
-              if (sidebar && !sidebar.classList.contains('show')) {
-                toggleFeedbackSidebar();
-              }
-            } else {
-              document.body.classList.remove('review-mode');
-              clearReviewHighlights();
-              debug('Review mode deactivated');
-            }
-            
-            updateReviewButtons();
-          }
-
-          function updateReviewButtons() {
-            if (reviewToggleBtn) {
-              reviewToggleBtn.textContent = window.reviewMode ? '✕ Exit Review' : '📝 Review Mode';
-              reviewToggleBtn.classList.toggle('active', window.reviewMode);
-            }
-          }
-
-          function initializeReviewForContent() {
-            if (!window.reviewMode || !contentEl) return;
-            
-            const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, div');
-            textElements.forEach(element => {
-              if (element.children.length === 0 || element.textContent.trim()) {
-                element.classList.add('reviewable-text');
-                element.addEventListener('mouseup', handleTextSelection);
-              }
-            });
-            
-            loadFeedbackForCurrentPage();
-            loadArchivesForCurrentPage();
-            
-            debug('Review initialization complete for content');
-          }
-
-          function handleTextSelection(event) {
-            if (!window.reviewMode) return;
-            
-            const selection = window.getSelection();
-            if (selection.toString().trim().length === 0) return;
-            
-            const selectedText = selection.toString().trim();
-            if (selectedText.length < 3) return;
-            
-            debug(`Text selected: ${selectedText}`);
-            
-            window.currentSelection = {
-              type: 'text',
-              text: selectedText,
-              element: event.target
-            };
-            
-            showFeedbackDialog();
-          }
-
-          function showFeedbackDialog() {
-            const dialog = document.getElementById('feedbackDialog');
-            const overlay = document.getElementById('dialogOverlay');
-            
-            if (dialog && overlay) {
-              dialog.classList.add('show');
-              overlay.classList.add('show');
-              
-              const selectedText = window.currentSelection?.text || '';
-              if (selectedText) {
-                const textArea = document.getElementById('feedbackText');
-                textArea.placeholder = `Leave feedback about: "${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}"`;
-              }
-              
-              document.getElementById('feedbackText').focus();
-            }
-          }
-
-          function closeFeedbackDialog() {
-            const dialog = document.getElementById('feedbackDialog');
-            const overlay = document.getElementById('dialogOverlay');
-            
-            if (dialog && overlay) {
-              dialog.classList.remove('show');
-              overlay.classList.remove('show');
-              document.getElementById('feedbackText').value = '';
-              document.getElementById('feedbackText').placeholder = 'Enter your feedback about the selected text...';
-            }
-            
-            window.getSelection().removeAllRanges();
-            window.currentSelection = null;
-          }
-
-          function showReviewCompleteDialog() {
-            const dialog = document.getElementById('reviewCompleteDialog');
-            const overlay = document.getElementById('reviewCompleteOverlay');
-            
-            if (dialog && overlay) {
-              dialog.classList.add('show');
-              overlay.classList.add('show');
-              document.getElementById('resolutionNotes').focus();
-            }
-          }
-
-          function closeReviewCompleteDialog() {
-            const dialog = document.getElementById('reviewCompleteDialog');
-            const overlay = document.getElementById('reviewCompleteOverlay');
-            
-            if (dialog && overlay) {
-              dialog.classList.remove('show');
-              overlay.classList.remove('show');
-              document.getElementById('resolutionNotes').value = '';
-            }
-          }
-
-          async function saveFeedback() {
-            if (!window.currentSelection) {
-              closeFeedbackDialog();
-              return;
-            }
-            
-            const feedbackText = document.getElementById('feedbackText').value.trim();
-            
-            if (!feedbackText) {
-              alert('Please enter your feedback.');
-              return;
-            }
-            
+          async function openReviewWindow() {
             if (!window.currentPage) {
-              alert('Please select a document first.');
+              alert('Please select a document first before opening review mode.');
               return;
             }
-            
-            try {
-              // Check if this is the first feedback for this page
-              const existingFeedback = window.feedback[window.currentPage] || [];
-              const isFirstFeedback = existingFeedback.length === 0;
-              
-              const feedbackData = {
-                page_id: window.currentPage,
-                comment_text: feedbackText,
-                selected_text: window.currentSelection.text,
-                selection_type: 'text',
-                createArchive: isFirstFeedback,
-                contentHtml: isFirstFeedback ? contentEl.innerHTML : null
-              };
-              
-              debug('Saving feedback:', feedbackData);
-              
-              const result = await window.supabaseClient.saveFeedback(feedbackData);
-              debug('Feedback saved successfully:', result);
-              
-              const saveBtn = document.querySelector('.dialog-btn.primary');
-              const originalText = saveBtn.textContent;
-              saveBtn.textContent = '✓ Saved!';
-              saveBtn.style.background = '#4caf50';
-              
-              setTimeout(() => {
-                saveBtn.textContent = originalText;
-                saveBtn.style.background = '';
-                closeFeedbackDialog();
-              }, 1000);
-              
-            } catch (error) {
-              debug('Error saving feedback:', error);
-              alert('Failed to save feedback. Please check your connection and try again.');
-            }
-          }
 
-          async function completeReview() {
-            const resolutionNotes = document.getElementById('resolutionNotes').value.trim();
-            
-            try {
-              debug(`Marking review complete for page: ${window.currentPage}`);
-              await window.supabaseClient.markReviewComplete(window.currentPage, resolutionNotes);
-              
-              // Create final archive
-              await window.supabaseClient.createContentArchive(window.currentPage, contentEl.innerHTML);
-              
-              closeReviewCompleteDialog();
-              alert('Review marked as complete! All feedback has been resolved and archived.');
-              
-              // Refresh data
-              await loadFeedbackForCurrentPage();
-              await loadArchivesForCurrentPage();
-              
-            } catch (error) {
-              debug('Error completing review:', error);
-              alert('Failed to complete review. Please check your connection and try again.');
+            if (reviewWindow && !reviewWindow.closed) {
+              reviewWindow.focus();
+              return;
             }
-          }
 
-          function clearReviewHighlights() {
-            const highlights = document.querySelectorAll('[data-feedback-id]');
-            highlights.forEach(highlight => {
-              const parent = highlight.parentNode;
-              if (parent) {
-                parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
-                parent.removeChild(highlight);
+            debug(`Opening review window for page: ${window.currentPage}`);
+
+            try {
+              // Get current content
+              const currentContent = contentEl.innerHTML;
+              const currentTitle = contentTitleEl.textContent;
+              
+              // Load feedback and archives for this page
+              const feedback = await window.supabaseClient.getComments(window.currentPage);
+              const archives = await window.supabaseClient.getArchives(window.currentPage);
+
+              // Open review window
+              reviewWindow = window.open('', 'ReviewWindow', 
+                'width=1400,height=900,scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no'
+              );
+
+              if (!reviewWindow) {
+                alert('Please allow popups to open the review window.');
+                return;
               }
-            });
-          }
 
-          async function promptClearReviewData() {
-            if (confirm('Are you sure you want to clear ALL feedback and archives? This cannot be undone.')) {
-              await clearReviewData();
-            }
-          }
+              // Create review window content
+              reviewWindow.document.write(createReviewWindowHTML(currentTitle, currentContent, feedback, archives));
+              reviewWindow.document.close();
 
-          async function clearReviewData() {
-            try {
-              debug('Clearing all review data');
-              await window.supabaseClient.clearAllFeedback();
-              clearReviewHighlights();
-              alert('All feedback and archives have been cleared successfully.');
-              
-              // Refresh displays
-              await loadFeedbackForCurrentPage();
-              await loadArchivesForCurrentPage();
+              // Initialize review window functionality
+              initializeReviewWindow(reviewWindow, feedback, archives);
+
+              debug('Review window opened successfully');
+
             } catch (error) {
-              debug('Error clearing review data:', error);
-              alert(`Failed to clear review data: ${error.message}`);
+              debug('Error opening review window:', error);
+              alert('Failed to open review window. Please check your connection.');
             }
+          }
+
+          function createReviewWindowHTML(title, content, feedback, archives) {
+            return `
+              <!DOCTYPE html>
+              <html lang="en">
+              <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Review: ${title}</title>
+                <link rel="stylesheet" href="${basePath}/css/review-window.css">
+                <script src="${basePath}/js/supabase-config.js"></script>
+              </head>
+              <body>
+                <div class="review-header">
+                  <div class="review-title">Review Mode: ${title}</div>
+                  <div class="review-actions">
+                    <button class="review-btn success" onclick="completeReview()">✅ Complete Review</button>
+                    <button class="review-btn danger" onclick="clearAllReview()">🗑️ Clear All</button>
+                    <button class="review-btn close" onclick="window.close()">✕ Close</button>
+                  </div>
+                </div>
+
+                <div class="review-layout">
+                  <div class="document-panel">
+                    <div class="document-content" id="documentContent">
+                      ${content}
+                    </div>
+                  </div>
+
+                  <div class="feedback-panel">
+                    <h3>💬 Document Feedback</h3>
+                    <div class="feedback-list" id="feedbackList">
+                      <div class="no-feedback">
+                        <p>No feedback yet.</p>
+                        <p>Select text in the document to leave feedback.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Feedback Dialog -->
+                <div class="dialog-overlay" id="dialogOverlay"></div>
+                <div class="feedback-dialog" id="feedbackDialog">
+                  <h3>📝 Leave Feedback</h3>
+                  <div style="margin: 15px 0;">
+                    <textarea id="feedbackText" placeholder="Enter your feedback about the selected text..."></textarea>
+                  </div>
+                  <div class="dialog-actions">
+                    <button class="dialog-btn secondary" onclick="closeFeedbackDialog()">Cancel</button>
+                    <button class="dialog-btn primary" onclick="saveFeedback()">Save Feedback</button>
+                  </div>
+                </div>
+
+                <script>
+                  // Review window global variables
+                  window.currentPage = '${window.currentPage}';
+                  window.currentSelection = null;
+                  window.parentWindow = window.opener;
+                  
+                  // Initialize review window
+                  document.addEventListener('DOMContentLoaded', function() {
+                    initializeReviewWindow();
+                  });
+                </script>
+              </body>
+              </html>
+            `;
+          }
+
+          function initializeReviewWindow(reviewWin, feedback, archives) {
+            // Pass initialization script to review window
+            reviewWin.eval(`
+              // Review Window Initialization Script
+              const DEBUG_MODE = true;
+              const debug = (message, data) => {
+                if (DEBUG_MODE) console.log('[Review Window] ' + message, data || '');
+              };
+
+              // Initialize review functionality
+              function initializeReviewWindow() {
+                debug('Initializing review window functionality');
+                
+                // Make all text elements reviewable
+                const contentEl = document.getElementById('documentContent');
+                const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, div');
+                
+                textElements.forEach(element => {
+                  if (element.children.length === 0 || element.textContent.trim()) {
+                    element.classList.add('reviewable-text');
+                    element.addEventListener('mouseup', handleTextSelection);
+                  }
+                });
+
+                // Load existing feedback
+                loadFeedback();
+                
+                debug('Review window initialization complete');
+              }
+
+              function handleTextSelection(event) {
+                const selection = window.getSelection();
+                if (selection.toString().trim().length === 0) return;
+                
+                const selectedText = selection.toString().trim();
+                if (selectedText.length < 3) return;
+                
+                debug('Text selected in review window:', selectedText);
+                
+                window.currentSelection = {
+                  type: 'text',
+                  text: selectedText,
+                  element: event.target
+                };
+                
+                showFeedbackDialog();
+              }
+
+              function showFeedbackDialog() {
+                const dialog = document.getElementById('feedbackDialog');
+                const overlay = document.getElementById('dialogOverlay');
+                
+                if (dialog && overlay) {
+                  dialog.classList.add('show');
+                  overlay.classList.add('show');
+                  
+                  const selectedText = window.currentSelection?.text || '';
+                  if (selectedText) {
+                    const textArea = document.getElementById('feedbackText');
+                    textArea.placeholder = 'Leave feedback about: "' + selectedText.substring(0, 50) + (selectedText.length > 50 ? '...' : '') + '"';
+                  }
+                  
+                  document.getElementById('feedbackText').focus();
+                }
+              }
+
+              function closeFeedbackDialog() {
+                const dialog = document.getElementById('feedbackDialog');
+                const overlay = document.getElementById('dialogOverlay');
+                
+                if (dialog && overlay) {
+                  dialog.classList.remove('show');
+                  overlay.classList.remove('show');
+                  document.getElementById('feedbackText').value = '';
+                  document.getElementById('feedbackText').placeholder = 'Enter your feedback about the selected text...';
+                }
+                
+                window.getSelection().removeAllRanges();
+                window.currentSelection = null;
+              }
+
+              async function saveFeedback() {
+                if (!window.currentSelection) {
+                  closeFeedbackDialog();
+                  return;
+                }
+                
+                const feedbackText = document.getElementById('feedbackText').value.trim();
+                
+                if (!feedbackText) {
+                  alert('Please enter your feedback.');
+                  return;
+                }
+                
+                try {
+                  const feedbackData = {
+                    page_id: window.currentPage,
+                    comment_text: feedbackText,
+                    selected_text: window.currentSelection.text,
+                    selection_type: 'text'
+                  };
+                  
+                  debug('Saving feedback from review window:', feedbackData);
+                  
+                  const result = await window.supabaseClient.saveFeedback(feedbackData);
+                  debug('Feedback saved successfully:', result);
+                  
+                  const saveBtn = document.querySelector('.dialog-btn.primary');
+                  const originalText = saveBtn.textContent;
+                  saveBtn.textContent = '✓ Saved!';
+                  saveBtn.style.background = '#4caf50';
+                  
+                  setTimeout(() => {
+                    saveBtn.textContent = originalText;
+                    saveBtn.style.background = '';
+                    closeFeedbackDialog();
+                    loadFeedback(); // Refresh feedback display
+                  }, 1000);
+                  
+                } catch (error) {
+                  debug('Error saving feedback:', error);
+                  alert('Failed to save feedback. Please check your connection and try again.');
+                }
+              }
+
+              async function loadFeedback() {
+                try {
+                  debug('Loading feedback for review window');
+                  const feedback = await window.supabaseClient.getComments(window.currentPage);
+                  displayFeedback(feedback);
+                } catch (error) {
+                  debug('Failed to load feedback:', error);
+                }
+              }
+
+              function displayFeedback(feedbackItems) {
+                const feedbackListEl = document.getElementById('feedbackList');
+                if (!feedbackListEl) return;
+                
+                if (!feedbackItems || feedbackItems.length === 0) {
+                  feedbackListEl.innerHTML = '<div class="no-feedback"><p>No feedback yet.</p><p>Select text in the document to leave feedback.</p></div>';
+                  return;
+                }
+                
+                // Group feedback by selected text
+                const groupedFeedback = {};
+                feedbackItems.forEach(item => {
+                  if (!item || !item.comment_text) return;
+                  
+                  const key = item.selected_text && item.selected_text.trim() ? 
+                             item.selected_text.trim() : 'General';
+                  if (!groupedFeedback[key]) {
+                    groupedFeedback[key] = [];
+                  }
+                  groupedFeedback[key].push(item);
+                });
+                
+                let feedbackHtml = '';
+                
+                Object.keys(groupedFeedback).forEach(selectedText => {
+                  const feedbackGroup = groupedFeedback[selectedText];
+                  
+                  feedbackHtml += '<div class="feedback-group">';
+                  
+                  if (selectedText !== 'General') {
+                    feedbackHtml += '<div class="selected-text-header">📝 Selected Text:<div class="selected-text-content">"' + escapeHtml(selectedText) + '"</div></div>';
+                  }
+                  
+                  feedbackGroup.forEach(item => {
+                    feedbackHtml += '<div class="feedback-details">';
+                    feedbackHtml += '<div class="feedback-meta">';
+                    feedbackHtml += '<span class="feedback-type-badge">💬 feedback</span>';
+                    feedbackHtml += '<span class="feedback-date">' + formatDate(item.created_at) + '</span>';
+                    feedbackHtml += '</div>';
+                    feedbackHtml += '<div class="feedback-text">' + escapeHtml(item.comment_text) + '</div>';
+                    feedbackHtml += '<div class="feedback-actions">';
+                    feedbackHtml += '<button class="feedback-btn delete" onclick="deleteFeedback(' + item.id + ')">🗑️ Delete</button>';
+                    feedbackHtml += '</div>';
+                    feedbackHtml += '</div>';
+                  });
+                  
+                  feedbackHtml += '</div>';
+                });
+                
+                feedbackListEl.innerHTML = feedbackHtml;
+              }
+
+              async function deleteFeedback(feedbackId) {
+                if (!confirm('Are you sure you want to delete this feedback?')) return;
+                
+                try {
+                  debug('Deleting feedback from review window:', feedbackId);
+                  await window.supabaseClient.deleteFeedback(feedbackId);
+                  await loadFeedback();
+                } catch (error) {
+                  debug('Delete feedback error:', error);
+                  alert('Failed to delete feedback. Please check your connection and try again.');
+                }
+              }
+
+              async function completeReview() {
+                const resolutionNotes = prompt('Enter resolution notes (optional):') || '';
+                
+                try {
+                  debug('Marking review complete from review window');
+                  await window.supabaseClient.markReviewComplete(window.currentPage, resolutionNotes);
+                  alert('Review marked as complete! All feedback has been resolved and archived.');
+                  if (window.parentWindow) {
+                    window.parentWindow.postMessage({ type: 'reviewCompleted', pageId: window.currentPage }, '*');
+                  }
+                } catch (error) {
+                  debug('Error completing review:', error);
+                  alert('Failed to complete review. Please check your connection and try again.');
+                }
+              }
+
+              async function clearAllReview() {
+                if (!confirm('Are you sure you want to clear ALL feedback for this document? This cannot be undone.')) return;
+                
+                try {
+                  debug('Clearing all review data from review window');
+                  await window.supabaseClient.clearAllFeedback();
+                  await loadFeedback();
+                  alert('All feedback has been cleared successfully.');
+                } catch (error) {
+                  debug('Error clearing review data:', error);
+                  alert('Failed to clear review data. Please check your connection and try again.');
+                }
+              }
+
+              // Utility functions
+              function formatDate(dateString) {
+                const date = new Date(dateString);
+                return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+              }
+
+              function escapeHtml(text) {
+                if (!text) return '';
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+              }
+
+              // Dialog overlay click handler
+              document.getElementById('dialogOverlay').addEventListener('click', closeFeedbackDialog);
+            `);
           }
 
           // === NAVIGATION SYSTEM ===
@@ -1814,15 +1479,6 @@ jobs:
                 contentTitleEl.textContent = title;
                 document.title = title;
                 contentEl.innerHTML = content;
-                
-                if (window.reviewMode) {
-                  setTimeout(() => {
-                    initializeReviewForContent();
-                  }, 100);
-                } else {
-                  loadFeedbackForCurrentPage();
-                  loadArchivesForCurrentPage();
-                }
                 
                 document.body.classList.remove('loading');
                 debug(`Content loaded successfully for: ${pageId}`);
@@ -1941,21 +1597,22 @@ jobs:
             document.title = 'Automotive Documentation';
             contentEl.innerHTML = `
               <div class="welcome-screen">
-                <h2>Welcome to Automotive Documentation</h2>
+                <h2>Welcome to Enhanced Automotive Documentation</h2>
                 <p>Select a topic from the navigation menu to begin.</p>
                 <div style="margin-top: 30px; padding: 20px; background: #f0f8ff; border-radius: 8px; border-left: 4px solid #2196f3;">
-                  <h3>💬 Enhanced Feedback & Archive System:</h3>
+                  <h3>🔍 Enhanced Review System Features:</h3>
                   <ul style="text-align: left; margin-top: 15px;">
-                    <li><strong>Review Mode:</strong> Click "Review Mode" to enable feedback features</li>
-                    <li><strong>Text Selection:</strong> Select any text to leave feedback</li>
-                    <li><strong>Archive System:</strong> Automatic snapshots when feedback is added</li>
-                    <li><strong>Archive Viewer:</strong> View historical versions in new windows</li>
-                    <li><strong>Review Resolution:</strong> Mark reviews complete with resolution notes</li>
-                    <li><strong>Offline Access:</strong> Download archives for offline reference</li>
+                    <li><strong>Dedicated Review Window:</strong> Click "Review Mode" to open a specialized review interface</li>
+                    <li><strong>Side-by-Side Review:</strong> Document content alongside feedback panel</li>
+                    <li><strong>Text Selection Feedback:</strong> Select any text to leave contextual comments</li>
+                    <li><strong>Real-time Collaboration:</strong> All feedback syncs across windows and sessions</li>
+                    <li><strong>Review Completion:</strong> Mark entire reviews as complete with resolution notes</li>
+                    <li><strong>Archive System:</strong> Automatic snapshots preserve review history</li>
                   </ul>
                 </div>
                 <div style="margin-top: 20px; font-size: 0.9em; color: #666;">
                   <p>Connection Status: Check the indicator in the bottom-left corner</p>
+                  <p>Review Mode: Click the blue "Review Mode" button in the top-right when viewing a document</p>
                 </div>
               </div>
             `;
@@ -2048,22 +1705,13 @@ jobs:
             window.addEventListener('supabaseConnectionChange', (e) => {
               updateConnectionStatus(e.detail.connected);
             });
-            
-            window.addEventListener('feedbackSaved', async (e) => {
-              debug('Feedback saved event received');
-              await loadFeedbackForCurrentPage();
-              await loadArchivesForCurrentPage();
-            });
-            
-            window.addEventListener('feedbackDeleted', async (e) => {
-              debug('Feedback deleted event received');
-              await loadFeedbackForCurrentPage();
-            });
-            
-            window.addEventListener('allFeedbackCleared', async (e) => {
-              debug('All feedback cleared event received');
-              await loadFeedbackForCurrentPage();
-              await loadArchivesForCurrentPage();
+
+            // Message handling for review window communication
+            window.addEventListener('message', (event) => {
+              if (event.data.type === 'reviewCompleted') {
+                debug('Review completed message received from review window');
+                // Handle review completion in main window if needed
+              }
             });
             
             if (searchButton && searchInput) {
@@ -2073,9 +1721,6 @@ jobs:
               });
             }
 
-            if (reviewToggleBtn) reviewToggleBtn.addEventListener('click', toggleReviewMode);
-            if (clearReviewBtn) clearReviewBtn.addEventListener('click', promptClearReviewData);
-
             const printBtn = document.querySelector('.wh_print_link button');
             if (printBtn) {
               printBtn.addEventListener('click', (e) => {
@@ -2083,45 +1728,19 @@ jobs:
                 window.print();
               });
             }
-
-            // Add complete review button
-            const completeReviewBtn = document.createElement('button');
-            completeReviewBtn.id = 'completeReview';
-            completeReviewBtn.className = 'review-btn success';
-            completeReviewBtn.textContent = '✅ Complete Review';
-            completeReviewBtn.addEventListener('click', showReviewCompleteDialog);
-            
-            const reviewControls = document.querySelector('.review-controls');
-            if (reviewControls) {
-              reviewControls.insertBefore(completeReviewBtn, clearReviewBtn);
-            }
-          }
-
-          // === UTILITY FUNCTIONS ===
-          function formatDate(dateString) {
-            const date = new Date(dateString);
-            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-          }
-
-          function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
           }
 
           // === INITIALIZATION ===
           function initApp() {
-            debug('Initializing enhanced SPA with archive system');
+            debug('Initializing enhanced SPA with review window system');
             
             // Create UI elements
             createConnectionStatus();
-            createFeedbackSidebar();
+            createReviewButton();
             
             // Setup event listeners
             setupEventListeners();
             renderNavigation(navigationConfig);
-            initReviewSystem();
 
             // Test connection and initialize
             testConnection().then(() => {
@@ -2134,27 +1753,11 @@ jobs:
             });
           }
 
-          // === GLOBAL FUNCTION EXPORTS ===
-          window.toggleReviewMode = toggleReviewMode;
-          window.promptClearReviewData = promptClearReviewData;
-          window.navigateToPage = navigateToPage;
-          window.closeFeedbackDialog = closeFeedbackDialog;
-          window.saveFeedback = saveFeedback;
-          window.deleteFeedback = deleteFeedback;
-          window.toggleFeedbackSidebar = toggleFeedbackSidebar;
-          window.viewArchive = viewArchive;
-          window.downloadArchive = downloadArchive;
-          window.deleteArchive = deleteArchive;
-          window.openArchiveManager = openArchiveManager;
-          window.showReviewCompleteDialog = showReviewCompleteDialog;
-          window.closeReviewCompleteDialog = closeReviewCompleteDialog;
-          window.completeReview = completeReview;
-
           // === APPLICATION START ===
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
-      # Step 12: Create enhanced default content
+      # Step 13: Create enhanced default content
       - name: Create Enhanced Default Content
         run: |
           mkdir -p ./site/content
@@ -2186,34 +1789,57 @@ jobs:
           <p>Remember: When in doubt, consult your owner's manual or a qualified automotive professional. Proper maintenance and care will keep your vehicle running safely for years to come.</p>
           EOF
 
-          cat > ./site/content/car-types.html << 'EOF'
-          <h1>Understanding Different Car Types</h1>
-          <p>Choosing the right vehicle depends on your lifestyle, budget, and driving needs. Each car type offers distinct advantages and considerations.</p>
+          cat > ./site/content/car-components.html << 'EOF'
+          <h1>Essential Car Components</h1>
+          <p>Understanding the major components of your vehicle helps you communicate effectively with mechanics and make informed maintenance decisions.</p>
           
-          <h2>Sedans</h2>
-          <p>Sedans are traditional four-door passenger cars with a separate trunk compartment. They offer a good balance of comfort, fuel efficiency, and cargo space. Modern sedans typically seat five passengers and provide excellent highway fuel economy, often exceeding 30 MPG.</p>
-          <p><strong>Best for:</strong> Daily commuting, families, business use</p>
-          <p><strong>Considerations:</strong> Limited cargo space compared to SUVs, lower ground clearance</p>
+          <h2>Engine and Powertrain</h2>
+          <p>The powertrain is responsible for generating power and delivering it to the wheels, enabling your vehicle to move forward and backward.</p>
           
-          <h2>Sport Utility Vehicles (SUVs)</h2>
-          <p>SUVs provide higher ground clearance, increased cargo capacity, and often all-wheel or four-wheel drive capability. They're built on truck platforms, offering superior towing capacity and off-road performance compared to sedans.</p>
-          <p><strong>Best for:</strong> Families with active lifestyles, towing needs, adverse weather conditions</p>
-          <p><strong>Considerations:</strong> Lower fuel economy, higher purchase price, increased maintenance costs</p>
+          <h3>Engine</h3>
+          <p>The heart of your vehicle, the engine converts fuel into mechanical energy through controlled combustion. Modern engines are typically four-cylinder, six-cylinder, or eight-cylinder configurations, each offering different balances of power and fuel efficiency.</p>
           
-          <h2>Hatchbacks</h2>
-          <p>Hatchback vehicles feature a rear door that opens upward, providing direct access to the cargo area. This design maximizes interior space and cargo flexibility while maintaining a compact overall footprint.</p>
-          <p><strong>Best for:</strong> Urban driving, parking in tight spaces, maximizing cargo versatility</p>
-          <p><strong>Considerations:</strong> Road noise from cargo area, reduced rear privacy</p>
+          <h3>Transmission</h3>
+          <p>Transfers power from the engine to the wheels while allowing gear changes. Types include manual, automatic, continuously variable (CVT), and dual-clutch transmission systems.</p>
           
-          <h2>Pickup Trucks</h2>
-          <p>Pickup trucks combine passenger seating with an open cargo bed, offering unmatched utility for hauling materials, equipment, and recreational gear. Available in various sizes from compact to heavy-duty configurations.</p>
-          <p><strong>Best for:</strong> Construction work, hauling cargo, recreational activities</p>
-          <p><strong>Considerations:</strong> Poor fuel economy, challenging parking in urban areas</p>
+          <h3>Drivetrain</h3>
+          <p>Connects the transmission to the differential, transferring rotational power to rear-wheel and all-wheel drive vehicles.</p>
           
-          <h2>Electric Vehicles (EVs)</h2>
-          <p>Electric vehicles use battery power instead of gasoline engines, offering zero direct emissions and significantly lower operating costs. Modern EVs provide competitive range and performance with rapidly expanding charging infrastructure.</p>
-          <p><strong>Best for:</strong> Environmentally conscious drivers, urban commuting, reducing fuel costs</p>
-          <p><strong>Considerations:</strong> Charging infrastructure limitations, higher initial purchase price</p>
+          <h3>Differential</h3>
+          <p>Allows wheels to rotate at different speeds when turning while transferring power from the drivetrain to the axles.</p>
+          
+          <h3>Axles</h3>
+          <p>Connect the wheels to the differential and support the vehicle's weight.</p>
+          
+          <h2>Chassis and Suspension</h2>
+          <p>The foundation and support structure of the vehicle.</p>
+          
+          <h3>Frame/Chassis</h3>
+          <p>The structural framework that supports all vehicle components. Modern passenger vehicles typically use unibody construction where the body and frame are integrated.</p>
+          
+          <h3>Suspension System</h3>
+          <p>Connects the vehicle to its wheels, providing support, stability, and isolating the vehicle from road imperfections. Common types include MacPherson strut, double wishbone, multi-link, and solid axle configurations.</p>
+          
+          <h3>Steering System</h3>
+          <p>Allows the driver to control the vehicle's direction. Modern vehicles typically use rack-and-pinion steering, often with power or electric assistance.</p>
+          
+          <h3>Braking System</h3>
+          <p>Slows and stops the vehicle through friction. Components include master cylinder, brake lines, calipers, wheel cylinders, and friction materials (pads/shoes).</p>
+          
+          <h3>Wheels and Tires</h3>
+          <p>The contact point between the vehicle and the road, providing traction and absorbing minor road imperfections.</p>
+          
+          <h2>Electrical and Electronic Systems</h2>
+          <p>Provides power and controls for various vehicle functions.</p>
+          
+          <h3>Battery</h3>
+          <p>Stores electrical energy for starting the engine and powering electrical systems when the engine is off.</p>
+          
+          <h3>Alternator</h3>
+          <p>Generates electrical power while the engine is running to recharge the battery and power electrical systems.</p>
+          
+          <h3>Starter Motor</h3>
+          <p>Initiates engine operation by turning the crankshaft.</p>
           EOF
 
           cat > ./site/content/basic-maintenance.html << 'EOF'
@@ -2277,7 +1903,7 @@ jobs:
           <p><em>Always consult your owner's manual for manufacturer-specific maintenance schedules and requirements. Severe driving conditions may require more frequent service intervals.</em></p>
           EOF
 
-      # Step 13: Create Enhanced Index HTML
+      # Step 14: Create Enhanced Index HTML
       - name: Create Enhanced Index HTML
         run: |
           cat > ./site/index.html << 'EOF'
@@ -2298,7 +1924,7 @@ jobs:
               }
             </script>
 
-            <title>Enhanced Automotive Documentation with Archive System</title>
+            <title>Enhanced Automotive Documentation with Review Window System</title>
             <link rel="stylesheet" href="css/style.css">
             <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
           </head>
@@ -2314,24 +1940,18 @@ jobs:
               </div>
               
               <div class="review-controls">
-                <h3>💬 Feedback & Archive System</h3>
-                <div class="review-mode-toggle">
-                  <button id="reviewToggle" class="review-btn">📝 Review Mode</button>
-                </div>
+                <h3>🔍 Review System</h3>
                 
                 <div class="feedback-instructions">
-                  <h4>📝 Review Mode Features:</h4>
+                  <h4>📋 How to Review Documents:</h4>
                   <ul>
+                    <li>Navigate to any document</li>
+                    <li>Click "Review Mode" button (top-right)</li>
+                    <li>Opens dedicated review window</li>
                     <li>Select text to leave feedback</li>
-                    <li>Automatic content archiving</li>
-                    <li>View archived versions</li>
                     <li>Mark reviews as complete</li>
-                    <li>Download offline copies</li>
                   </ul>
                 </div>
-                
-                <button id="completeReview" class="review-btn success">✅ Complete Review</button>
-                <button id="clearReview" class="review-btn danger">🗑️ Clear All</button>
               </div>
               
               <div class="sidebar-nav">
@@ -2344,12 +1964,12 @@ jobs:
               <div id="loading" style="display:none;">Loading content...</div>
               <div id="content">
                 <div class="initial-loading">
-                  <p>🔄 Initializing enhanced documentation system with archive capabilities...</p>
+                  <p>🔄 Initializing enhanced documentation system with dedicated review windows...</p>
                 </div>
               </div>
             </div>
 
-            <div class="wh_print_link" style="position: fixed; top: 15px; right: 15px; z-index: 999;">
+            <div class="wh_print_link" style="position: fixed; top: 60px; right: 15px; z-index: 999;">
               <button title="Print current page" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">🖨️ Print</button>
             </div>
 
@@ -2361,7 +1981,7 @@ jobs:
           </html>
           EOF
 
-      # Step 14: Create 404.html
+      # Step 15: Create 404.html
       - name: Create 404 Page
         run: |
           cat > ./site/404.html << 'EOF'
@@ -2393,7 +2013,7 @@ jobs:
           </html>
           EOF
 
-      # Step 15: Deploy to GitHub Pages
+      # Step 16: Deploy Enhanced System to GitHub Pages
       - name: Deploy Enhanced System to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
