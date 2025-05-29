@@ -4,6 +4,7 @@
     <title>Automotive Information</title>
     <topicref href="Getting_Started_With_Cars.dita">
         <topicref href="Car-basics/car_basics.dita"/>
+        <topicref href="Global_history.dita"/>
     </topicref>
     <topicref href="car_types.dita">
         <topicref href="evs.dita"/>
