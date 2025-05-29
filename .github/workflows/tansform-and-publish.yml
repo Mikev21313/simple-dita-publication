@@ -1,4 +1,4 @@
-name: DITA to SPA with Fixed Review System
+name: DITA to SPA with Enhanced Archive System
 
 on:
   push:
@@ -33,10 +33,10 @@ jobs:
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Setup Supabase Database Schema
-      - name: Setup Supabase Database Schema
+      # Step 4: Setup Enhanced Database Schema with Archive System
+      - name: Setup Enhanced Database Schema
         run: |
-          echo "Setting up Supabase database schema..."
+          echo "🔄 Setting up enhanced database schema with archive system..."
           
           # Test connection first
           echo "Testing Supabase connection..."
@@ -52,12 +52,31 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Database schema setup completed"
+          # Clear existing comments to reset system
+          echo "🧹 Clearing existing comments..."
+          curl -X DELETE \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments" || echo "No existing comments to clear"
+
+          # Clear existing archives 
+          echo "🧹 Clearing existing archives..."
+          curl -X DELETE \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/archived_content" || echo "No existing archives to clear"
+
+          curl -X DELETE \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/archive_sessions" || echo "No existing archive sessions to clear"
+
+          echo "✅ Database reset completed - Ready for enhanced archive system"
 
       # Step 5: Parse DITAMAP to generate navigation structure
       - name: Parse DITAMAP Structure
         run: |
-          echo "Parsing DITAMAP structure from dita-source/automotive.ditamap"
+          echo "📖 Parsing DITAMAP structure from dita-source/automotive.ditamap"
 
           # Create XSLT file for navigation extraction
           cat > extract-nav.xsl << 'EOF'
@@ -111,7 +130,7 @@ jobs:
           xsltproc extract-nav.xsl dita-source/automotive.ditamap > navigation-structure.json || echo "[]" > navigation-structure.json
           sed -i 's/\\n//g; s/\\t//g; s/  / /g' navigation-structure.json
 
-          echo "DITAMAP parsing complete"
+          echo "✅ DITAMAP parsing complete"
           cat navigation-structure.json
 
       # Step 6: Transform DITA to HTML
@@ -119,7 +138,7 @@ jobs:
         run: |
           ./dita-ot-4.0.2/bin/dita --input=dita-source/automotive.ditamap --format=html5 --output=./site || echo "DITA transformation completed"
           
-          mkdir -p ./site/content ./site/images ./site/js ./site/css
+          mkdir -p ./site/content ./site/images ./site/js ./site/css ./site/archives
 
           # Copy images
           find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \; || echo "No images found"
@@ -196,15 +215,14 @@ jobs:
           cat ./navigation-structure.json >> ./site/js/navigation-config.js
           echo ";" >> ./site/js/navigation-config.js
 
-      # Step 9: Create Enhanced Supabase Configuration
+      # Step 9: Create Enhanced Supabase Configuration with Archive System
       - name: Create Enhanced Supabase Configuration
         run: |
           cat > ./site/js/supabase-config.js << 'EOF'
-          // Enhanced Supabase configuration
+          // Enhanced Supabase configuration with Archive System
           const SUPABASE_URL = 'https://oiluavgeyngmkqozzmnz.supabase.co';
           const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ';
 
-          // Enhanced Supabase client class with proper error handling
           class SupabaseClient {
             constructor() {
               this.baseUrl = SUPABASE_URL;
@@ -214,35 +232,46 @@ jobs:
                 'apikey': SUPABASE_ANON_KEY
               };
               this.connected = false;
+              this.debugMode = true;
+            }
+
+            debug(message, data) {
+              if (this.debugMode) {
+                console.log(`[Supabase] ${message}`, data || '');
+              }
             }
 
             async request(endpoint, options = {}) {
               const url = `${this.baseUrl}/rest/v1/${endpoint}`;
               const config = { headers: this.headers, ...options };
 
+              this.debug(`Making request to: ${endpoint}`, { method: config.method || 'GET' });
+
               try {
                 const response = await fetch(url, config);
                 
                 if (!response.ok) {
                   const errorText = await response.text();
-                  console.error(`Supabase error: ${response.status} - ${errorText}`);
+                  this.debug(`Request failed: ${response.status} - ${errorText}`);
                   throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
                 
                 this.connected = true;
                 this.updateConnectionStatus(true);
                 
-                // Handle empty responses for DELETE operations
                 if (response.status === 204) {
+                  this.debug('Request successful (no content)');
                   return null;
                 }
                 
                 const text = await response.text();
-                return text ? JSON.parse(text) : null;
+                const result = text ? JSON.parse(text) : null;
+                this.debug('Request successful', result);
+                return result;
               } catch (error) {
                 this.connected = false;
                 this.updateConnectionStatus(false);
-                console.error('Supabase request failed:', error);
+                this.debug('Request error:', error);
                 throw error;
               }
             }
@@ -255,28 +284,34 @@ jobs:
             }
 
             async testConnection() {
+              this.debug('Testing database connection...');
               try {
                 await this.request('comments?limit=1');
+                this.debug('Connection test successful');
                 return true;
               } catch (error) {
-                console.error('Connection test failed:', error);
+                this.debug('Connection test failed:', error);
                 return false;
               }
             }
 
+            // === COMMENT METHODS ===
             async getComments(pageId) {
+              this.debug(`Fetching comments for page: ${pageId}`);
               try {
                 const comments = await this.request(
                   `comments?page_id=eq.${encodeURIComponent(pageId)}&order=created_at.desc`
                 );
+                this.debug(`Retrieved ${comments?.length || 0} comments`);
                 return comments || [];
               } catch (error) {
-                console.error('Failed to fetch comments:', error);
+                this.debug('Failed to fetch comments:', error);
                 return [];
               }
             }
 
             async saveFeedback(feedbackData) {
+              this.debug('Saving feedback:', feedbackData);
               try {
                 const feedback = {
                   page_id: feedbackData.page_id,
@@ -303,9 +338,13 @@ jobs:
                 }
 
                 const result = await response.json();
-                console.log('Feedback saved successfully:', result);
+                this.debug('Feedback saved successfully:', result);
                 
-                // Dispatch event for UI updates
+                // Create archive when first comment is made
+                if (feedbackData.createArchive) {
+                  await this.createContentArchive(feedbackData.page_id, feedbackData.contentHtml);
+                }
+                
                 const event = new CustomEvent('feedbackSaved', { 
                   detail: { feedback: result[0] || result } 
                 });
@@ -313,15 +352,14 @@ jobs:
                 
                 return result;
               } catch (error) {
-                console.error('Failed to save feedback:', error);
+                this.debug('Failed to save feedback:', error);
                 throw error;
               }
             }
 
             async deleteFeedback(feedbackId) {
+              this.debug(`Deleting feedback: ${feedbackId}`);
               try {
-                console.log('Deleting feedback with ID:', feedbackId);
-                
                 const response = await fetch(`${this.baseUrl}/rest/v1/comments?id=eq.${feedbackId}`, {
                   method: 'DELETE',
                   headers: this.headers
@@ -329,13 +367,11 @@ jobs:
 
                 if (!response.ok) {
                   const errorText = await response.text();
-                  console.error('Delete failed:', response.status, errorText);
                   throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
 
-                console.log('Feedback deleted successfully');
+                this.debug('Feedback deleted successfully');
                 
-                // Dispatch event for UI updates
                 const event = new CustomEvent('feedbackDeleted', { 
                   detail: { feedbackId } 
                 });
@@ -343,15 +379,14 @@ jobs:
 
                 return true;
               } catch (error) {
-                console.error('Failed to delete feedback:', error);
+                this.debug('Failed to delete feedback:', error);
                 throw error;
               }
             }
 
             async clearAllFeedback() {
+              this.debug('Clearing all feedback');
               try {
-                console.log('Clearing all feedback');
-                
                 const response = await fetch(`${this.baseUrl}/rest/v1/comments`, {
                   method: 'DELETE',
                   headers: this.headers
@@ -359,23 +394,108 @@ jobs:
 
                 if (!response.ok) {
                   const errorText = await response.text();
-                  console.error('Clear all failed:', response.status, errorText);
                   throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
 
-                console.log('All feedback cleared successfully');
+                this.debug('All feedback cleared successfully');
 
-                // Dispatch event for UI updates
                 const event = new CustomEvent('allFeedbackCleared');
                 window.dispatchEvent(event);
 
                 return true;
               } catch (error) {
-                console.error('Failed to clear feedback:', error);
+                this.debug('Failed to clear feedback:', error);
                 throw error;
               }
             }
 
+            // === ARCHIVE METHODS ===
+            async createContentArchive(pageId, contentHtml) {
+              this.debug(`Creating archive for page: ${pageId}`);
+              try {
+                const archiveData = {
+                  page_id: pageId,
+                  content_html: contentHtml,
+                  archive_version: `v${Date.now()}`,
+                  resolution_status: 'active',
+                  session_id: this.getSessionId()
+                };
+
+                const result = await this.request('archived_content', {
+                  method: 'POST',
+                  body: JSON.stringify(archiveData)
+                });
+
+                this.debug('Archive created successfully:', result);
+                return result;
+              } catch (error) {
+                this.debug('Failed to create archive:', error);
+                throw error;
+              }
+            }
+
+            async getArchives(pageId) {
+              this.debug(`Fetching archives for page: ${pageId}`);
+              try {
+                const archives = await this.request(
+                  `archived_content?page_id=eq.${encodeURIComponent(pageId)}&order=created_at.desc`
+                );
+                this.debug(`Retrieved ${archives?.length || 0} archives`);
+                return archives || [];
+              } catch (error) {
+                this.debug('Failed to fetch archives:', error);
+                return [];
+              }
+            }
+
+            async getAllArchives() {
+              this.debug('Fetching all archives');
+              try {
+                const archives = await this.request('archived_content?order=created_at.desc');
+                this.debug(`Retrieved ${archives?.length || 0} total archives`);
+                return archives || [];
+              } catch (error) {
+                this.debug('Failed to fetch all archives:', error);
+                return [];
+              }
+            }
+
+            async deleteArchive(archiveId) {
+              this.debug(`Deleting archive: ${archiveId}`);
+              try {
+                await this.request(`archived_content?id=eq.${archiveId}`, {
+                  method: 'DELETE'
+                });
+                this.debug('Archive deleted successfully');
+                return true;
+              } catch (error) {
+                this.debug('Failed to delete archive:', error);
+                throw error;
+              }
+            }
+
+            async markReviewComplete(pageId, resolutionNotes) {
+              this.debug(`Marking review complete for page: ${pageId}`);
+              try {
+                // Update all archives for this page to resolved status
+                await this.request(`archived_content?page_id=eq.${encodeURIComponent(pageId)}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({
+                    resolution_status: 'resolved',
+                    resolution_date: new Date().toISOString(),
+                    reviewer_notes: resolutionNotes
+                  })
+                });
+
+                this.debug('Review marked as complete');
+                return true;
+              } catch (error) {
+                this.debug('Failed to mark review complete:', error);
+                throw error;
+              }
+            }
+
+            // === UTILITY METHODS ===
             getSessionId() {
               let sessionId = localStorage.getItem('reviewSessionId');
               if (!sessionId) {
@@ -384,17 +504,30 @@ jobs:
               }
               return sessionId;
             }
+
+            // Download archive as HTML file
+            downloadArchive(archive) {
+              const blob = new Blob([archive.content_html], { type: 'text/html' });
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${archive.page_id}_${archive.archive_version}.html`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              window.URL.revokeObjectURL(url);
+            }
           }
 
           // Initialize client
           window.supabaseClient = new SupabaseClient();
           EOF
 
-      # Step 10: Create Fixed CSS with Better UI
-      - name: Create Fixed CSS with Better UI
+      # Step 10: Create Enhanced CSS with New UI Layout
+      - name: Create Enhanced CSS with New UI Layout
         run: |
           cat > ./site/css/style.css << 'EOF'
-          /* Enhanced SPA CSS with Fixed Comment System */
+          /* Enhanced SPA CSS with Archive System and Repositioned UI Elements */
           * { margin: 0; padding: 0; box-sizing: border-box; }
 
           body {
@@ -404,7 +537,7 @@ jobs:
           }
 
           .sidebar {
-            width: 280px; background-color: #e0f7f7; padding: 15px;
+            width: 300px; background-color: #e0f7f7; padding: 15px;
             height: 100vh; overflow-y: auto; border-right: 1px solid #c0e0e0;
             display: flex; flex-direction: column; box-shadow: 2px 0 5px rgba(0,0,0,0.05);
           }
@@ -415,7 +548,7 @@ jobs:
           }
 
           .feedback-sidebar {
-            width: 350px; background-color: #f8f9fa; padding: 20px;
+            width: 380px; background-color: #f8f9fa; padding: 20px;
             height: 100vh; overflow-y: auto; border-left: 1px solid #e0e0e0;
             display: none; flex-direction: column; box-shadow: -2px 0 5px rgba(0,0,0,0.05);
           }
@@ -456,11 +589,14 @@ jobs:
             box-shadow: inset 3px 0 0 #00acc1;
           }
 
+          /* Review Controls Section */
           .review-controls {
             border-top: 2px solid #80cbc4; padding-top: 15px; margin-top: 15px;
             display: flex; flex-direction: column; gap: 10px;
           }
-          .review-controls h3 { color: #00747a; font-size: 1.1em; margin-bottom: 10px; }
+          .review-controls h3 { 
+            color: #00747a; font-size: 1.1em; margin-bottom: 10px; 
+          }
 
           .review-btn {
             padding: 8px 12px; border: 1px solid #00acc1;
@@ -478,6 +614,19 @@ jobs:
           .review-btn.danger {
             background: linear-gradient(135deg, #f44336, #d32f2f); border-color: #f44336;
             font-size: 0.85em; padding: 6px 10px;
+          }
+          .review-btn.success {
+            background: linear-gradient(135deg, #4caf50, #388e3c); border-color: #4caf50;
+          }
+
+          /* Hide review controls in read-only mode */
+          .review-controls .review-btn:not(#reviewToggle),
+          .feedback-instructions {
+            display: none;
+          }
+          .review-mode .review-controls .review-btn:not(#reviewToggle),
+          .review-mode .feedback-instructions {
+            display: block;
           }
 
           .feedback-instructions {
@@ -530,9 +679,9 @@ jobs:
           }
           .welcome-screen h2 { margin-bottom: 20px; font-size: 2em; }
 
-          /* Connection Status - Persistent in upper left */
+          /* Connection Status - Moved to bottom left */
           .connection-status {
-            position: fixed; top: 15px; left: 15px; z-index: 2000;
+            position: fixed; bottom: 15px; left: 15px; z-index: 2000;
             padding: 8px 12px; border-radius: 20px; font-size: 0.8em;
             font-weight: bold; transition: all 0.3s; cursor: pointer;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
@@ -704,30 +853,102 @@ jobs:
             background: #dc3545; color: white; 
           }
 
-          /* Hide delete buttons when not in review mode */
-          .feedback-actions { display: none; }
-          .review-mode .feedback-actions { display: flex; }
-
-          .no-feedback {
-            text-align: center; color: #6c757d; font-style: italic; 
-            padding: 40px 20px; background: white; border-radius: 8px;
-            border: 1px dashed #dee2e6;
+          /* Archive Management Styles */
+          .archive-section {
+            margin-top: 20px; padding-top: 15px; border-top: 2px solid #e0e0e0;
           }
 
+          .archive-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 15px;
+          }
+
+          .archive-list {
+            max-height: 300px; overflow-y: auto;
+          }
+
+          .archive-item {
+            background: white; border: 1px solid #e0e0e0; border-radius: 6px;
+            padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+
+          .archive-item-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 8px;
+          }
+
+          .archive-version {
+            font-weight: bold; color: #2c5aa0; font-size: 0.9em;
+          }
+
+          .archive-status {
+            padding: 2px 6px; border-radius: 10px; font-size: 0.7em;
+            font-weight: bold; text-transform: uppercase;
+          }
+
+          .archive-status.active { background: #fff3cd; color: #856404; }
+          .archive-status.resolved { background: #d4edda; color: #155724; }
+
+          .archive-meta {
+            font-size: 0.8em; color: #6c757d; margin-bottom: 8px;
+          }
+
+          .archive-actions {
+            display: flex; gap: 6px; flex-wrap: wrap;
+          }
+
+          .archive-btn {
+            padding: 4px 8px; border: 1px solid #ddd; border-radius: 3px;
+            background: #f8f9fa; cursor: pointer; font-size: 0.75em;
+            transition: all 0.2s;
+          }
+          .archive-btn:hover { background: #e9ecef; }
+          .archive-btn.view { border-color: #007bff; color: #007bff; }
+          .archive-btn.view:hover { background: #007bff; color: white; }
+          .archive-btn.download { border-color: #28a745; color: #28a745; }
+          .archive-btn.download:hover { background: #28a745; color: white; }
+          .archive-btn.delete { border-color: #dc3545; color: #dc3545; }
+          .archive-btn.delete:hover { background: #dc3545; color: white; }
+
+          /* Hide feedback toggle in read-only mode */
           .feedback-toggle {
             position: fixed; top: 60px; right: 20px; z-index: 1500;
             padding: 10px 15px; background: #2196f3; color: white; border: none;
             border-radius: 6px; cursor: pointer; font-size: 0.9em; font-weight: 500;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15); transition: all 0.2s;
+            display: none;
           }
           .feedback-toggle:hover { 
             background: #1976d2; transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
           }
+          .review-mode .feedback-toggle { display: block; }
+
+          .no-feedback, .no-archives {
+            text-align: center; color: #6c757d; font-style: italic; 
+            padding: 40px 20px; background: white; border-radius: 8px;
+            border: 1px dashed #dee2e6;
+          }
+
+          /* Review Complete Dialog */
+          .review-complete-dialog {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; border: 2px solid #28a745; border-radius: 8px;
+            padding: 25px; width: 500px; max-width: 90vw; z-index: 2000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: none;
+          }
+          .review-complete-dialog.show { display: block; }
+
+          .review-complete-dialog h3 { color: #28a745; margin-bottom: 15px; }
+          .review-complete-dialog textarea {
+            width: 100%; height: 80px; padding: 10px; border: 1px solid #ddd;
+            border-radius: 4px; font-family: inherit; resize: vertical;
+            font-size: 0.9em; placeholder: 'Optional resolution notes...';
+          }
 
           /* Responsive */
           @media (max-width: 1200px) {
-            .feedback-sidebar { width: 320px; }
+            .feedback-sidebar { width: 350px; }
           }
 
           @media (max-width: 768px) {
@@ -743,11 +964,17 @@ jobs:
           }
           EOF
 
-      # Step 11: Create Fixed SPA JavaScript
-      - name: Create Fixed SPA JavaScript
+      # Step 11: Create Enhanced SPA JavaScript with Archive System
+      - name: Create Enhanced SPA JavaScript with Archive System
         run: |
           cat > ./site/js/app.js << 'EOF'
-          // Complete SPA Application with Fixed Feedback System
+          // Enhanced SPA Application with Archive System and Streamlined Code
+
+          // === INITIALIZATION AND STATE ===
+          const DEBUG_MODE = true;
+          const debug = (message, data) => {
+            if (DEBUG_MODE) console.log(`[DITA-SPA] ${message}`, data || '');
+          };
 
           // DOM Elements
           const contentEl = document.getElementById('content');
@@ -759,7 +986,7 @@ jobs:
           const reviewToggleBtn = document.getElementById('reviewToggle');
           const clearReviewBtn = document.getElementById('clearReview');
 
-          // State
+          // Application State
           const getBasePath = () => {
             if (location.hostname.includes('github.io')) {
               const pathSegments = location.pathname.split('/');
@@ -770,17 +997,13 @@ jobs:
 
           window.currentPage = null;
           window.reviewMode = false;
-          window.reviewData = {};
           window.currentSelection = null;
           window.feedback = {};
+          window.archives = {};
           const basePath = getBasePath();
           let connectionStatus = 'connecting';
 
-          function debug(message, data) {
-            console.log(`[DITA-SPA] ${message}`, data || '');
-          }
-
-          // Connection Status Management
+          // === CONNECTION MANAGEMENT ===
           function createConnectionStatus() {
             const statusEl = document.createElement('div');
             statusEl.id = 'connectionStatus';
@@ -789,25 +1012,26 @@ jobs:
             statusEl.title = 'Click to test connection';
             statusEl.addEventListener('click', testConnection);
             document.body.appendChild(statusEl);
+            debug('Connection status indicator created');
             return statusEl;
           }
 
           function updateConnectionStatus(connected, message) {
             let statusEl = document.getElementById('connectionStatus');
-            if (!statusEl) {
-              statusEl = createConnectionStatus();
-            }
+            if (!statusEl) statusEl = createConnectionStatus();
             
             if (connected) {
               statusEl.className = 'connection-status connected';
               statusEl.innerHTML = '🟢 Database Connected';
               statusEl.title = 'Database connection active - Click to refresh';
               connectionStatus = 'connected';
+              debug('Connection status: Connected');
             } else {
               statusEl.className = 'connection-status disconnected';
               statusEl.innerHTML = '🔴 Database Offline';
               statusEl.title = 'Database connection failed - Click to retry';
               connectionStatus = 'disconnected';
+              debug('Connection status: Disconnected');
             }
           }
 
@@ -823,31 +1047,48 @@ jobs:
               updateConnectionStatus(connected);
               if (connected) {
                 await loadFeedbackForCurrentPage();
+                await loadArchivesForCurrentPage();
               }
               return connected;
             } catch (error) {
+              debug('Connection test error:', error);
               updateConnectionStatus(false);
               return false;
             }
           }
 
-          // Feedback Management
+          // === FEEDBACK SIDEBAR MANAGEMENT ===
           function createFeedbackSidebar() {
             const sidebar = document.createElement('div');
             sidebar.className = 'feedback-sidebar';
             sidebar.id = 'feedbackSidebar';
             sidebar.innerHTML = `
-              <h3>💬 Document Feedback</h3>
+              <h3>💬 Document Feedback & Archives</h3>
+              
               <div class="feedback-list" id="feedbackList">
                 <div class="no-feedback">
                   <p>No feedback yet.</p>
                   <p>Enable review mode and select text to leave feedback.</p>
                 </div>
               </div>
+
+              <div class="archive-section" id="archiveSection">
+                <div class="archive-header">
+                  <h4>📁 Archive Management</h4>
+                  <button class="archive-btn view" onclick="openArchiveManager()">
+                    📋 Manage All
+                  </button>
+                </div>
+                <div class="archive-list" id="archiveList">
+                  <div class="no-archives">
+                    <p>No archived versions available.</p>
+                  </div>
+                </div>
+              </div>
             `;
             document.body.appendChild(sidebar);
             
-            // Create toggle button
+            // Create toggle button (hidden by default)
             const toggleBtn = document.createElement('button');
             toggleBtn.className = 'feedback-toggle';
             toggleBtn.id = 'feedbackToggle';
@@ -855,6 +1096,7 @@ jobs:
             toggleBtn.addEventListener('click', toggleFeedbackSidebar);
             document.body.appendChild(toggleBtn);
             
+            debug('Feedback sidebar created');
             return sidebar;
           }
 
@@ -869,22 +1111,22 @@ jobs:
               
               if (sidebar.classList.contains('show')) {
                 loadFeedbackForCurrentPage();
+                loadArchivesForCurrentPage();
               }
             }
           }
 
+          // === FEEDBACK MANAGEMENT ===
           async function loadFeedbackForCurrentPage() {
             if (!window.currentPage || !window.supabaseClient) {
-              console.log('No current page or Supabase client available');
+              debug('No current page or client available for feedback loading');
               return;
             }
             
             try {
-              console.log('Loading feedback for page:', window.currentPage);
+              debug(`Loading feedback for page: ${window.currentPage}`);
               const feedback = await window.supabaseClient.getComments(window.currentPage);
-              console.log('Raw feedback data:', feedback);
               
-              // Validate and clean feedback data
               const cleanFeedback = feedback ? feedback.filter(item => {
                 return item && 
                        typeof item.comment_text === 'string' && 
@@ -892,13 +1134,15 @@ jobs:
                        (!item.selected_text || typeof item.selected_text === 'string');
               }) : [];
               
-              console.log('Cleaned feedback data:', cleanFeedback);
-              
+              debug(`Loaded ${cleanFeedback.length} feedback items`);
               window.feedback[window.currentPage] = cleanFeedback;
               displayFeedbackGrouped(cleanFeedback);
-              highlightFeedbackInContent(cleanFeedback);
+              
+              if (window.reviewMode) {
+                highlightFeedbackInContent(cleanFeedback);
+              }
             } catch (error) {
-              console.error('Failed to load feedback:', error);
+              debug('Failed to load feedback:', error);
               displayFeedbackGrouped([]);
             }
           }
@@ -947,9 +1191,7 @@ jobs:
                   ${feedbackGroup.map(item => `
                     <div class="feedback-details">
                       <div class="feedback-meta">
-                        <span class="feedback-type-badge">
-                          💬 feedback
-                        </span>
+                        <span class="feedback-type-badge">💬 feedback</span>
                         <span class="feedback-date">${formatDate(item.created_at)}</span>
                       </div>
                       <div class="feedback-text">${escapeHtml(item.comment_text)}</div>
@@ -970,10 +1212,8 @@ jobs:
           function highlightFeedbackInContent(feedbackItems) {
             if (!feedbackItems || !window.reviewMode) return;
             
-            // Clear existing highlights
             clearReviewHighlights();
             
-            // Add highlights for each feedback item
             feedbackItems.forEach(item => {
               if (item && item.selected_text && item.selected_text.trim()) {
                 highlightTextInContent(item.selected_text, item);
@@ -1002,21 +1242,18 @@ jobs:
                 const actualText = text.substring(index, index + selectedText.length);
                 const afterText = text.substring(index + selectedText.length);
                 
-                // Create highlight span
                 const span = document.createElement('span');
                 span.className = 'review-feedback-highlight';
                 span.setAttribute('data-feedback-id', feedbackItem.id);
                 span.textContent = actualText;
                 span.addEventListener('click', () => showFeedbackDetails(feedbackItem));
                 
-                // Add tooltip
                 const tooltip = document.createElement('div');
                 tooltip.className = 'feedback-tooltip';
                 tooltip.textContent = feedbackItem.comment_text.substring(0, 50) + 
                   (feedbackItem.comment_text.length > 50 ? '...' : '');
                 span.appendChild(tooltip);
                 
-                // Replace text node
                 parent.removeChild(node);
                 if (beforeText) parent.appendChild(document.createTextNode(beforeText));
                 parent.appendChild(span);
@@ -1043,98 +1280,194 @@ jobs:
             if (!confirm('Are you sure you want to delete this feedback?')) return;
             
             try {
-              console.log('Attempting to delete feedback:', feedbackId);
+              debug(`Deleting feedback: ${feedbackId}`);
               await window.supabaseClient.deleteFeedback(feedbackId);
-              console.log('Feedback deleted, reloading feedback');
               await loadFeedbackForCurrentPage();
             } catch (error) {
-              console.error('Delete feedback error:', error);
+              debug('Delete feedback error:', error);
               alert('Failed to delete feedback. Please check your connection and try again.');
             }
           }
 
-          // Initialize App
-          function initApp() {
-            debug('Initializing app with base path:', basePath);
+          // === ARCHIVE MANAGEMENT ===
+          async function loadArchivesForCurrentPage() {
+            if (!window.currentPage || !window.supabaseClient) {
+              debug('No current page or client available for archive loading');
+              return;
+            }
             
-            // Create UI elements
-            createConnectionStatus();
-            createFeedbackSidebar();
-            
-            // Setup event listeners
-            setupEventListeners();
-            renderNavigation(navigationConfig);
-            initReviewSystem();
+            try {
+              debug(`Loading archives for page: ${window.currentPage}`);
+              const archives = await window.supabaseClient.getArchives(window.currentPage);
+              
+              debug(`Loaded ${archives.length} archive items`);
+              window.archives[window.currentPage] = archives;
+              displayArchiveList(archives);
+            } catch (error) {
+              debug('Failed to load archives:', error);
+              displayArchiveList([]);
+            }
+          }
 
-            // Test connection and initialize
-            testConnection().then(() => {
-              const initialPageId = getPageIdFromUrl();
-              if (initialPageId) {
-                navigateToPage(initialPageId, false);
-              } else {
-                showWelcomeScreen();
+          function displayArchiveList(archiveItems) {
+            const archiveListEl = document.getElementById('archiveList');
+            if (!archiveListEl) return;
+            
+            if (!archiveItems || archiveItems.length === 0) {
+              archiveListEl.innerHTML = `
+                <div class="no-archives">
+                  <p>No archived versions available.</p>
+                </div>
+              `;
+              return;
+            }
+            
+            let archiveHtml = '';
+            
+            archiveItems.forEach(archive => {
+              archiveHtml += `
+                <div class="archive-item">
+                  <div class="archive-item-header">
+                    <span class="archive-version">📄 ${archive.archive_version}</span>
+                    <span class="archive-status ${archive.resolution_status}">${archive.resolution_status}</span>
+                  </div>
+                  <div class="archive-meta">
+                    Created: ${formatDate(archive.created_at)}
+                    ${archive.resolution_date ? `• Resolved: ${formatDate(archive.resolution_date)}` : ''}
+                  </div>
+                  <div class="archive-actions">
+                    <button class="archive-btn view" onclick="viewArchive(${archive.id})">
+                      👁️ View
+                    </button>
+                    <button class="archive-btn download" onclick="downloadArchive(${archive.id})">
+                      💾 Download
+                    </button>
+                    <button class="archive-btn delete" onclick="deleteArchive(${archive.id})">
+                      🗑️ Delete
+                    </button>
+                  </div>
+                </div>
+              `;
+            });
+            
+            archiveListEl.innerHTML = archiveHtml;
+          }
+
+          async function viewArchive(archiveId) {
+            try {
+              const archives = window.archives[window.currentPage] || [];
+              const archive = archives.find(a => a.id === archiveId);
+              
+              if (!archive) {
+                alert('Archive not found');
+                return;
               }
-            });
+              
+              debug(`Opening archive view for: ${archive.archive_version}`);
+              
+              // Open archive in new window
+              const newWindow = window.open('', '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+              
+              if (!newWindow) {
+                alert('Please allow popups to view archives');
+                return;
+              }
+              
+              newWindow.document.write(`
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Archive: ${archive.archive_version} - ${window.currentPage}</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+                    .archive-header { 
+                      background: #f8f9fa; padding: 15px; border-bottom: 2px solid #e9ecef;
+                      position: sticky; top: 0; z-index: 100;
+                    }
+                    .archive-info { color: #6c757d; font-size: 0.9em; }
+                    .archive-content { padding: 20px; max-width: 1000px; margin: 0 auto; }
+                    .archive-content img { max-width: 100%; height: auto; }
+                    .close-btn { 
+                      float: right; background: #dc3545; color: white; border: none;
+                      padding: 8px 12px; border-radius: 4px; cursor: pointer;
+                    }
+                    .close-btn:hover { background: #c82333; }
+                  </style>
+                </head>
+                <body>
+                  <div class="archive-header">
+                    <button class="close-btn" onclick="window.close()">✕ Close</button>
+                    <h2>📄 Archive View: ${archive.archive_version}</h2>
+                    <div class="archive-info">
+                      Page: ${window.currentPage} | Created: ${formatDate(archive.created_at)} | Status: ${archive.resolution_status}
+                    </div>
+                  </div>
+                  <div class="archive-content">
+                    ${archive.content_html}
+                  </div>
+                </body>
+                </html>
+              `);
+              
+              newWindow.document.close();
+              
+            } catch (error) {
+              debug('Failed to view archive:', error);
+              alert('Failed to open archive view');
+            }
           }
 
-          // Event Listeners
-          function setupEventListeners() {
-            window.addEventListener('popstate', handlePopState);
-            
-            // Supabase event listeners
-            window.addEventListener('supabaseConnectionChange', (e) => {
-              updateConnectionStatus(e.detail.connected);
-            });
-            
-            window.addEventListener('feedbackSaved', async (e) => {
-              console.log('Feedback saved event received');
-              await loadFeedbackForCurrentPage();
-            });
-            
-            window.addEventListener('feedbackDeleted', async (e) => {
-              console.log('Feedback deleted event received');
-              await loadFeedbackForCurrentPage();
-            });
-            
-            window.addEventListener('allFeedbackCleared', async (e) => {
-              console.log('All feedback cleared event received');
-              await loadFeedbackForCurrentPage();
-            });
-            
-            if (searchButton && searchInput) {
-              searchButton.addEventListener('click', performSearch);
-              searchInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') performSearch();
-              });
-            }
-
-            if (reviewToggleBtn) reviewToggleBtn.addEventListener('click', toggleReviewMode);
-            if (clearReviewBtn) clearReviewBtn.addEventListener('click', promptClearReviewData);
-
-            const printBtn = document.querySelector('.wh_print_link button');
-            if (printBtn) {
-              printBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                window.print();
-              });
+          async function downloadArchive(archiveId) {
+            try {
+              const archives = window.archives[window.currentPage] || [];
+              const archive = archives.find(a => a.id === archiveId);
+              
+              if (!archive) {
+                alert('Archive not found');
+                return;
+              }
+              
+              debug(`Downloading archive: ${archive.archive_version}`);
+              window.supabaseClient.downloadArchive(archive);
+            } catch (error) {
+              debug('Failed to download archive:', error);
+              alert('Failed to download archive');
             }
           }
 
-          // Review System Functions
+          async function deleteArchive(archiveId) {
+            if (!confirm('Are you sure you want to delete this archive? This cannot be undone.')) return;
+            
+            try {
+              debug(`Deleting archive: ${archiveId}`);
+              await window.supabaseClient.deleteArchive(archiveId);
+              await loadArchivesForCurrentPage();
+            } catch (error) {
+              debug('Failed to delete archive:', error);
+              alert('Failed to delete archive');
+            }
+          }
+
+          function openArchiveManager() {
+            alert('Archive Manager - Feature coming soon!\n\nThis will open a comprehensive view of all archived versions across all documents.');
+          }
+
+          // === REVIEW SYSTEM ===
           function initReviewSystem() {
             debug('Initializing review system');
             createFeedbackDialog();
+            createReviewCompleteDialog();
             updateReviewButtons();
           }
 
           function createFeedbackDialog() {
-            // Create overlay
             const overlay = document.createElement('div');
             overlay.className = 'dialog-overlay';
             overlay.id = 'dialogOverlay';
             overlay.addEventListener('click', closeFeedbackDialog);
 
-            // Create dialog
             const dialog = document.createElement('div');
             dialog.className = 'feedback-dialog';
             dialog.id = 'feedbackDialog';
@@ -1152,6 +1485,32 @@ jobs:
             document.body.appendChild(overlay);
             document.body.appendChild(dialog);
             debug('Feedback dialog created');
+          }
+
+          function createReviewCompleteDialog() {
+            const overlay = document.createElement('div');
+            overlay.className = 'dialog-overlay';
+            overlay.id = 'reviewCompleteOverlay';
+            overlay.addEventListener('click', closeReviewCompleteDialog);
+
+            const dialog = document.createElement('div');
+            dialog.className = 'review-complete-dialog';
+            dialog.id = 'reviewCompleteDialog';
+            dialog.innerHTML = `
+              <h3>✅ Mark Review Complete</h3>
+              <p>This will mark all current feedback as resolved and create a final archive.</p>
+              <div style="margin: 15px 0;">
+                <textarea id="resolutionNotes" placeholder="Optional resolution notes..."></textarea>
+              </div>
+              <div class="dialog-actions">
+                <button class="dialog-btn secondary" onclick="closeReviewCompleteDialog()">Cancel</button>
+                <button class="dialog-btn success" onclick="completeReview()">Mark Complete</button>
+              </div>
+            `;
+
+            document.body.appendChild(overlay);
+            document.body.appendChild(dialog);
+            debug('Review complete dialog created');
           }
 
           function toggleReviewMode() {
@@ -1178,20 +1537,14 @@ jobs:
 
           function updateReviewButtons() {
             if (reviewToggleBtn) {
-              reviewToggleBtn.textContent = window.reviewMode ? 'Exit Review' : '📝 Review Mode';
+              reviewToggleBtn.textContent = window.reviewMode ? '✕ Exit Review' : '📝 Review Mode';
               reviewToggleBtn.classList.toggle('active', window.reviewMode);
             }
-            
-            const reviewControls = document.querySelectorAll('.review-btn:not(#reviewToggle)');
-            reviewControls.forEach(btn => {
-              btn.style.display = window.reviewMode ? 'block' : 'none';
-            });
           }
 
           function initializeReviewForContent() {
             if (!window.reviewMode || !contentEl) return;
             
-            // Make text elements selectable
             const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, div');
             textElements.forEach(element => {
               if (element.children.length === 0 || element.textContent.trim()) {
@@ -1200,8 +1553,8 @@ jobs:
               }
             });
             
-            // Load and highlight existing feedback
             loadFeedbackForCurrentPage();
+            loadArchivesForCurrentPage();
             
             debug('Review initialization complete for content');
           }
@@ -1213,9 +1566,9 @@ jobs:
             if (selection.toString().trim().length === 0) return;
             
             const selectedText = selection.toString().trim();
-            if (selectedText.length < 3) return; // Minimum selection length
+            if (selectedText.length < 3) return;
             
-            debug('Text selected:', selectedText);
+            debug(`Text selected: ${selectedText}`);
             
             window.currentSelection = {
               type: 'text',
@@ -1234,7 +1587,6 @@ jobs:
               dialog.classList.add('show');
               overlay.classList.add('show');
               
-              // Pre-fill with selected text context
               const selectedText = window.currentSelection?.text || '';
               if (selectedText) {
                 const textArea = document.getElementById('feedbackText');
@@ -1260,6 +1612,28 @@ jobs:
             window.currentSelection = null;
           }
 
+          function showReviewCompleteDialog() {
+            const dialog = document.getElementById('reviewCompleteDialog');
+            const overlay = document.getElementById('reviewCompleteOverlay');
+            
+            if (dialog && overlay) {
+              dialog.classList.add('show');
+              overlay.classList.add('show');
+              document.getElementById('resolutionNotes').focus();
+            }
+          }
+
+          function closeReviewCompleteDialog() {
+            const dialog = document.getElementById('reviewCompleteDialog');
+            const overlay = document.getElementById('reviewCompleteOverlay');
+            
+            if (dialog && overlay) {
+              dialog.classList.remove('show');
+              overlay.classList.remove('show');
+              document.getElementById('resolutionNotes').value = '';
+            }
+          }
+
           async function saveFeedback() {
             if (!window.currentSelection) {
               closeFeedbackDialog();
@@ -1279,20 +1653,24 @@ jobs:
             }
             
             try {
+              // Check if this is the first feedback for this page
+              const existingFeedback = window.feedback[window.currentPage] || [];
+              const isFirstFeedback = existingFeedback.length === 0;
+              
               const feedbackData = {
                 page_id: window.currentPage,
                 comment_text: feedbackText,
                 selected_text: window.currentSelection.text,
-                selection_type: 'text'
+                selection_type: 'text',
+                createArchive: isFirstFeedback,
+                contentHtml: isFirstFeedback ? contentEl.innerHTML : null
               };
               
               debug('Saving feedback:', feedbackData);
               
-              // Save to database
               const result = await window.supabaseClient.saveFeedback(feedbackData);
               debug('Feedback saved successfully:', result);
               
-              // Show success message
               const saveBtn = document.querySelector('.dialog-btn.primary');
               const originalText = saveBtn.textContent;
               saveBtn.textContent = '✓ Saved!';
@@ -1310,6 +1688,29 @@ jobs:
             }
           }
 
+          async function completeReview() {
+            const resolutionNotes = document.getElementById('resolutionNotes').value.trim();
+            
+            try {
+              debug(`Marking review complete for page: ${window.currentPage}`);
+              await window.supabaseClient.markReviewComplete(window.currentPage, resolutionNotes);
+              
+              // Create final archive
+              await window.supabaseClient.createContentArchive(window.currentPage, contentEl.innerHTML);
+              
+              closeReviewCompleteDialog();
+              alert('Review marked as complete! All feedback has been resolved and archived.');
+              
+              // Refresh data
+              await loadFeedbackForCurrentPage();
+              await loadArchivesForCurrentPage();
+              
+            } catch (error) {
+              debug('Error completing review:', error);
+              alert('Failed to complete review. Please check your connection and try again.');
+            }
+          }
+
           function clearReviewHighlights() {
             const highlights = document.querySelectorAll('[data-feedback-id]');
             highlights.forEach(highlight => {
@@ -1321,26 +1722,29 @@ jobs:
             });
           }
 
-          function promptClearReviewData() {
-            if (confirm('Are you sure you want to clear ALL feedback? This cannot be undone.')) {
-              clearReviewData();
+          async function promptClearReviewData() {
+            if (confirm('Are you sure you want to clear ALL feedback and archives? This cannot be undone.')) {
+              await clearReviewData();
             }
           }
 
           async function clearReviewData() {
             try {
-              console.log('Attempting to clear all feedback');
+              debug('Clearing all review data');
               await window.supabaseClient.clearAllFeedback();
               clearReviewHighlights();
-              console.log('All feedback cleared successfully');
-              alert('All feedback has been cleared successfully.');
+              alert('All feedback and archives have been cleared successfully.');
+              
+              // Refresh displays
+              await loadFeedbackForCurrentPage();
+              await loadArchivesForCurrentPage();
             } catch (error) {
-              console.error('Error clearing feedback:', error);
-              alert(`Failed to clear feedback: ${error.message}`);
+              debug('Error clearing review data:', error);
+              alert(`Failed to clear review data: ${error.message}`);
             }
           }
 
-          // Navigation Functions
+          // === NAVIGATION SYSTEM ===
           function renderNavigation(items, parentEl = navigationEl) {
             const ul = document.createElement('ul');
             ul.setAttribute('role', 'menu');
@@ -1387,7 +1791,7 @@ jobs:
           }
 
           function navigateToPage(pageId, pushState = true) {
-            debug('Navigating to page:', pageId);
+            debug(`Navigating to page: ${pageId}`);
             
             if (!pageId) {
               showErrorContent('undefined');
@@ -1416,21 +1820,22 @@ jobs:
                     initializeReviewForContent();
                   }, 100);
                 } else {
-                  // Load feedback for display even if not in review mode
                   loadFeedbackForCurrentPage();
+                  loadArchivesForCurrentPage();
                 }
                 
                 document.body.classList.remove('loading');
-                debug('Content loaded successfully for:', pageId);
+                debug(`Content loaded successfully for: ${pageId}`);
               })
               .catch(error => {
+                debug(`Content load error for ${pageId}:`, error);
                 showErrorContent(pageId);
               });
           }
 
           async function loadContent(pageId) {
             const contentPath = `${basePath}/content/${pageId}.html`;
-            debug('Fetching from URL:', contentPath);
+            debug(`Fetching content from: ${contentPath}`);
 
             try {
               const response = await fetch(contentPath);
@@ -1439,7 +1844,7 @@ jobs:
               }
               return await response.text();
             } catch (error) {
-              debug('Content fetch error:', error.message);
+              debug(`Content fetch error: ${error.message}`);
               throw error;
             }
           }
@@ -1487,7 +1892,7 @@ jobs:
 
           function handlePopState(event) {
             const pageId = event.state?.pageId || getPageIdFromUrl() || navigationConfig[0]?.id;
-            debug('Popstate event, loading page:', pageId);
+            debug(`Popstate event, loading page: ${pageId}`);
             navigateToPage(pageId, false);
           }
 
@@ -1520,7 +1925,7 @@ jobs:
           }
 
           function showErrorContent(pageId) {
-            console.error('Failed to load content:', pageId);
+            debug(`Showing error content for: ${pageId}`);
             contentEl.innerHTML = `
               <div class="error">
                 <h2>Content Not Found</h2>
@@ -1539,23 +1944,25 @@ jobs:
                 <h2>Welcome to Automotive Documentation</h2>
                 <p>Select a topic from the navigation menu to begin.</p>
                 <div style="margin-top: 30px; padding: 20px; background: #f0f8ff; border-radius: 8px; border-left: 4px solid #2196f3;">
-                  <h3>💬 Feedback System Features:</h3>
+                  <h3>💬 Enhanced Feedback & Archive System:</h3>
                   <ul style="text-align: left; margin-top: 15px;">
-                    <li><strong>Review Mode:</strong> Click "Review Mode" to enable text feedback</li>
+                    <li><strong>Review Mode:</strong> Click "Review Mode" to enable feedback features</li>
                     <li><strong>Text Selection:</strong> Select any text to leave feedback</li>
-                    <li><strong>Feedback Panel:</strong> View feedback grouped by selected text</li>
-                    <li><strong>Database Integration:</strong> All feedback is saved to Supabase</li>
-                    <li><strong>Real-time Updates:</strong> Feedback syncs across sessions</li>
+                    <li><strong>Archive System:</strong> Automatic snapshots when feedback is added</li>
+                    <li><strong>Archive Viewer:</strong> View historical versions in new windows</li>
+                    <li><strong>Review Resolution:</strong> Mark reviews complete with resolution notes</li>
+                    <li><strong>Offline Access:</strong> Download archives for offline reference</li>
                   </ul>
                 </div>
                 <div style="margin-top: 20px; font-size: 0.9em; color: #666;">
-                  <p>Connection Status: Check the indicator in the upper-left corner</p>
+                  <p>Connection Status: Check the indicator in the bottom-left corner</p>
                 </div>
               </div>
             `;
             document.body.classList.remove('loading');
           }
 
+          // === SEARCH FUNCTIONALITY ===
           function performSearch() {
             const query = searchInput.value.toLowerCase().trim();
             searchResultsEl.innerHTML = '';
@@ -1567,7 +1974,7 @@ jobs:
               return;
             }
 
-            debug('Performing search for:', query);
+            debug(`Performing search for: ${query}`);
             const results = [];
             
             for (const id in contentIdMap) {
@@ -1633,7 +2040,64 @@ jobs:
             return text.replace(regex, '<span style="background: yellow;">$1</span>');
           }
 
-          // Utility functions
+          // === EVENT LISTENERS ===
+          function setupEventListeners() {
+            window.addEventListener('popstate', handlePopState);
+            
+            // Supabase event listeners
+            window.addEventListener('supabaseConnectionChange', (e) => {
+              updateConnectionStatus(e.detail.connected);
+            });
+            
+            window.addEventListener('feedbackSaved', async (e) => {
+              debug('Feedback saved event received');
+              await loadFeedbackForCurrentPage();
+              await loadArchivesForCurrentPage();
+            });
+            
+            window.addEventListener('feedbackDeleted', async (e) => {
+              debug('Feedback deleted event received');
+              await loadFeedbackForCurrentPage();
+            });
+            
+            window.addEventListener('allFeedbackCleared', async (e) => {
+              debug('All feedback cleared event received');
+              await loadFeedbackForCurrentPage();
+              await loadArchivesForCurrentPage();
+            });
+            
+            if (searchButton && searchInput) {
+              searchButton.addEventListener('click', performSearch);
+              searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') performSearch();
+              });
+            }
+
+            if (reviewToggleBtn) reviewToggleBtn.addEventListener('click', toggleReviewMode);
+            if (clearReviewBtn) clearReviewBtn.addEventListener('click', promptClearReviewData);
+
+            const printBtn = document.querySelector('.wh_print_link button');
+            if (printBtn) {
+              printBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.print();
+              });
+            }
+
+            // Add complete review button
+            const completeReviewBtn = document.createElement('button');
+            completeReviewBtn.id = 'completeReview';
+            completeReviewBtn.className = 'review-btn success';
+            completeReviewBtn.textContent = '✅ Complete Review';
+            completeReviewBtn.addEventListener('click', showReviewCompleteDialog);
+            
+            const reviewControls = document.querySelector('.review-controls');
+            if (reviewControls) {
+              reviewControls.insertBefore(completeReviewBtn, clearReviewBtn);
+            }
+          }
+
+          // === UTILITY FUNCTIONS ===
           function formatDate(dateString) {
             const date = new Date(dateString);
             return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -1646,7 +2110,31 @@ jobs:
             return div.innerHTML;
           }
 
-          // Make functions globally available
+          // === INITIALIZATION ===
+          function initApp() {
+            debug('Initializing enhanced SPA with archive system');
+            
+            // Create UI elements
+            createConnectionStatus();
+            createFeedbackSidebar();
+            
+            // Setup event listeners
+            setupEventListeners();
+            renderNavigation(navigationConfig);
+            initReviewSystem();
+
+            // Test connection and initialize
+            testConnection().then(() => {
+              const initialPageId = getPageIdFromUrl();
+              if (initialPageId) {
+                navigateToPage(initialPageId, false);
+              } else {
+                showWelcomeScreen();
+              }
+            });
+          }
+
+          // === GLOBAL FUNCTION EXPORTS ===
           window.toggleReviewMode = toggleReviewMode;
           window.promptClearReviewData = promptClearReviewData;
           window.navigateToPage = navigateToPage;
@@ -1654,8 +2142,15 @@ jobs:
           window.saveFeedback = saveFeedback;
           window.deleteFeedback = deleteFeedback;
           window.toggleFeedbackSidebar = toggleFeedbackSidebar;
+          window.viewArchive = viewArchive;
+          window.downloadArchive = downloadArchive;
+          window.deleteArchive = deleteArchive;
+          window.openArchiveManager = openArchiveManager;
+          window.showReviewCompleteDialog = showReviewCompleteDialog;
+          window.closeReviewCompleteDialog = closeReviewCompleteDialog;
+          window.completeReview = completeReview;
 
-          // Initialize when DOM is ready
+          // === APPLICATION START ===
           document.addEventListener('DOMContentLoaded', initApp);
           EOF
 
@@ -1664,7 +2159,7 @@ jobs:
         run: |
           mkdir -p ./site/content
 
-          # Create sample content files with more realistic automotive content
+          # Create comprehensive automotive content
           cat > ./site/content/getting-started-with-cars.html << 'EOF'
           <h1>Getting Started With Cars</h1>
           <p>Welcome to the comprehensive automotive guide. This section covers the basics of car ownership and maintenance that every driver should know.</p>
@@ -1803,7 +2298,7 @@ jobs:
               }
             </script>
 
-            <title>Automotive Documentation - Feedback System</title>
+            <title>Enhanced Automotive Documentation with Archive System</title>
             <link rel="stylesheet" href="css/style.css">
             <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
           </head>
@@ -1819,21 +2314,23 @@ jobs:
               </div>
               
               <div class="review-controls">
-                <h3>💬 Feedback System</h3>
+                <h3>💬 Feedback & Archive System</h3>
                 <div class="review-mode-toggle">
                   <button id="reviewToggle" class="review-btn">📝 Review Mode</button>
                 </div>
                 
                 <div class="feedback-instructions">
-                  <h4>📝 How to Leave Feedback:</h4>
+                  <h4>📝 Review Mode Features:</h4>
                   <ul>
-                    <li>Enable Review Mode</li>
-                    <li>Highlight text in the document</li>
-                    <li>Add your feedback in the dialog</li>
-                    <li>View all feedback in the sidebar</li>
+                    <li>Select text to leave feedback</li>
+                    <li>Automatic content archiving</li>
+                    <li>View archived versions</li>
+                    <li>Mark reviews as complete</li>
+                    <li>Download offline copies</li>
                   </ul>
                 </div>
                 
+                <button id="completeReview" class="review-btn success">✅ Complete Review</button>
                 <button id="clearReview" class="review-btn danger">🗑️ Clear All</button>
               </div>
               
@@ -1847,7 +2344,7 @@ jobs:
               <div id="loading" style="display:none;">Loading content...</div>
               <div id="content">
                 <div class="initial-loading">
-                  <p>🔄 Initializing enhanced documentation viewer with feedback system...</p>
+                  <p>🔄 Initializing enhanced documentation system with archive capabilities...</p>
                 </div>
               </div>
             </div>
@@ -1889,7 +2386,7 @@ jobs:
           </head>
           <body>
             <div style="text-align: center; font-family: Arial, sans-serif; margin-top: 100px;">
-              <h1>🔄 Redirecting...</h1>
+              <h1>🔄 Redirecting to Enhanced Documentation System...</h1>
               <p>If you are not redirected automatically, <a href="/">click here</a>.</p>
             </div>
           </body>
@@ -1897,7 +2394,7 @@ jobs:
           EOF
 
       # Step 15: Deploy to GitHub Pages
-      - name: Deploy to GitHub Pages
+      - name: Deploy Enhanced System to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
