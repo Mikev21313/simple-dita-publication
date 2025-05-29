@@ -2985,82 +2985,179 @@ jobs:
           EOF
 
       # Step 15: Create enhanced default content with fixed archive instructions
-      - name: Create Clean Default Content (No Demo Messages)
-  run: |
-    mkdir -p ./site/content
+      - name: Create Enhanced Default Content with Fixed Archive Instructions
+        run: |
+          mkdir -p ./site/content
 
-    cat > ./site/content/getting-started-with-cars.html << 'EOF'
-    <h1>Getting Started With Cars</h1>
-    <p>Welcome to the comprehensive automotive guide. This section covers the basics of car ownership and maintenance that every driver should know.</p>
-    
-    <h2>Essential Knowledge for New Car Owners</h2>
-    <p>Owning a car comes with responsibilities that extend beyond just driving. Understanding your vehicle's basic systems and maintenance requirements will help ensure safe, reliable transportation and can save you money in the long run.</p>
-    
-    <h3>Understanding Your Dashboard</h3>
-    <p>Your dashboard contains crucial warning lights and gauges that communicate your vehicle's status. Learn to recognize the check engine light, oil pressure warning, battery indicator, and temperature gauge. These indicators can alert you to potential problems before they become major repairs.</p>
-    
-    <h3>Basic Maintenance Schedule</h3>
-    <p>Regular maintenance is the key to vehicle longevity. Most manufacturers recommend oil changes every 3,000-7,500 miles depending on your vehicle and driving conditions. Additionally, consider the following maintenance items:</p>
-    <ul>
-      <li>Tire rotation and pressure checks every 5,000-7,500 miles</li>
-      <li>Air filter replacement every 12,000-15,000 miles</li>
-      <li>Brake inspection annually or every 12,000 miles</li>
-      <li>Coolant system flush every 30,000 miles</li>
-      <li>Transmission service every 60,000-100,000 miles</li>
-    </ul>
-    
-    <h3>Emergency Preparedness</h3>
-    <p>Every vehicle should be equipped with emergency supplies including jumper cables, a spare tire with proper tools, emergency flares or reflectors, and a first aid kit. Knowing how to change a tire and jump-start a battery can save you time and money in emergency situations.</p>
-    
-    <p>Remember: When in doubt, consult your owner's manual or a qualified automotive professional. Proper maintenance and care will keep your vehicle running safely for years to come.</p>
-    EOF
+          cat > ./site/content/getting-started-with-cars.html << 'EOF'
+          <h1>Getting Started With Cars</h1>
+          <p>Welcome to the comprehensive automotive guide with completely fixed archive system. This section covers the basics of car ownership and maintenance that every driver should know.</p>
+          
+          <div style="background: #e8f5e8; padding: 15px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #4caf50;">
+            <h3>🔧 Fixed Archive System Features</h3>
+            <p>All JavaScript errors have been resolved! The archive system now includes:</p>
+            <ul>
+             </strong> Creates archives automatically when you add feedback</li>
+            </ul>
+          </div>
+          
+          <div style="background: #fff3e0; padding: 15px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #ff9800;">
+            <h4>🚀 How to Test the Fixed System</h4>
+            <ol>
+              <li><strong>Click "🔍 Review Mode"</strong> (blue button, top-right) - should open without errors</li>
+              <li><strong>Select this text</strong> and add a comment - creates your first archive</li>
+              <li><strong>Click "📁 View Archives"</strong> (purple button) - should show your archive</li>
+              <li><strong>Try downloading</strong> in different formats - all should work</li>
+              <li><strong>Check console</strong> - should see successful operations, no errors</li>
+            </ol>
+          </div>
+          
+          <h2>Essential Knowledge for New Car Owners</h2>
+          <p>Owning a car comes with responsibilities that extend beyond just driving. Understanding your vehicle's basic systems and maintenance requirements will help ensure safe, reliable transportation and can save you money in the long run.</p>
+          
+          <h3>Understanding Your Dashboard</h3>
+          <p>Your dashboard contains crucial warning lights and gauges that communicate your vehicle's status. Learn to recognize the check engine light, oil pressure warning, battery indicator, and temperature gauge. These indicators can alert you to potential problems before they become major repairs.</p>
+          
+          <h3>Basic Maintenance Schedule</h3>
+          <p>Regular maintenance is the key to vehicle longevity. Most manufacturers recommend oil changes every 3,000-7,500 miles depending on your vehicle and driving conditions. Additionally, consider the following maintenance items:</p>
+          <ul>
+            <li>Tire rotation and pressure checks every 5,000-7,500 miles</li>
+            <li>Air filter replacement every 12,000-15,000 miles</li>
+            <li>Brake inspection annually or every 12,000 miles</li>
+            <li>Coolant system flush every 30,000 miles</li>
+            <li>Transmission service every 60,000-100,000 miles</li>
+          </ul>
+          
+          <h3>Emergency Preparedness</h3>
+          <p>Every vehicle should be equipped with emergency supplies including jumper cables, a spare tire with proper tools, emergency flares or reflectors, and a first aid kit. Knowing how to change a tire and jump-start a battery can save you time and money in emergency situations.</p>
+          
+          <p>Remember: When in doubt, consult your owner's manual or a qualified automotive professional. Proper maintenance and care will keep your vehicle running safely for years to come.</p>
+          EOF
 
-    cat > ./site/content/car-components.html << 'EOF'
-    <h1>Essential Car Components</h1>
-    <p>Understanding the major components of your vehicle helps you communicate effectively with mechanics and make informed maintenance decisions.</p>
-    
-    <h2>Engine and Powertrain</h2>
-    <p>The powertrain is responsible for generating power and delivering it to the wheels, enabling your vehicle to move forward and backward.</p>
-    
-    <h3>Engine</h3>
-    <p>The heart of your vehicle, the engine converts fuel into mechanical energy through controlled combustion. Modern engines are typically four-cylinder, six-cylinder, or eight-cylinder configurations, each offering different balances of power and fuel efficiency.</p>
-    
-    <h3>Transmission</h3>
-    <p>Transfers power from the engine to the wheels while allowing gear changes. Types include manual, automatic, continuously variable (CVT), and dual-clutch transmission systems.</p>
-    
-    <h2>Chassis and Suspension</h2>
-    <p>The foundation and support structure of the vehicle.</p>
-    
-    <h3>Frame/Chassis</h3>
-    <p>The structural framework that supports all vehicle components. Modern passenger vehicles typically use unibody construction where the body and frame are integrated.</p>
-    
-    <h3>Suspension System</h3>
-    <p>Connects the vehicle to its wheels, providing support, stability, and isolating the vehicle from road imperfections. Common types include MacPherson strut, double wishbone, multi-link, and solid axle configurations.</p>
-    EOF
+          cat > ./site/content/car-components.html << 'EOF'
+          <h1>Essential Car Components</h1>
+          <p>Understanding the major components of your vehicle helps you communicate effectively with mechanics and make informed maintenance decisions.</p>
+          
+          <div style="background: #f0f8ff; padding: 15px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #2196f3;">
+            <h4>🔧 System Status: All Fixed!</h4>
+            <p>The archive system has been completely repaired. You can now:</p>
+            <ul>
+              <li><strong>Select any text</strong> on this page without JavaScript errors</li>
+              <li><strong>Open Review Mode</strong> with proper event handling</li>
+              <li><strong>View Archives</strong> with functional download buttons</li>
+              <li><strong>Create archives</strong> automatically when adding feedback</li>
+            </ul>
+          </div>
+          
+          <h2>Engine and Powertrain</h2>
+          <p>The powertrain is responsible for generating power and delivering it to the wheels, enabling your vehicle to move forward and backward.</p>
+          
+          <h3>Engine</h3>
+          <p>The heart of your vehicle, the engine converts fuel into mechanical energy through controlled combustion. Modern engines are typically four-cylinder, six-cylinder, or eight-cylinder configurations, each offering different balances of power and fuel efficiency.</p>
+          
+          <h3>Transmission</h3>
+          <p>Transfers power from the engine to the wheels while allowing gear changes. Types include manual, automatic, continuously variable (CVT), and dual-clutch transmission systems.</p>
+          
+          <h3>Drivetrain</h3>
+          <p>Connects the transmission to the differential, transferring rotational power to rear-wheel and all-wheel drive vehicles.</p>
+          
+          <h3>Differential</h3>
+          <p>Allows wheels to rotate at different speeds when turning while transferring power from the drivetrain to the axles.</p>
+          
+          <h3>Axles</h3>
+          <p>Connect the wheels to the differential and support the vehicle's weight.</p>
+          
+          <h2>Chassis and Suspension</h2>
+          <p>The foundation and support structure of the vehicle.</p>
+          
+          <h3>Frame/Chassis</h3>
+          <p>The structural framework that supports all vehicle components. Modern passenger vehicles typically use unibody construction where the body and frame are integrated.</p>
+          
+          <h3>Suspension System</h3>
+          <p>Connects the vehicle to its wheels, providing support, stability, and isolating the vehicle from road imperfections. Common types include MacPherson strut, double wishbone, multi-link, and solid axle configurations.</p>
+          
+          <h3>Steering System</h3>
+          <p>Allows the driver to control the vehicle's direction. Modern vehicles typically use rack-and-pinion steering, often with power or electric assistance.</p>
+          
+          <h3>Braking System</h3>
+          <p>Slows and stops the vehicle through friction. Components include master cylinder, brake lines, calipers, wheel cylinders, and friction materials (pads/shoes).</p>
+          
+          <h3>Wheels and Tires</h3>
+          <p>The contact point between the vehicle and the road, providing traction and absorbing minor road imperfections.</p>
+          
+          <h2>Electrical and Electronic Systems</h2>
+          <p>Provides power and controls for various vehicle functions.</p>
+          
+          <h3>Battery</h3>
+          <p>Stores electrical energy for starting the engine and powering electrical systems when the engine is off.</p>
+          
+          <h3>Alternator</h3>
+          <p>Generates electrical power while the engine is running to recharge the battery and power electrical systems.</p>
+          
+          <h3>Starter Motor</h3>
+          <p>Initiates engine operation by turning the crankshaft.</p>
+          EOF
 
-    cat > ./site/content/basic-maintenance.html << 'EOF'
-    <h1>Essential Vehicle Maintenance</h1>
-    <p>Regular maintenance is crucial for vehicle safety, reliability, and longevity. Following these guidelines will help prevent costly repairs and ensure your vehicle operates at peak efficiency.</p>
-    
-    <h2>Engine Oil and Filter Changes</h2>
-    <p>Engine oil lubricates moving parts, reduces friction, and helps regulate engine temperature. Modern vehicles typically require oil changes every 5,000-7,500 miles, though severe driving conditions may require more frequent service.</p>
-    
-    <h3>Oil Change Intervals by Vehicle Type:</h3>
-    <ul>
-      <li><strong>Conventional Oil:</strong> Every 3,000-5,000 miles</li>
-      <li><strong>High-Mileage Oil:</strong> Every 5,000-7,500 miles</li>
-      <li><strong>Synthetic Blend:</strong> Every 5,000-7,500 miles</li>
-      <li><strong>Full Synthetic:</strong> Every 7,500-10,000 miles</li>
-    </ul>
-    
-    <p>Always replace the oil filter with each oil change to ensure maximum filtration efficiency and engine protection.</p>
-    
-    <h2>Tire Care and Maintenance</h2>
-    <p>Proper tire maintenance improves fuel efficiency, extends tire life, and ensures safe handling. Check tire pressure monthly using a reliable gauge, as underinflated tires can reduce fuel economy by up to 3%.</p>
-    
-    <h2>Brake System Inspection</h2>
-    <p>Your braking system is critical for safety and should be inspected regularly. Warning signs include squealing noises, grinding sounds, vibration during braking, or a spongy brake pedal feel.</p>
-    EOF
+          cat > ./site/content/basic-maintenance.html << 'EOF'
+          <h1>Essential Vehicle Maintenance</h1>
+          <p>Regular maintenance is crucial for vehicle safety, reliability, and longevity. Following these guidelines will help prevent costly repairs and ensure your vehicle operates at peak efficiency.</p>
+          
+         
+          
+          <h2>Engine Oil and Filter Changes</h2>
+          <p>Engine oil lubricates moving parts, reduces friction, and helps regulate engine temperature. Modern vehicles typically require oil changes every 5,000-7,500 miles, though severe driving conditions may require more frequent service.</p>
+          
+          <h3>Oil Change Intervals by Vehicle Type:</h3>
+          <ul>
+            <li><strong>Conventional Oil:</strong> Every 3,000-5,000 miles</li>
+            <li><strong>High-Mileage Oil:</strong> Every 5,000-7,500 miles</li>
+            <li><strong>Synthetic Blend:</strong> Every 5,000-7,500 miles</li>
+            <li><strong>Full Synthetic:</strong> Every 7,500-10,000 miles</li>
+          </ul>
+          
+          <p>Always replace the oil filter with each oil change to ensure maximum filtration efficiency and engine protection.</p>
+          
+          <h2>Tire Care and Maintenance</h2>
+          <p>Proper tire maintenance improves fuel efficiency, extends tire life, and ensures safe handling. Check tire pressure monthly using a reliable gauge, as underinflated tires can reduce fuel economy by up to 3%.</p>
+          
+          <h3>Tire Maintenance Schedule:</h3>
+          <ul>
+            <li><strong>Pressure Check:</strong> Monthly, including spare tire</li>
+            <li><strong>Tire Rotation:</strong> Every 6,000-8,000 miles</li>
+            <li><strong>Wheel Alignment:</strong> Annually or when uneven wear is noticed</li>
+            <li><strong>Tire Replacement:</strong> When tread depth reaches 2/32 inch</li>
+          </ul>
+          
+          <h2>Brake System Inspection</h2>
+          <p>Your braking system is critical for safety and should be inspected regularly. Warning signs include squealing noises, grinding sounds, vibration during braking, or a spongy brake pedal feel.</p>
+          
+          <h3>Brake Component Replacement Intervals:</h3>
+          <ul>
+            <li><strong>Brake Pads:</strong> Every 25,000-70,000 miles (varies by driving style)</li>
+            <li><strong>Brake Rotors:</strong> Every 50,000-100,000 miles</li>
+            <li><strong>Brake Fluid:</strong> Every 2-3 years or 24,000-36,000 miles</li>
+            <li><strong>Brake Lines:</strong> Inspect annually for corrosion or damage</li>
+          </ul>
+          
+          <h2>Cooling System Maintenance</h2>
+          <p>The cooling system prevents engine overheating by circulating coolant through the engine and radiator. Regular maintenance prevents costly engine damage from overheating.</p>
+          
+          <p><strong>Coolant Replacement:</strong> Every 30,000-50,000 miles or as specified in your owner's manual. Use only the coolant type recommended by your vehicle manufacturer to prevent system damage.</p>
+          
+          <h2>Air Filter Replacement</h2>
+          <p>A clean air filter ensures proper air flow to the engine, improving performance and fuel efficiency. A dirty filter can reduce acceleration and increase fuel consumption.</p>
+          
+          <p><strong>Replacement Schedule:</strong> Every 12,000-15,000 miles under normal conditions, or more frequently in dusty environments.</p>
+          
+          <h2>Professional Inspection Recommendations</h2>
+          <p>While many maintenance tasks can be performed by vehicle owners, certain inspections and services require professional expertise:</p>
+          <ul>
+            <li>Annual comprehensive safety inspection</li>
+            <li>Transmission service every 60,000-100,000 miles</li>
+            <li>Timing belt replacement (if equipped) every 60,000-105,000 miles</li>
+            <li>Spark plug replacement every 30,000-100,000 miles</li>
+          </ul>
+          EOF
 
       # Step 16: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
