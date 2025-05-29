@@ -3,6 +3,7 @@
 <map>
     <title>Automotive Information</title>
     <topicref href="Getting_Started_With_Cars.dita">
+        <topicref href="A%20Global%20Automotive%20ShowCase.dita"/>
         <topicref href="Car-basics/car_basics.dita"/>
     </topicref>
     <topicref href="car_types.dita">
@@ -17,5 +18,4 @@
         <topicref href="brakes.dita"/>
         <topicref href="engines.dita"/>
     </topicref>
-    <topicref href="A%20Global%20Automotive%20ShowCase.dita"/>
 </map>
