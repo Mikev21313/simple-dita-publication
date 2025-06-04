@@ -75,8 +75,53 @@ jobs:
           if [ -d "dita-source" ] && [ "$(ls -A dita-source/*.ditamap 2>/dev/null)" ]; then
             echo "Found DITA source files, processing..."
             
-            # Create XSLT for navigation extraction using base64 encoding to avoid YAML issues
-            echo "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHhzbDpzdHlsZXNoZWV0IHZlcnNpb249IjEuMCIgeG1sbnM6eHNsPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L1hTTC9UcmFuc2Zvcm0iPgogIDx4c2w6b3V0cHV0IG1ldGhvZD0idGV4dCIvPgogIDx4c2w6dGVtcGxhdGUgbWF0Y2g9Ii8iPgogICAgWzx4c2w6YXBwbHktdGVtcGxhdGVzIHNlbGVjdD0iLy90b3BpY3JlZltub3QoYW5jZXN0b3I6OnRvcGljcmVmKV0iLz5dCiAgPC94c2w6dGVtcGxhdGU+CiAgPHhzbDp0ZW1wbGF0ZSBtYXRjaD0idG9waWNyZWYiPgogICAgPHhzbDp2YXJpYWJsZSBuYW1lPSJocmVmIiBzZWxlY3Q9IkBocmVmIi8+CiAgICA8eHNsOnZhcmlhYmxlIG5hbWU9ImZpbGVuYW1lIj4KICAgICAgPHhzbDpjaG9vc2U+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9ImNvbnRhaW5zKCRocmVmLCAnLycpIj4KICAgICAgICAgIDx4c2w6dmFsdWUtb2Ygc2VsZWN0PSJzdWJzdHJpbmctYWZ0ZXIoc3Vic3RyaW5nLWJlZm9yZSgkaHJlZiwgJy4nKSwgJy8nKSIvPgogICAgICAgIDwveHNsOndoZW4+CiAgICAgICAgPHhzbDpvdGhlcndpc2U+CiAgICAgICAgICA8eHNsOnZhbHVlLW9mIHNlbGVjdD0ic3Vic3RyaW5nLWJlZm9yZSgkaHJlZiwgJy4nKSIvPgogICAgICAgIDwveHNsOm90aGVyd2lzZT4KICAgICAgPC94c2w6Y2hvb3NlPgogICAgPC94c2w6dmFyaWFibGU+CiAgICA8eHNsOnZhcmlhYmxlIG5hbWU9ImlkIj4KICAgICAgPHhzbDpjaG9vc2U+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9IkBpZCI+PHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IkBpZCIvPjwveHNsOndoZW4+CiAgICAgICAgPHhzbDpvdGhlcndpc2U+PHhzbDp2YWx1ZS1vZiBzZWxlY3Q9InRyYW5zbGF0ZSgkZmlsZW5hbWUsICdfJywgJy0nKSIvPjwveHNsOm90aGVyd2lzZT4KICAgICAgPC94c2w6Y2hvb3NlPgogICAgPC94c2w6dmFyaWFibGU+CiAgICA8eHNsOnZhcmlhYmxlIG5hbWU9InRpdGxlIj4KICAgICAgPHhzbDpjaG9vc2U+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9IkBuYXZ0aXRsZSI+PHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IkBuYXZ0aXRsZSIvPjwveHNsOndoZW4+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9InRvcGljbWV0YS9uYXZ0aXRsZSI+PHhzbDp2YWx1ZS1vZiBzZWxlY3Q9InRvcGljbWV0YS9uYXZ0aXRsZSIvPjwveHNsOndoZW4+CiAgICAgICAgPHhzbDpvdGhlcndpc2U+CiAgICAgICAgICA8eHNsOnZhbHVlLW9mIHNlbGVjdD0idHJhbnNsYXRlKHRyYW5zbGF0ZSgkaWQsICctJywgJyAnKSwgJ18nLCAnICcpIi8+CiAgICAgICAgPC94c2w6b3RoZXJ3aXNlPgogICAgICA8L3hzbDpjaG9vc2U+CiAgICA8L3hzbDp2YXJpYWJsZT4KICAgIHsKICAgICAgImlkIjogIjx4c2w6dmFsdWUtb2Ygc2VsZWN0PSIkaWQiLz4iLAogICAgICAidGl0bGUiOiAiPHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IiR0aXRsZSIvPiIsCiAgICAgICJmaWxlbmFtZSI6ICI8eHNsOnZhbHVlLW9mIHNlbGVjdD0iJGZpbGVuYW1lIi8+IiwKICAgICAgImhyZWYiOiAiPHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IiRocmVmIi8+IgogICAgICA8eHNsOmlmIHRlc3Q9InRvcGljcmVmIj4KICAgICAgICAiY2hpbGRyZW4iOiBbPHhzbDphcHBseS10ZW1wbGF0ZXMgc2VsZWN0PSJ0b3BpY3JlZiIvPl0KICAgICAgPC94c2w6aWY+CiAgICB9PHhzbDppZiB0ZXN0PSJmb2xsb3dpbmctc2libGluZzo6dG9waWNyZWYiPiw8L3hzbDppZj4KICA8L3hzbDp0ZW1wbGF0ZT4KPC94c2w6c3R5bGVzaGVldD4=" | base64 -d > extract-nav.xsl
+            # Create XSLT for navigation extraction
+            cat > extract-nav.xsl << 'ENDXSL'
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+  <xsl:output method="text"/>
+  <xsl:template match="/">
+    [<xsl:apply-templates select="//topicref[not(ancestor::topicref)]"/>]
+  </xsl:template>
+  <xsl:template match="topicref">
+    <xsl:variable name="href" select="@href"/>
+    <xsl:variable name="filename">
+      <xsl:choose>
+        <xsl:when test="contains($href, '/')">
+          <xsl:value-of select="substring-after(substring-before($href, '.'), '/')"/>
+        </xsl:when>
+        <xsl:otherwise>
+          <xsl:value-of select="substring-before($href, '.')"/>
+        </xsl:otherwise>
+      </xsl:choose>
+    </xsl:variable>
+    <xsl:variable name="id">
+      <xsl:choose>
+        <xsl:when test="@id"><xsl:value-of select="@id"/></xsl:when>
+        <xsl:otherwise><xsl:value-of select="translate($filename, '_', '-')"/></xsl:otherwise>
+      </xsl:choose>
+    </xsl:variable>
+    <xsl:variable name="title">
+      <xsl:choose>
+        <xsl:when test="@navtitle"><xsl:value-of select="@navtitle"/></xsl:when>
+        <xsl:when test="topicmeta/navtitle"><xsl:value-of select="topicmeta/navtitle"/></xsl:when>
+        <xsl:otherwise>
+          <xsl:value-of select="translate(translate($id, '-', ' '), '_', ' ')"/>
+        </xsl:otherwise>
+      </xsl:choose>
+    </xsl:variable>
+    {
+      "id": "<xsl:value-of select="$id"/>",
+      "title": "<xsl:value-of select="$title"/>",
+      "filename": "<xsl:value-of select="$filename"/>",
+      "href": "<xsl:value-of select="$href"/>"
+      <xsl:if test="topicref">
+        "children": [<xsl:apply-templates select="topicref"/>]
+      </xsl:if>
+    }<xsl:if test="following-sibling::topicref">,</xsl:if>
+  </xsl:template>
+</xsl:stylesheet>
+ENDXSL
             
             # Process DITAMAP
             for ditamap in dita-source/*.ditamap; do
@@ -697,6 +742,8 @@ ENDOFFILE
     body { font-family: sans-serif; padding: 20px; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .logout-btn { padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .document-list { background: #f5f5f5; padding: 20px; border-radius: 8px; }
+    .document-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -704,8 +751,13 @@ ENDOFFILE
     <h1>Review Dashboard</h1>
     <button class="logout-btn" onclick="logout()">Logout</button>
   </div>
-  <p>Welcome to the Review Dashboard. This is a placeholder page.</p>
-  <p>Full implementation includes document management and approval workflows.</p>
+  
+  <div class="content">
+    <h2>My Review Documents</h2>
+    <div class="document-list" id="document-list">
+      <p>Loading documents...</p>
+    </div>
+  </div>
   
   <script src="js/supabase-config.js"></script>
   <script>
@@ -717,6 +769,25 @@ ENDOFFILE
       window.supabaseAuth.logout();
       window.location.href = 'index.html';
     }
+    
+    function loadDocuments() {
+      const docs = window.reviewSystem.getUserDocuments();
+      const listEl = document.getElementById('document-list');
+      
+      if (docs.length === 0) {
+        listEl.innerHTML = '<p>No review documents yet. Open a documentation page and click "Provide Feedback" to start.</p>';
+      } else {
+        listEl.innerHTML = docs.map(doc => `
+          <div class="document-item">
+            <h3>Page: ${doc.original_page_id}</h3>
+            <p>Status: ${doc.review_state}</p>
+            <p>Created: ${new Date(doc.created_at).toLocaleDateString()}</p>
+          </div>
+        `).join('');
+      }
+    }
+    
+    loadDocuments();
   </script>
 </body>
 </html>
@@ -740,6 +811,9 @@ ENDOFFILE
     body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
     .header { background: #333; color: white; padding: 20px; margin: -20px -20px 20px; }
     .card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+    .stat-box { background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; }
+    .stat-number { font-size: 2em; font-weight: bold; color: #333; }
   </style>
 </head>
 <body>
@@ -748,18 +822,54 @@ ENDOFFILE
   </div>
   
   <div class="card">
-    <h2>System Overview</h2>
-    <p>This is the admin console for managing review requests.</p>
-    <p>Full implementation includes:</p>
-    <ul>
-      <li>View all review documents</li>
-      <li>Update document states</li>
-      <li>Add admin comments</li>
-      <li>System statistics</li>
-    </ul>
+    <h2>System Statistics</h2>
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-number" id="total-docs">0</div>
+        <div>Total Documents</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-number" id="pending-approvals">0</div>
+        <div>Pending Approvals</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-number" id="active-users">2</div>
+        <div>Active Users</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h2>Recent Activity</h2>
+    <div id="activity-list">
+      <p>Loading activity...</p>
+    </div>
   </div>
   
   <script src="js/supabase-config.js"></script>
+  <script>
+    function loadStatistics() {
+      const docs = window.reviewSystem.getAllDocuments();
+      const requests = window.reviewSystem.getApprovalRequests();
+      
+      document.getElementById('total-docs').textContent = docs.length;
+      document.getElementById('pending-approvals').textContent = 
+        requests.filter(r => r.status === 'pending').length;
+      
+      const activityList = document.getElementById('activity-list');
+      if (docs.length === 0) {
+        activityList.innerHTML = '<p>No activity yet.</p>';
+      } else {
+        activityList.innerHTML = '<ul>' + 
+          docs.slice(-5).reverse().map(doc => 
+            `<li>Document created for page: ${doc.original_page_id} (${new Date(doc.created_at).toLocaleDateString()})</li>`
+          ).join('') + 
+          '</ul>';
+      }
+    }
+    
+    loadStatistics();
+  </script>
 </body>
 </html>
 ENDOFFILE
