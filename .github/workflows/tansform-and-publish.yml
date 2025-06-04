@@ -1,4 +1,4 @@
-name: DITA to SPA with Complete Archive System (Clean)
+name: Complete DITA Review System Setup
 
 on:
   push:
@@ -6,23 +6,34 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  setup-complete-system:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
-      # Step 1: Checkout repository
+      # Step 1: Checkout repository with full history
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
 
-      # Step 2: Set up Java (required for DITA-OT)
+      # Step 2: Configure Git
+      - name: Configure Git
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git config --global init.defaultBranch main
+
+      # Step 3: Set up Java (required for DITA-OT)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # Step 3: Install DITA-OT and required tools
+      # Step 4: Install DITA-OT and required tools
       - name: Set up DITA-OT and XML tools
         run: |
           sudo apt-get update
@@ -33,2838 +44,845 @@ jobs:
           unzip dita-ot-4.0.2.zip
           chmod +x dita-ot-4.0.2/bin/dita
 
-      # Step 4: Verify Enhanced Database Connection
-      - name: Verify Enhanced Database Connection
+      # Step 5: Create directory structure for all applications
+      - name: Create Complete Directory Structure
         run: |
-          echo "🔄 Verifying enhanced database connection and schema..."
+          # DITA Publication directories
+          mkdir -p ./dita-publication/site/{content,css,js,images,archives,review}
           
-          # Test connection with multiple attempts
-          for i in {1..3}; do
-            echo "Connection attempt $i..."
-            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
-              -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-              -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-              "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/")
-            
-            if [ "$RESPONSE" -eq 200 ]; then
-              echo "✅ Supabase connection successful on attempt $i"
-              break
-            else
-              echo "❌ Attempt $i failed with status: $RESPONSE"
-              if [ $i -eq 3 ]; then
-                exit 1
-              fi
-              sleep 2
-            fi
-          done
-
-          # Verify table existence
-          echo "🔍 Verifying database tables..."
-          TABLES_RESPONSE=$(curl -s -X GET \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments?limit=1")
+          # Review Portal directories
+          mkdir -p ./review-portal/{css,js/modules,assets/icons}
           
-          if [[ "$TABLES_RESPONSE" == *"relation"*"does not exist"* ]]; then
-            echo "❌ Database tables missing - please run the schema setup SQL"
-            exit 1
-          else
-            echo "✅ Database tables verified and accessible"
-          fi
-
-          # Test write permissions
-          echo "🔧 Testing write permissions..."
-          TEST_WRITE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"page_id":"test","comment_text":"connection test","selected_text":"test"}' \
-            "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments")
+          # Admin Console directories
+          mkdir -p ./admin-console/{css,js,assets/icons}
           
-          if [ "$TEST_WRITE" -eq 201 ]; then
-            echo "✅ Write permissions verified"
-            # Clean up test data
-            curl -s -X DELETE \
-              -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-              -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-              "https://oiluavgeyngmkqozzmnz.supabase.co/rest/v1/comments?page_id=eq.test" > /dev/null
-          else
-            echo "⚠️ Write test returned: $TEST_WRITE (may be RLS policy - will work with anon key)"
-          fi
+          # Shared resources
+          mkdir -p ./shared/{css,js}
 
-          echo "✅ Database connection and permissions verified - Archive system ready"
-
-      # Step 5: Parse DITAMAP to generate navigation structure
-      - name: Parse DITAMAP Structure
+      # Step 6: Process DITA content (if exists)
+      - name: Process DITA Content
         run: |
-          echo "📖 Parsing DITAMAP structure from DITA source files"
-
-          # Create XSLT file for navigation extraction
-          cat > extract-nav.xsl << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-            <xsl:output method="text"/>
-            <xsl:template match="/">
-              [<xsl:apply-templates select="//topicref[not(ancestor::topicref)]"/>]
-            </xsl:template>
-            <xsl:template match="topicref">
-              <xsl:variable name="href" select="@href"/>
-              <xsl:variable name="filename">
-                <xsl:choose>
-                  <xsl:when test="contains($href, '/')">
-                    <xsl:value-of select="substring-after(substring-before($href, '.'), '/')"/>
-                  </xsl:when>
-                  <xsl:otherwise>
-                    <xsl:value-of select="substring-before($href, '.')"/>
-                  </xsl:otherwise>
-                </xsl:choose>
-              </xsl:variable>
-              <xsl:variable name="id">
-                <xsl:choose>
-                  <xsl:when test="@id"><xsl:value-of select="@id"/></xsl:when>
-                  <xsl:otherwise><xsl:value-of select="translate($filename, '_', '-')"/></xsl:otherwise>
-                </xsl:choose>
-              </xsl:variable>
-              <xsl:variable name="title">
-                <xsl:choose>
-                  <xsl:when test="@navtitle"><xsl:value-of select="@navtitle"/></xsl:when>
-                  <xsl:when test="topicmeta/navtitle"><xsl:value-of select="topicmeta/navtitle"/></xsl:when>
-                  <xsl:otherwise>
-                    <xsl:value-of select="translate(translate($id, '-', ' '), '_', ' ')"/>
-                  </xsl:otherwise>
-                </xsl:choose>
-              </xsl:variable>
-              {
-                "id": "<xsl:value-of select="$id"/>",
-                "title": "<xsl:value-of select="$title"/>",
-                "filename": "<xsl:value-of select="$filename"/>",
-                "href": "<xsl:value-of select="$href"/>"
-                <xsl:if test="topicref">
-                  ,"children": [<xsl:apply-templates select="topicref"/>]
-                </xsl:if>
-              }<xsl:if test="following-sibling::topicref">,</xsl:if>
-            </xsl:template>
-          </xsl:stylesheet>
-          EOF
-
-          # Apply XSLT transformation - handle missing DITAMAP gracefully
-          if [ -f "dita-source/*.ditamap" ]; then
-            for ditamap in dita-source/*.ditamap; do
-              if [ -f "$ditamap" ]; then
-                echo "Processing DITAMAP: $ditamap"
-                xsltproc extract-nav.xsl "$ditamap" > navigation-structure.json 2>/dev/null || echo "[]" > navigation-structure.json
-                break
-              fi
-            done
-          else
-            echo "No DITAMAP files found - creating empty navigation structure"
-            echo "[]" > navigation-structure.json
-          fi
-
-          sed -i 's/\\n//g; s/\\t//g; s/  / /g' navigation-structure.json
-
-          echo "✅ DITAMAP parsing complete"
-          cat navigation-structure.json
-
-      # Step 6: Transform DITA to HTML
-      - name: Transform DITA to HTML and Prepare Images
-        run: |
-          # Initialize site structure
-          mkdir -p ./site/content ./site/images ./site/js ./site/css ./site/archives ./site/review
-
-          # Transform DITA if source files exist
+          # Initialize navigation structure
+          echo "[]" > navigation-structure.json
+          
+          # Process DITA if source files exist
           if [ -d "dita-source" ] && [ "$(ls -A dita-source/*.ditamap 2>/dev/null)" ]; then
-            echo "📖 Processing DITA source files..."
+            
+            # Create XSLT for navigation extraction using base64 encoding to avoid YAML issues
+            echo "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHhzbDpzdHlsZXNoZWV0IHZlcnNpb249IjEuMCIgeG1sbnM6eHNsPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L1hTTC9UcmFuc2Zvcm0iPgogIDx4c2w6b3V0cHV0IG1ldGhvZD0idGV4dCIvPgogIDx4c2w6dGVtcGxhdGUgbWF0Y2g9Ii8iPgogICAgWzx4c2w6YXBwbHktdGVtcGxhdGVzIHNlbGVjdD0iLy90b3BpY3JlZltub3QoYW5jZXN0b3I6OnRvcGljcmVmKV0iLz5dCiAgPC94c2w6dGVtcGxhdGU+CiAgPHhzbDp0ZW1wbGF0ZSBtYXRjaD0idG9waWNyZWYiPgogICAgPHhzbDp2YXJpYWJsZSBuYW1lPSJocmVmIiBzZWxlY3Q9IkBocmVmIi8+CiAgICA8eHNsOnZhcmlhYmxlIG5hbWU9ImZpbGVuYW1lIj4KICAgICAgPHhzbDpjaG9vc2U+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9ImNvbnRhaW5zKCRocmVmLCAnLycpIj4KICAgICAgICAgIDx4c2w6dmFsdWUtb2Ygc2VsZWN0PSJzdWJzdHJpbmctYWZ0ZXIoc3Vic3RyaW5nLWJlZm9yZSgkaHJlZiwgJy4nKSwgJy8nKSIvPgogICAgICAgIDwveHNsOndoZW4+CiAgICAgICAgPHhzbDpvdGhlcndpc2U+CiAgICAgICAgICA8eHNsOnZhbHVlLW9mIHNlbGVjdD0ic3Vic3RyaW5nLWJlZm9yZSgkaHJlZiwgJy4nKSIvPgogICAgICAgIDwveHNsOm90aGVyd2lzZT4KICAgICAgPC94c2w6Y2hvb3NlPgogICAgPC94c2w6dmFyaWFibGU+CiAgICA8eHNsOnZhcmlhYmxlIG5hbWU9ImlkIj4KICAgICAgPHhzbDpjaG9vc2U+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9IkBpZCI+PHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IkBpZCIvPjwveHhzbDp3aGVuPgogICAgICAgIDx4c2w6b3RoZXJ3aXNlPjx4c2w6dmFsdWUtb2Ygc2VsZWN0PSJ0cmFuc2xhdGUoJGZpbGVuYW1lLCAnXycsICctJykiLz48L3hzbDpvdGhlcndpc2U+CiAgICAgIDwveHNsOmNob29zZT4KICAgIDwveHNsOnZhcmlhYmxlPgogICAgPHhzbDp2YXJpYWJsZSBuYW1lPSJ0aXRsZSI+CiAgICAgIDx4c2w6Y2hvb3NlPgogICAgICAgIDx4c2w6d2hlbiB0ZXN0PSJAQG5hdnRpdGxlIj48eHNsOnZhbHVlLW9mIHNlbGVjdD0iQG5hdnRpdGxlIi8+PC94c2w6d2hlbj4KICAgICAgICA8eHNsOndoZW4gdGVzdD0idG9waWNtZXRhL25hdnRpdGxlIj48eHNsOnZhbHVlLW9mIHNlbGVjdD0idG9waWNtZXRhL25hdnRpdGxlIi8+PC94c2w6d2hlbj4KICAgICAgICA8eHNsOm90aGVyd2lzZT4KICAgICAgICAgIDx4c2w6dmFsdWUtb2Ygc2VsZWN0PSJ0cmFuc2xhdGUodHJhbnNsYXRlKCRpZCwgJy0nLCAnICcpLCAnXycsICcgJykiLz4KICAgICAgICA8L3hzbDpvdGhlcndpc2U+CiAgICAgIDwveHNsOmNob29zZT4KICAgIDwveHNsOnZhcmlhYmxlPgogICAgcwogICAgICAiaWQiOiAiPHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IiRpZCIvPiIsCiAgICAgICJ0aXRsZSI6ICI8eHNsOnZhbHVlLW9mIHNlbGVjdD0iJHRpdGxlIi8+IiwKICAgICAgImZpbGVuYW1lIjogIjx4c2w6dmFsdWUtb2Ygc2VsZWN0PSIkZmlsZW5hbWUiLz4iLAogICAgICAiaHJlZiI6ICI8eHNsOnZhbHVlLW9mIHNlbGVjdD0iJGhyZWYiLz4iCiAgICAgIDx4c2w6aWYgdGVzdD0idG9waWNyZWYiPgogICAgICAgICJjaGlsZHJlbiI6IFs8eHNsOmFwcGx5LXRlbXBsYXRlcyBzZWxlY3Q9InRvcGljcmVmIi8+XQogICAgICA8L3hzbDppZj4KICAgIH08eHNsOmlmIHRlc3Q9ImZvbGxvd2luZy1zaWJsaW5nOjp0b3BpY3JlZiI+LDwveHNsOmlmPgogIDwveHNsOnRlbXBsYXRlPgo8L3hzbDpzdHlsZXNoZWV0Pg==" | base64 -d > extract-nav.xsl
+            
+            # Process DITAMAP
             for ditamap in dita-source/*.ditamap; do
               if [ -f "$ditamap" ]; then
-                echo "Transforming DITAMAP: $ditamap"
-                ./dita-ot-4.0.2/bin/dita --input="$ditamap" --format=html5 --output=./site || echo "DITA transformation completed with warnings"
+                xsltproc extract-nav.xsl "$ditamap" > navigation-structure.json 2>/dev/null || echo "[]" > navigation-structure.json
+                
+                # Transform to HTML
+                ./dita-ot-4.0.2/bin/dita --input="$ditamap" --format=html5 --output=./dita-publication/site || true
                 break
               fi
             done
+            
+            # Process HTML files
+            find ./dita-publication/site -type f -name "*.html" | grep -v "index.html" | while read file; do
+              filename=$(basename "$file")
+              id="${filename%.html}"
+              
+              # Extract content
+              content=$(sed -n '/<body/,/<\/body>/p' "$file" | sed '/<body/d;/<\/body>/d' | sed '/<header/,/<\/header>/d' | sed '/<nav/,/<\/nav>/d' | sed '/<footer/,/<\/footer>/d')
+              
+              # Save processed content
+              echo "$content" > "./dita-publication/site/content/$id.html"
+            done
           else
-            echo "⚠️ No DITA source files found - proceeding with empty content structure"
-            # Create minimal index.html for DITA processing step
-            echo "<html><body><h1>No DITA Content</h1><p>Add DITA files to dita-source/ directory</p></body></html>" > ./site/index.html
+            echo "<h1>Welcome</h1><p>No DITA content available. Add DITA files to dita-source/ directory.</p>" > ./dita-publication/site/content/welcome.html
           fi
 
-          # Copy images if they exist
-          if [ -d "dita-source" ]; then
-            find ./dita-source -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.svg" \) -exec cp -v {} ./site/images/ \; 2>/dev/null || echo "No images found in DITA source"
-          fi
-
-          # Create placeholder if no images
-          if [ ! "$(ls -A ./site/images 2>/dev/null)" ]; then
-            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > ./site/images/placeholder.png
-          fi
-
-      # Step 7: Process HTML content for SPA
-      - name: Process HTML Content
+      # Step 7: Create All Application Files
+      - name: Create Application Files
         run: |
-          echo "🔄 Processing HTML content for SPA structure..."
-          
-          # Process HTML files to create SPA content
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | grep -v "review.html" | while read file; do
-            if [[ "$file" == "./site/index.html" ]]; then continue; fi
+          # Create shared Supabase config
+          mkdir -p ./shared/js
+          cat > ./shared/js/supabase-config.js << 'ENDOFFILE'
+// Shared Supabase configuration
+const SUPABASE_URL = 'https://oiluavgeyngmkqozzmnz.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ';
 
-            filename=$(basename "$file")
-            id="${filename%.html}"
-            hyphenated_id="${id//_/-}"
+class SupabaseAuthClient {
+  constructor() {
+    this.baseUrl = SUPABASE_URL;
+    this.headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'apikey': SUPABASE_ANON_KEY
+    };
+    this.currentUser = null;
+  }
 
-            # Extract content
-            content=$(sed -n '/<body/,/<\/body>/p' "$file" | sed '/<body/d;/<\/body>/d' | sed '/<header/,/<\/header>/d' | sed '/<nav/,/<\/nav>/d' | sed '/<footer/,/<\/footer>/d')
-            
-            # Fix image paths
-            content=$(echo "$content" | sed -E 's/<img([^>]*)src="[^"]*\/([^\/"]*)\.([a-zA-Z0-9]+)"/<img\1src="images\/\2.\3"/gi')
-            content=$(echo "$content" | sed -E 's/<img([^>]*)src="([^\/:"]*)\.(jpg|jpeg|png|gif|svg)"/<img\1src="images\/\2.\3"/gi')
+  async login(username, password) {
+    const validUsers = {
+      'vincent': { password: 'zoox', id: 'user-vincent', role: 'user' },
+      'sree': { password: 'zoox', id: 'user-sree', role: 'user' },
+      'admin': { password: 'admin123', id: 'user-admin', role: 'admin' }
+    };
+    
+    if (validUsers[username] && validUsers[username].password === password) {
+      this.currentUser = {
+        id: validUsers[username].id,
+        username: username,
+        role: validUsers[username].role
+      };
+      localStorage.setItem('review_user', JSON.stringify(this.currentUser));
+      return { success: true, user: this.currentUser };
+    }
+    
+    return { success: false, error: 'Invalid credentials' };
+  }
 
-            # Get title
-            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-            if [ -z "$title" ]; then
-              title=$(echo "$id" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-            fi
+  logout() {
+    this.currentUser = null;
+    localStorage.removeItem('review_user');
+  }
 
-            # Create content files
-            echo "$content" > "./site/content/$id.html"
-            if [[ "$id" != "$hyphenated_id" ]]; then
-              echo "$content" > "./site/content/$hyphenated_id.html"
-            fi
-          done
+  getCurrentUser() {
+    if (!this.currentUser) {
+      const stored = localStorage.getItem('review_user');
+      if (stored) {
+        this.currentUser = JSON.parse(stored);
+      }
+    }
+    return this.currentUser;
+  }
 
-          # Create content ID mapping
-          echo "// Auto-generated content ID mapping" > ./site/js/content-id-map.js
-          echo "const contentIdMap = {" >> ./site/js/content-id-map.js
+  isAuthenticated() {
+    return this.getCurrentUser() !== null;
+  }
 
-          # Check if we have any processed content
-          CONTENT_COUNT=0
-          find ./site -type f -name "*.html" | grep -v "index.html" | grep -v "404.html" | grep -v "review.html" | while read file; do
-            filename=$(basename "$file" .html)
-            id="${filename//_/-}"
-            original_filename="$filename"
-            title=$(grep -o "<title>.*</title>" "$file" | sed 's/<title>\(.*\)<\/title>/\1/' | head -1)
-            raw_content=$(cat "$file" | tr '\n' ' ' | sed 's/<[^>]*>//g' | sed 's/&nbsp;/ /g' | sed 's/  */ /g' | tr -d '\n\r')
+  isAdmin() {
+    const user = this.getCurrentUser();
+    return user && user.role === 'admin';
+  }
+}
 
-            if grep -q "\"$id\":" ./site/js/content-id-map.js; then continue; fi
+// Extended client for review operations
+class ReviewSystemClient extends SupabaseAuthClient {
+  async createReviewDocument(pageId, contentHtml) {
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Not authenticated');
+    
+    const doc = {
+      id: 'doc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      original_page_id: pageId,
+      content_html: contentHtml,
+      user_id: user.id,
+      review_state: 'draft',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    const docs = this.getReviewDocuments();
+    docs.push(doc);
+    localStorage.setItem('review_documents', JSON.stringify(docs));
+    
+    return doc;
+  }
 
-            if [ -z "$title" ]; then
-              title=$(echo "$id" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
-            fi
+  getReviewDocuments() {
+    const stored = localStorage.getItem('review_documents');
+    return stored ? JSON.parse(stored) : [];
+  }
 
-            title=$(echo "$title" | sed 's/"/\\"/g')
-            raw_content=$(echo "$raw_content" | sed 's/"/\\"/g')
+  getUserDocuments() {
+    const user = this.getCurrentUser();
+    if (!user) return [];
+    
+    return this.getReviewDocuments().filter(doc => doc.user_id === user.id);
+  }
 
-            echo "  \"$id\": { \"title\": \"$title\", \"filename\": \"$original_filename\", \"content\": \"$raw_content\" }," >> ./site/js/content-id-map.js
-            CONTENT_COUNT=$((CONTENT_COUNT + 1))
-          done
+  getAllDocuments() {
+    return this.getReviewDocuments();
+  }
 
-          # Add default entry
-          echo "  \"default\": { \"title\": \"Documentation\", \"filename\": \"\", \"content\": \"\" }" >> ./site/js/content-id-map.js
-          echo "};" >> ./site/js/content-id-map.js
+  async updateDocument(docId, updates) {
+    const docs = this.getReviewDocuments();
+    const index = docs.findIndex(d => d.id === docId);
+    
+    if (index !== -1) {
+      docs[index] = { ...docs[index], ...updates, updated_at: new Date().toISOString() };
+      localStorage.setItem('review_documents', JSON.stringify(docs));
+      return docs[index];
+    }
+    
+    throw new Error('Document not found');
+  }
 
-          echo "✅ Processed HTML content for SPA"
+  async requestApproval(docId, approverId, message) {
+    const request = {
+      id: 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      document_id: docId,
+      requester_id: this.getCurrentUser().id,
+      approver_id: approverId,
+      status: 'pending',
+      request_message: message,
+      created_at: new Date().toISOString()
+    };
+    
+    const requests = this.getApprovalRequests();
+    requests.push(request);
+    localStorage.setItem('approval_requests', JSON.stringify(requests));
+    
+    return request;
+  }
 
-      # Step 8: Generate Navigation Configuration
-      - name: Generate Navigation Configuration
+  getApprovalRequests() {
+    const stored = localStorage.getItem('approval_requests');
+    return stored ? JSON.parse(stored) : [];
+  }
+
+  getUserApprovalRequests() {
+    const user = this.getCurrentUser();
+    if (!user) return [];
+    
+    return this.getApprovalRequests().filter(
+      req => req.approver_id === user.id && req.status === 'pending'
+    );
+  }
+
+  async respondToApproval(requestId, approved, message) {
+    const requests = this.getApprovalRequests();
+    const index = requests.findIndex(r => r.id === requestId);
+    
+    if (index !== -1) {
+      requests[index].status = approved ? 'approved' : 'rejected';
+      requests[index].response_message = message;
+      requests[index].responded_at = new Date().toISOString();
+      localStorage.setItem('approval_requests', JSON.stringify(requests));
+      
+      if (approved) {
+        await this.updateDocument(requests[index].document_id, {
+          review_state: 'approved'
+        });
+      }
+      
+      return requests[index];
+    }
+    
+    throw new Error('Request not found');
+  }
+
+  async addComment(docId, commentText, selectedText = '') {
+    const comment = {
+      id: 'com_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      document_id: docId,
+      user_id: this.getCurrentUser().id,
+      comment_text: commentText,
+      selected_text: selectedText,
+      status: 'active',
+      created_at: new Date().toISOString()
+    };
+    
+    const comments = this.getComments();
+    comments.push(comment);
+    localStorage.setItem('review_comments', JSON.stringify(comments));
+    
+    return comment;
+  }
+
+  getComments() {
+    const stored = localStorage.getItem('review_comments');
+    return stored ? JSON.parse(stored) : [];
+  }
+
+  getDocumentComments(docId) {
+    return this.getComments().filter(c => c.document_id === docId);
+  }
+}
+
+// Initialize clients
+window.supabaseAuth = new SupabaseAuthClient();
+window.reviewSystem = new ReviewSystemClient();
+ENDOFFILE
+
+      # Step 8: Create DITA Publication Site
+      - name: Create DITA Publication Site
         run: |
-          cat > ./site/js/navigation-config.js << 'EOF'
-          // Auto-generated navigation structure from DITAMAP
-          const navigationConfig =
-          EOF
-          cat ./navigation-structure.json >> ./site/js/navigation-config.js
-          echo ";" >> ./site/js/navigation-config.js
+          # Create navigation config
+          cat > ./dita-publication/site/js/navigation-config.js << 'ENDOFFILE'
+const navigationConfig = 
+ENDOFFILE
+          cat ./navigation-structure.json >> ./dita-publication/site/js/navigation-config.js
+          echo ";" >> ./dita-publication/site/js/navigation-config.js
+          
+          # Create CSS
+          cat > ./dita-publication/site/css/style.css << 'ENDOFFILE'
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-      # Step 9: Create Enhanced Supabase Configuration with Complete Archive System
-      - name: Create Enhanced Supabase Configuration with Complete Archive System
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.6; display: flex; height: 100vh;
+  overflow: hidden; color: #333; background: #f8f8f8;
+}
+
+.sidebar {
+  width: 300px; background: #e0f7f7; padding: 15px;
+  height: 100vh; overflow-y: auto; border-right: 1px solid #c0e0e0;
+}
+
+.main-content {
+  flex: 1; padding: 30px; height: 100vh; overflow-y: auto;
+  background: #ffffff; position: relative;
+}
+
+.sidebar h2 {
+  font-weight: 500; margin-bottom: 15px; color: #00747a;
+  border-bottom: 2px solid #80cbc4; padding-bottom: 10px;
+}
+
+.sidebar ul { list-style: none; padding-left: 0; }
+.sidebar ul ul { padding-left: 20px; margin-top: 5px; }
+.sidebar li { margin-bottom: 6px; position: relative; }
+
+.sidebar a {
+  color: #00747a; text-decoration: none; display: block;
+  padding: 6px 10px; border-radius: 4px; transition: all 0.2s;
+}
+
+.sidebar a:hover { background: #e1f5fe; color: #006064; }
+.sidebar a.active { background: #80deea; font-weight: bold; }
+
+.feedback-button {
+  position: fixed; bottom: 20px; right: 20px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white; padding: 12px 24px; border: none;
+  border-radius: 50px; cursor: pointer; font-size: 16px;
+  font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s; z-index: 1000;
+  display: flex; align-items: center; gap: 8px;
+}
+
+.feedback-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.feedback-button:before { content: "💬"; font-size: 20px; }
+
+@media (max-width: 768px) {
+  body { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; max-height: 30vh; }
+  .feedback-button { bottom: 70px; right: 15px; }
+}
+ENDOFFILE
+
+          # Create JavaScript
+          cat > ./dita-publication/site/js/app.js << 'ENDOFFILE'
+// DITA SPA Application with Review Integration
+
+let contentEl, navigationEl;
+window.currentPage = null;
+
+function initializeDOMElements() {
+  contentEl = document.getElementById('content');
+  navigationEl = document.getElementById('navigation');
+}
+
+function renderNavigation(items, parentEl = navigationEl) {
+  if (!parentEl || !items || items.length === 0) return;
+  
+  const ul = document.createElement('ul');
+  items.forEach(item => {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.textContent = item.title;
+    a.setAttribute('data-id', item.id);
+    a.href = '#' + item.id;
+    
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      navigateToPage(item.id);
+    });
+    
+    li.appendChild(a);
+    if (item.children && item.children.length > 0) {
+      renderNavigation(item.children, li);
+    }
+    ul.appendChild(li);
+  });
+  parentEl.appendChild(ul);
+}
+
+function navigateToPage(pageId) {
+  window.currentPage = pageId;
+  updateActiveNavItem(pageId);
+  
+  fetch('content/' + pageId + '.html')
+    .then(response => response.text())
+    .then(content => {
+      if (contentEl) contentEl.innerHTML = content;
+    })
+    .catch(() => {
+      if (contentEl) {
+        contentEl.innerHTML = '<div class="error">Content not found</div>';
+      }
+    });
+}
+
+function updateActiveNavItem(pageId) {
+  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+  const activeItem = document.querySelector('.sidebar a[data-id="' + pageId + '"]');
+  if (activeItem) activeItem.classList.add('active');
+}
+
+function addFeedbackButton() {
+  const feedbackBtn = document.createElement('button');
+  feedbackBtn.className = 'feedback-button';
+  feedbackBtn.innerHTML = 'Provide Feedback';
+  feedbackBtn.title = 'Open review portal to provide feedback';
+  
+  feedbackBtn.addEventListener('click', openReviewPortal);
+  document.body.appendChild(feedbackBtn);
+}
+
+function openReviewPortal() {
+  const currentPageId = window.currentPage || 'home';
+  const pageTitle = document.querySelector('.sidebar a.active')?.textContent || 'Document';
+  const pageContent = contentEl ? contentEl.innerHTML : '';
+  
+  sessionStorage.setItem('review_page_id', currentPageId);
+  sessionStorage.setItem('review_page_title', pageTitle);
+  sessionStorage.setItem('review_page_content', pageContent);
+  
+  const reviewWindow = window.open('../review-portal/index.html', 'ReviewPortal', 
+    'width=1400,height=900,scrollbars=yes,resizable=yes'
+  );
+  
+  if (!reviewWindow) {
+    alert('Please allow popups to open the review portal.');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  initializeDOMElements();
+  
+  if (window.navigationConfig && navigationConfig.length > 0) {
+    renderNavigation(navigationConfig);
+    navigateToPage(navigationConfig[0].id);
+  }
+  
+  addFeedbackButton();
+});
+ENDOFFILE
+
+          # Create index.html
+          cat > ./dita-publication/site/index.html << 'ENDOFFILE'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DITA Documentation</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="sidebar">
+    <h2>Documentation</h2>
+    <div id="navigation"></div>
+  </div>
+  
+  <div class="main-content">
+    <div id="content">
+      <h1>Welcome</h1>
+      <p>Select a topic from the navigation menu.</p>
+    </div>
+  </div>
+  
+  <script src="js/navigation-config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
+ENDOFFILE
+
+      # Step 9: Create Review Portal
+      - name: Create Review Portal
         run: |
-          cat > ./site/js/supabase-config.js << 'EOF'
-          // Enhanced Supabase configuration with complete archive system
-          const SUPABASE_URL = 'https://oiluavgeyngmkqozzmnz.supabase.co';
-          const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ';
+          # Copy shared config
+          cp ./shared/js/supabase-config.js ./review-portal/js/
+          
+          # Create login page
+          cat > ./review-portal/index.html << 'ENDOFFILE'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review Portal - Login</title>
+  <link rel="stylesheet" href="css/auth.css">
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card">
+      <h1>📝 Review Portal</h1>
+      <p class="subtitle">Sign in to review documents</p>
+      
+      <form id="login-form">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" required placeholder="vincent or sree">
+        </div>
+        
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" required placeholder="Password">
+        </div>
+        
+        <button type="submit" class="login-button">Sign In</button>
+        
+        <div id="error-message" class="error-message"></div>
+      </form>
+      
+      <div class="login-hint">
+        <p>Demo users:</p>
+        <ul>
+          <li>vincent / zoox</li>
+          <li>sree / zoox</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  
+  <script src="js/supabase-config.js"></script>
+  <script src="js/auth.js"></script>
+</body>
+</html>
+ENDOFFILE
 
-          class SupabaseClient {
-            constructor() {
-              this.baseUrl = SUPABASE_URL;
-              this.headers = {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                'apikey': SUPABASE_ANON_KEY
-              };
-              this.connected = false;
-              this.debugMode = true;
-              this.retryAttempts = 3;
-            }
+          # Create auth CSS
+          cat > ./review-portal/css/auth.css << 'ENDOFFILE'
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-            debug(message, data) {
-              if (this.debugMode) {
-                console.log(`[Supabase] ${message}`, data || '');
-              }
-            }
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh; display: flex; align-items: center;
+  justify-content: center; padding: 20px;
+}
 
-            async request(endpoint, options = {}) {
-              const url = `${this.baseUrl}/rest/v1/${endpoint}`;
-              const config = { headers: this.headers, ...options };
+.login-container {
+  width: 100%; max-width: 400px;
+}
 
-              this.debug(`Making request to: ${endpoint}`, { method: config.method || 'GET' });
+.login-card {
+  background: white; border-radius: 12px; padding: 40px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+}
 
-              for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
-                try {
-                  const response = await fetch(url, config);
-                  
-                  if (!response.ok) {
-                    const errorText = await response.text();
-                    this.debug(`Request failed (attempt ${attempt}): ${response.status} - ${errorText}`);
-                    
-                    if (attempt === this.retryAttempts) {
-                      throw new Error(`HTTP ${response.status}: ${errorText}`);
-                    }
-                    
-                    // Wait before retry
-                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-                    continue;
-                  }
-                  
-                  this.connected = true;
-                  this.updateConnectionStatus(true);
-                  
-                  if (response.status === 204) {
-                    this.debug('Request successful (no content)');
-                    return null;
-                  }
-                  
-                  const text = await response.text();
-                  const result = text ? JSON.parse(text) : null;
-                  this.debug('Request successful', result);
-                  return result;
-                } catch (error) {
-                  this.debug(`Request error (attempt ${attempt}):`, error);
-                  
-                  if (attempt === this.retryAttempts) {
-                    this.connected = false;
-                    this.updateConnectionStatus(false);
-                    throw error;
-                  }
-                  
-                  // Wait before retry
-                  await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-                }
-              }
-            }
+.login-card h1 {
+  color: #333; margin-bottom: 10px; text-align: center;
+}
 
-            updateConnectionStatus(connected) {
-              const event = new CustomEvent('supabaseConnectionChange', { 
-                detail: { connected } 
-              });
-              window.dispatchEvent(event);
-            }
+.subtitle {
+  color: #666; text-align: center; margin-bottom: 30px;
+}
 
-            async testConnection() {
-              this.debug('Testing database connection...');
-              try {
-                await this.request('comments?limit=1');
-                this.debug('Connection test successful');
-                return true;
-              } catch (error) {
-                this.debug('Connection test failed:', error);
-                return false;
-              }
-            }
+.form-group {
+  margin-bottom: 20px;
+}
 
-            // === COMMENT METHODS ===
-            async getComments(pageId) {
-              this.debug(`Fetching comments for page: ${pageId}`);
-              try {
-                const comments = await this.request(
-                  `comments?page_id=eq.${encodeURIComponent(pageId)}&order=created_at.desc`
-                );
-                this.debug(`Retrieved ${comments?.length || 0} comments`);
-                return comments || [];
-              } catch (error) {
-                this.debug('Failed to fetch comments:', error);
-                return [];
-              }
-            }
+.form-group label {
+  display: block; margin-bottom: 8px; color: #333;
+  font-weight: 500;
+}
 
-            async getAllComments() {
-              this.debug('Fetching all comments');
-              try {
-                const comments = await this.request('comments?order=created_at.desc');
-                this.debug(`Retrieved ${comments?.length || 0} total comments`);
-                return comments || [];
-              } catch (error) {
-                this.debug('Failed to fetch all comments:', error);
-                return [];
-              }
-            }
+.form-group input {
+  width: 100%; padding: 12px; border: 2px solid #e0e0e0;
+  border-radius: 8px; font-size: 16px; transition: border-color 0.3s;
+}
 
-            async saveFeedback(feedbackData) {
-              this.debug('Saving feedback:', feedbackData);
-              try {
-                const feedback = {
-                  page_id: feedbackData.page_id,
-                  comment_type: 'feedback',
-                  comment_text: feedbackData.comment_text,
-                  selected_text: feedbackData.selected_text || '',
-                  selection_type: feedbackData.selection_type || 'text',
-                  session_id: this.getSessionId(),
-                  user_agent: navigator.userAgent
-                };
+.form-group input:focus {
+  outline: none; border-color: #667eea;
+}
 
-                const response = await fetch(`${this.baseUrl}/rest/v1/comments`, {
-                  method: 'POST',
-                  headers: {
-                    ...this.headers,
-                    'Prefer': 'return=representation'
-                  },
-                  body: JSON.stringify(feedback)
-                });
+.login-button {
+  width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white; border: none; border-radius: 8px;
+  font-size: 16px; font-weight: 600; cursor: pointer;
+  transition: transform 0.2s;
+}
 
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  throw new Error(`HTTP ${response.status}: ${errorText}`);
-                }
+.login-button:hover {
+  transform: translateY(-2px);
+}
 
-                const result = await response.json();
-                this.debug('Feedback saved successfully:', result);
-                
-                // Create archive when first comment is made
-                if (feedbackData.createArchive) {
-                  await this.createContentArchive(feedbackData.page_id, feedbackData.contentHtml);
-                }
-                
-                const event = new CustomEvent('feedbackSaved', { 
-                  detail: { feedback: result[0] || result } 
-                });
-                window.dispatchEvent(event);
-                
-                return result;
-              } catch (error) {
-                this.debug('Failed to save feedback:', error);
-                throw error;
-              }
-            }
+.error-message {
+  color: #e74c3c; text-align: center; margin-top: 20px;
+  font-size: 14px; display: none;
+}
 
-            async deleteFeedback(feedbackId) {
-              this.debug(`Deleting feedback: ${feedbackId}`);
-              try {
-                const response = await fetch(`${this.baseUrl}/rest/v1/comments?id=eq.${feedbackId}`, {
-                  method: 'DELETE',
-                  headers: this.headers
-                });
+.error-message.show {
+  display: block;
+}
 
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  throw new Error(`HTTP ${response.status}: ${errorText}`);
-                }
+.login-hint {
+  margin-top: 30px; padding-top: 20px;
+  border-top: 1px solid #e0e0e0;
+  font-size: 14px; color: #666;
+}
 
-                this.debug('Feedback deleted successfully');
-                
-                const event = new CustomEvent('feedbackDeleted', { 
-                  detail: { feedbackId } 
-                });
-                window.dispatchEvent(event);
+.login-hint ul {
+  list-style: none; margin-top: 10px;
+}
 
-                return true;
-              } catch (error) {
-                this.debug('Failed to delete feedback:', error);
-                throw error;
-              }
-            }
+.login-hint li {
+  padding: 4px 0; font-family: monospace;
+}
+ENDOFFILE
 
-            async clearAllFeedback() {
-              this.debug('Clearing all feedback');
-              try {
-                const response = await fetch(`${this.baseUrl}/rest/v1/comments`, {
-                  method: 'DELETE',
-                  headers: this.headers
-                });
+          # Create auth.js
+          cat > ./review-portal/js/auth.js << 'ENDOFFILE'
+document.addEventListener('DOMContentLoaded', function() {
+  const loginForm = document.getElementById('login-form');
+  const errorMessage = document.getElementById('error-message');
+  
+  if (window.supabaseAuth.isAuthenticated()) {
+    window.location.href = 'dashboard.html';
+  }
+  
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    
+    errorMessage.classList.remove('show');
+    
+    try {
+      const result = await window.supabaseAuth.login(username, password);
+      
+      if (result.success) {
+        const reviewPageId = sessionStorage.getItem('review_page_id');
+        if (reviewPageId) {
+          window.location.href = 'review.html?page=' + reviewPageId + '&new=true';
+        } else {
+          window.location.href = 'dashboard.html';
+        }
+      } else {
+        errorMessage.textContent = result.error || 'Invalid credentials';
+        errorMessage.classList.add('show');
+      }
+    } catch (error) {
+      errorMessage.textContent = 'Login failed. Please try again.';
+      errorMessage.classList.add('show');
+    }
+  });
+});
+ENDOFFILE
 
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  throw new Error(`HTTP ${response.status}: ${errorText}`);
-                }
+          # Create dashboard.html
+          cat > ./review-portal/dashboard.html << 'ENDOFFILE'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review Dashboard</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .logout-btn { padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Review Dashboard</h1>
+    <button class="logout-btn" onclick="logout()">Logout</button>
+  </div>
+  <p>Welcome to the Review Dashboard. This is a placeholder page.</p>
+  <p>Full implementation includes document management and approval workflows.</p>
+  
+  <script src="js/supabase-config.js"></script>
+  <script>
+    if (!window.supabaseAuth.isAuthenticated()) {
+      window.location.href = 'index.html';
+    }
+    
+    function logout() {
+      window.supabaseAuth.logout();
+      window.location.href = 'index.html';
+    }
+  </script>
+</body>
+</html>
+ENDOFFILE
 
-                this.debug('All feedback cleared successfully');
-
-                const event = new CustomEvent('allFeedbackCleared');
-                window.dispatchEvent(event);
-
-                return true;
-              } catch (error) {
-                this.debug('Failed to clear feedback:', error);
-                throw error;
-              }
-            }
-
-            // === ENHANCED ARCHIVE METHODS ===
-            async createContentArchive(pageId, contentHtml) {
-              this.debug(`Creating archive for page: ${pageId}`);
-              try {
-                const archiveData = {
-                  page_id: pageId,
-                  content_html: contentHtml,
-                  archive_version: `v${Date.now()}`,
-                  resolution_status: 'active',
-                  session_id: this.getSessionId()
-                };
-
-                const result = await this.request('archived_content', {
-                  method: 'POST',
-                  body: JSON.stringify(archiveData)
-                });
-
-                this.debug('Archive created successfully:', result);
-                return result;
-              } catch (error) {
-                this.debug('Failed to create archive:', error);
-                throw error;
-              }
-            }
-
-            async getArchives(pageId) {
-              this.debug(`Fetching archives for page: ${pageId}`);
-              try {
-                const archives = await this.request(
-                  `archived_content?page_id=eq.${encodeURIComponent(pageId)}&order=created_at.desc`
-                );
-                this.debug(`Retrieved ${archives?.length || 0} archives`);
-                return archives || [];
-              } catch (error) {
-                this.debug('Failed to fetch archives:', error);
-                return [];
-              }
-            }
-
-            async getAllArchives() {
-              this.debug('Fetching all archives');
-              try {
-                const archives = await this.request('archived_content?order=created_at.desc');
-                this.debug(`Retrieved ${archives?.length || 0} total archives`);
-                return archives || [];
-              } catch (error) {
-                this.debug('Failed to fetch all archives:', error);
-                return [];
-              }
-            }
-
-            async getArchiveById(archiveId) {
-              this.debug(`Fetching archive by ID: ${archiveId}`);
-              try {
-                const archives = await this.request(`archived_content?id=eq.${archiveId}`);
-                this.debug('Archive retrieved:', archives);
-                return archives && archives.length > 0 ? archives[0] : null;
-              } catch (error) {
-                this.debug('Failed to fetch archive by ID:', error);
-                return null;
-              }
-            }
-
-            async deleteArchive(archiveId) {
-              this.debug(`Deleting archive: ${archiveId}`);
-              try {
-                await this.request(`archived_content?id=eq.${archiveId}`, {
-                  method: 'DELETE'
-                });
-                this.debug('Archive deleted successfully');
-                return true;
-              } catch (error) {
-                this.debug('Failed to delete archive:', error);
-                throw error;
-              }
-            }
-
-            async markReviewComplete(pageId, resolutionNotes) {
-              this.debug(`Marking review complete for page: ${pageId}`);
-              try {
-                // Update all archives for this page to resolved status
-                await this.request(`archived_content?page_id=eq.${encodeURIComponent(pageId)}`, {
-                  method: 'PATCH',
-                  body: JSON.stringify({
-                    resolution_status: 'resolved',
-                    resolution_date: new Date().toISOString(),
-                    reviewer_notes: resolutionNotes
-                  })
-                });
-
-                this.debug('Review marked as complete');
-                return true;
-              } catch (error) {
-                this.debug('Failed to mark review complete:', error);
-                throw error;
-              }
-            }
-
-            // === ENHANCED DOWNLOAD METHODS ===
-            async downloadArchiveWithComments(archiveId) {
-              this.debug(`Downloading archive with comments: ${archiveId}`);
-              try {
-                const archive = await this.getArchiveById(archiveId);
-                if (!archive) throw new Error('Archive not found');
-
-                const comments = await this.getComments(archive.page_id);
-                
-                const combinedContent = this.createArchiveWithCommentsHTML(archive, comments);
-                
-                const blob = new Blob([combinedContent], { type: 'text/html' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${archive.page_id}_${archive.archive_version}_with_comments.html`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-                
-                this.debug('Archive with comments downloaded successfully');
-                return true;
-              } catch (error) {
-                this.debug('Failed to download archive with comments:', error);
-                throw error;
-              }
-            }
-
-            async downloadCommentsOnly(pageId) {
-              this.debug(`Downloading comments for page: ${pageId}`);
-              try {
-                const comments = await this.getComments(pageId);
-                if (!comments || comments.length === 0) {
-                  throw new Error('No comments found for this page');
-                }
-                
-                const commentsData = {
-                  page_id: pageId,
-                  exported_at: new Date().toISOString(),
-                  comment_count: comments.length,
-                  comments: comments.map(comment => ({
-                    id: comment.id,
-                    comment_text: comment.comment_text,
-                    selected_text: comment.selected_text,
-                    created_at: comment.created_at,
-                    session_id: comment.session_id
-                  }))
-                };
-                
-                const blob = new Blob([JSON.stringify(commentsData, null, 2)], { type: 'application/json' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${pageId}_comments_${new Date().toISOString().split('T')[0]}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-                
-                this.debug('Comments downloaded successfully');
-                return true;
-              } catch (error) {
-                this.debug('Failed to download comments:', error);
-                throw error;
-              }
-            }
-
-            async exportAllData() {
-              this.debug('Exporting all data');
-              try {
-                const [archives, comments] = await Promise.all([
-                  this.getAllArchives(),
-                  this.getAllComments()
-                ]);
-                
-                const exportData = {
-                  exported_at: new Date().toISOString(),
-                  summary: {
-                    total_archives: archives.length,
-                    total_comments: comments.length,
-                    unique_pages: [...new Set(archives.map(a => a.page_id))].length
-                  },
-                  archives: archives,
-                  comments: comments
-                };
-                
-                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `complete_archive_export_${new Date().toISOString().split('T')[0]}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-                
-                this.debug('Complete data export successful');
-                return true;
-              } catch (error) {
-                this.debug('Failed to export all data:', error);
-                throw error;
-              }
-            }
-
-            createArchiveWithCommentsHTML(archive, comments) {
-              const title = archive.page_id.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-              
-              let commentsHTML = '';
-              if (comments && comments.length > 0) {
-                commentsHTML = `
-                  <div class="comments-section">
-                    <h2>💬 Document Feedback (${comments.length} comments)</h2>
-                    ${comments.map(comment => `
-                      <div class="comment-item">
-                        <div class="comment-header">
-                          <strong>Comment #${comment.id}</strong>
-                          <span class="comment-date">${new Date(comment.created_at).toLocaleString()}</span>
-                        </div>
-                        ${comment.selected_text ? `
-                          <div class="selected-text">
-                            <strong>Selected Text:</strong> "${comment.selected_text}"
-                          </div>
-                        ` : ''}
-                        <div class="comment-text">${comment.comment_text}</div>
-                      </div>
-                    `).join('')}
-                  </div>
-                `;
-              }
-              
-              return `
-                <!DOCTYPE html>
-                <html lang="en">
-                <head>
-                  <meta charset="UTF-8">
-                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                  <title>Archive with Comments: ${title} - ${archive.archive_version}</title>
-                  <style>
-                    body { 
-                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                      line-height: 1.6; margin: 0; padding: 20px; background: #fff; 
-                    }
-                    .archive-header { 
-                      background: #f8f9fa; padding: 20px; border-radius: 8px; 
-                      margin-bottom: 30px; border-left: 4px solid #673ab7; 
-                    }
-                    .archive-title { font-size: 1.5em; font-weight: 600; color: #333; margin-bottom: 10px; }
-                    .archive-info { font-size: 0.9em; color: #666; }
-                    .archive-content { max-width: 800px; margin-bottom: 40px; }
-                    .archive-content h1, .archive-content h2, .archive-content h3 {
-                      color: #333; margin-top: 1.5em; margin-bottom: 0.8em;
-                    }
-                    .archive-content p { margin-bottom: 1em; }
-                    .archive-content ul, .archive-content ol { margin-bottom: 1em; padding-left: 2em; }
-                    .archive-content img { max-width: 100%; height: auto; }
-                    
-                    .comments-section { 
-                      border-top: 2px solid #e9ecef; padding-top: 30px; margin-top: 40px;
-                    }
-                    .comments-section h2 { 
-                      color: #495057; margin-bottom: 20px; 
-                    }
-                    .comment-item { 
-                      background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; 
-                      padding: 15px; margin-bottom: 15px; 
-                    }
-                    .comment-header { 
-                      display: flex; justify-content: space-between; align-items: center;
-                      margin-bottom: 10px; font-size: 0.9em; 
-                    }
-                    .comment-date { color: #6c757d; }
-                    .selected-text { 
-                      background: #e3f2fd; padding: 8px; border-radius: 4px; 
-                      margin-bottom: 10px; font-style: italic; border-left: 3px solid #2196f3;
-                    }
-                    .comment-text { 
-                      color: #495057; line-height: 1.5; 
-                    }
-                  </style>
-                </head>
-                <body>
-                  <div class="archive-header">
-                    <div class="archive-title">📁 ${title} (Archive with Comments)</div>
-                    <div class="archive-info">
-                      Version: ${archive.archive_version} • 
-                      Created: ${new Date(archive.created_at).toLocaleString()} • 
-                      Status: ${archive.resolution_status} • 
-                      Comments: ${comments.length}
-                    </div>
-                  </div>
-                  <div class="archive-content">
-                    ${archive.content_html}
-                  </div>
-                  ${commentsHTML}
-                </body>
-                </html>
-              `;
-            }
-
-            // === UTILITY METHODS ===
-            getSessionId() {
-              let sessionId = localStorage.getItem('reviewSessionId');
-              if (!sessionId) {
-                sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                localStorage.setItem('reviewSessionId', sessionId);
-              }
-              return sessionId;
-            }
-
-            // Simple archive download (HTML only)
-            downloadArchive(archive) {
-              const blob = new Blob([archive.content_html], { type: 'text/html' });
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${archive.page_id}_${archive.archive_version}.html`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              window.URL.revokeObjectURL(url);
-            }
-          }
-
-          // Initialize client
-          window.supabaseClient = new SupabaseClient();
-          EOF
-
-      # Step 10: Create Main Application CSS
-      - name: Create Main Application CSS
+      # Step 10: Create Admin Console
+      - name: Create Admin Console
         run: |
-          cat > ./site/css/style.css << 'EOF'
-          /* Enhanced SPA CSS with Archive System */
-          * { margin: 0; padding: 0; box-sizing: border-box; }
+          # Copy shared config
+          cp ./shared/js/supabase-config.js ./admin-console/js/ || true
+          
+          # Create admin index
+          cat > ./admin-console/index.html << 'ENDOFFILE'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Console</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+    .header { background: #333; color: white; padding: 20px; margin: -20px -20px 20px; }
+    .card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Technical Writer Admin Console</h1>
+  </div>
+  
+  <div class="card">
+    <h2>System Overview</h2>
+    <p>This is the admin console for managing review requests.</p>
+    <p>Full implementation includes:</p>
+    <ul>
+      <li>View all review documents</li>
+      <li>Update document states</li>
+      <li>Add admin comments</li>
+      <li>System statistics</li>
+    </ul>
+  </div>
+  
+  <script src="js/supabase-config.js"></script>
+</body>
+</html>
+ENDOFFILE
 
-          body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6; display: flex; height: 100vh; width: 100%;
-            overflow: hidden; color: #333; background-color: #f8f8f8;
-          }
-
-          .sidebar {
-            width: 300px; background-color: #e0f7f7; padding: 15px;
-            height: 100vh; overflow-y: auto; border-right: 1px solid #c0e0e0;
-            display: flex; flex-direction: column; box-shadow: 2px 0 5px rgba(0,0,0,0.05);
-          }
-
-          .main-content {
-            flex: 1; padding: 30px; height: 100vh; overflow-y: auto;
-            background-color: #ffffff; position: relative;
-          }
-
-          .sidebar h2 {
-            font-weight: 500; margin-bottom: 15px; color: #00747a;
-            border-bottom: 2px solid #80cbc4; padding-bottom: 10px; font-size: 1.4em;
-          }
-
-          .sidebar-nav { flex: 1; overflow-y: auto; margin-top: 15px; }
-          .sidebar ul { list-style-type: none; padding-left: 0; margin-bottom: 5px; }
-          .sidebar ul ul { padding-left: 20px; margin-top: 5px; margin-bottom: 0; }
-          .sidebar li { margin-bottom: 6px; position: relative; }
-
-          .sidebar .toggle-arrow {
-            display: inline-block; width: 18px; height: 18px;
-            position: absolute; left: 0; top: 4px; cursor: pointer;
-            z-index: 10; color: #00747a;
-          }
-          .sidebar .toggle-arrow:before {
-            content: "▶"; display: inline-block; font-size: 10px;
-            transition: transform 0.2s;
-          }
-          .sidebar li.expanded > .toggle-arrow:before { transform: rotate(90deg); }
-          .sidebar li.has-children > ul { display: none; }
-          .sidebar li.has-children.expanded > ul { display: block; }
-
-          .sidebar a {
-            color: #00747a; text-decoration: none; display: block;
-            padding: 6px 5px 6px 22px; border-radius: 4px;
-            transition: background-color 0.2s, color 0.2s; cursor: pointer; font-size: 0.95em;
-          }
-          .sidebar a:hover { background-color: #e1f5fe; color: #006064; }
-          .sidebar a.active {
-            background-color: #80deea; font-weight: bold; color: #006064;
-            box-shadow: inset 3px 0 0 #00acc1;
-          }
-
-          /* Review Controls Section */
-          .review-controls {
-            border-top: 2px solid #80cbc4; padding-top: 15px; margin-top: 15px;
-            display: flex; flex-direction: column; gap: 10px;
-          }
-          .review-controls h3 { 
-            color: #00747a; font-size: 1.1em; margin-bottom: 10px; 
-          }
-
-          .feedback-instructions {
-            background: #e8f5e8; border: 1px solid #c8e6c9; border-radius: 6px;
-            padding: 12px; margin: 10px 0; font-size: 0.85em; color: #2e7d32;
-          }
-          .feedback-instructions h4 {
-            margin: 0 0 8px 0; color: #1b5e20; font-size: 0.9em;
-          }
-          .feedback-instructions ul {
-            margin: 5px 0; padding-left: 15px;
-          }
-          .feedback-instructions li {
-            margin-bottom: 3px;
-          }
-
-          .search-container {
-            margin-bottom: 15px; display: flex; gap: 5px; width: 100%;
-          }
-          .search-container input[type="text"] {
-            flex-grow: 1; padding: 8px 10px; border: 1px solid #b0e0e6;
-            border-radius: 5px; font-size: 0.9em; outline: none;
-          }
-          .search-container button {
-            padding: 8px 10px; background-color: #00acc1; color: white;
-            border: none; border-radius: 5px; cursor: pointer;
-          }
-
-          .search-results {
-            list-style-type: none; padding: 0; margin-top: 15px;
-            border-top: 1px solid #e0e0e0; padding-top: 10px;
-            max-height: 300px; overflow-y: auto; background-color: #f5f9f9;
-          }
-
-          .main-content h1, .main-content h2, .main-content h3, .main-content h4 {
-            font-weight: 500; margin-top: 1.5em; margin-bottom: 0.8em; color: #00838f;
-          }
-          .main-content h1 {
-            font-size: 2em; border-bottom: 1px solid #e0e0e0;
-            padding-bottom: 10px; margin-top: 0;
-          }
-          .main-content p { margin-bottom: 1em; line-height: 1.6; }
-          .main-content img {
-            max-width: 100%; height: auto; display: block; margin: 1em auto;
-            border: 1px solid #e0e0e0; border-radius: 4px;
-          }
-
-          .welcome-screen {
-            text-align: center; padding: 40px 20px; color: #00838f;
-          }
-          .welcome-screen h2 { margin-bottom: 20px; font-size: 2em; }
-
-          /* Connection Status - Bottom left */
-          .connection-status {
-            position: fixed; bottom: 15px; left: 15px; z-index: 2000;
-            padding: 8px 12px; border-radius: 20px; font-size: 0.8em;
-            font-weight: bold; transition: all 0.3s; cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-          }
-          .connection-status.connected { 
-            background: #4caf50; color: white; 
-          }
-          .connection-status.disconnected { 
-            background: #f44336; color: white; animation: pulse 2s infinite;
-          }
-          .connection-status.connecting { 
-            background: #ff9800; color: white; 
-          }
-
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-          }
-
-          /* Action Buttons - Top Right */
-          .action-buttons {
-            position: fixed; top: 15px; right: 15px; z-index: 1500;
-            display: flex; flex-direction: column; gap: 8px;
-          }
-
-          .action-btn {
-            padding: 10px 16px; border: none; border-radius: 6px;
-            cursor: pointer; font-size: 0.9em; font-weight: 600;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.15); transition: all 0.3s;
-            display: flex; align-items: center; gap: 8px; color: white;
-          }
-
-          .review-window-btn {
-            background: #2196f3;
-          }
-          .review-window-btn:hover { 
-            background: #1976d2; transform: translateY(-2px);
-          }
-
-          .archive-viewer-btn {
-            background: #673ab7;
-          }
-          .archive-viewer-btn:hover { 
-            background: #512da8; transform: translateY(-2px);
-          }
-
-          /* No Content State */
-          .no-content {
-            text-align: center; padding: 60px 40px; color: #666;
-            background: #f9f9f9; border-radius: 8px; margin: 20px 0;
-          }
-          .no-content h3 { color: #333; margin-bottom: 15px; }
-          .no-content p { margin-bottom: 10px; }
-          .no-content ul {
-            display: inline-block; text-align: left; margin-top: 15px;
-          }
-
-          /* Responsive */
-          @media (max-width: 1200px) {
-            .sidebar { width: 280px; }
-          }
-
-          @media (max-width: 768px) {
-            body { flex-direction: column; height: auto; }
-            .sidebar { width: 100%; height: auto; max-height: 40vh; }
-            .main-content { height: auto; min-height: 60vh; }
-            .connection-status { position: relative; margin-bottom: 10px; }
-            .action-buttons { position: relative; flex-direction: row; }
-          }
-          EOF
-
-      # Step 11: Create Fixed Space-Optimized Review Window CSS
-      - name: Create Fixed Space-Optimized Review Window CSS
+      # Step 11: Create Database Schema
+      - name: Create Database Schema
         run: |
-          cat > ./site/css/review-window.css << 'EOF'
-          /* Fixed Space-Optimized Review Window with Complete Functionality */
-          * { margin: 0; padding: 0; box-sizing: border-box; }
+          cat > ./database-schema.sql << 'ENDOFFILE'
+-- Complete Review System Database Schema
+-- Run this in your Supabase SQL editor
 
-          body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.4; display: flex; height: 100vh; width: 100%;
-            overflow: hidden; color: #333; background-color: #fffbf0;
-          }
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-          /* Compact Review Header */
-          .review-header {
-            position: fixed; top: 0; left: 0; right: 0; z-index: 2000;
-            background: linear-gradient(135deg, #2c5aa0, #1e3f73); color: white;
-            padding: 10px 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            display: flex; justify-content: space-between; align-items: center;
-            height: 50px;
-          }
+-- Users table
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'admin')),
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-          .review-title {
-            font-size: 1.1em; font-weight: 600; display: flex; align-items: center; gap: 8px;
-          }
-          .review-title::before { content: "🔍"; font-size: 1.2em; }
+-- Insert default users (use proper password hashing in production)
+INSERT INTO users (id, username, password_hash, role) VALUES
+  ('11111111-1111-1111-1111-111111111111', 'vincent', 'zoox', 'user'),
+  ('22222222-2222-2222-2222-222222222222', 'sree', 'zoox', 'user'),
+  ('33333333-3333-3333-3333-333333333333', 'admin', 'admin123', 'admin')
+ON CONFLICT (username) DO NOTHING;
 
-          .review-actions {
-            display: flex; gap: 6px; align-items: center;
-          }
+-- Review documents table
+CREATE TABLE IF NOT EXISTS review_documents (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  original_page_id TEXT NOT NULL,
+  content_html TEXT NOT NULL,
+  user_id UUID REFERENCES users(id),
+  review_state TEXT DEFAULT 'draft' 
+    CHECK (review_state IN ('draft', 'pending_approval', 'approved', 'submitted', 'completed')),
+  admin_notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
 
-          .review-btn {
-            padding: 6px 12px; border: 1px solid rgba(255,255,255,0.3);
-            background: rgba(255,255,255,0.1); color: white; border-radius: 4px;
-            cursor: pointer; font-size: 0.85em; transition: all 0.3s;
-            display: flex; align-items: center; gap: 4px;
-          }
-          .review-btn:hover {
-            background: rgba(255,255,255,0.2); transform: translateY(-1px);
-          }
-          .review-btn.success {
-            background: #4caf50; border-color: #4caf50;
-          }
-          .review-btn.success:hover { background: #45a049; }
-          .review-btn.danger {
-            background: #f44336; border-color: #f44336;
-          }
-          .review-btn.danger:hover { background: #da190b; }
-          .review-btn.close {
-            background: #ff9800; border-color: #ff9800;
-          }
-          .review-btn.close:hover { background: #f57c00; }
+-- Approval requests table
+CREATE TABLE IF NOT EXISTS approval_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  document_id UUID REFERENCES review_documents(id) ON DELETE CASCADE,
+  requester_id UUID REFERENCES users(id),
+  approver_id UUID REFERENCES users(id),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  request_message TEXT,
+  response_message TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  responded_at TIMESTAMP
+);
 
-          /* Optimized Review Layout */
-          .review-layout {
-            display: flex; height: 100vh; padding-top: 50px;
-          }
+-- Review comments table
+CREATE TABLE IF NOT EXISTS review_comments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  document_id UUID REFERENCES review_documents(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id),
+  comment_text TEXT NOT NULL,
+  selected_text TEXT,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'resolved')),
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-          .document-panel {
-            flex: 1; padding: 15px 20px; overflow-y: auto; background: #ffffff;
-            border-right: 1px solid #e0e0e0;
-          }
+-- Create indexes
+CREATE INDEX idx_review_documents_user_id ON review_documents(user_id);
+CREATE INDEX idx_review_documents_state ON review_documents(review_state);
+CREATE INDEX idx_approval_requests_approver ON approval_requests(approver_id);
+CREATE INDEX idx_approval_requests_status ON approval_requests(status);
+CREATE INDEX idx_review_comments_document ON review_comments(document_id);
+ENDOFFILE
 
-          .feedback-panel {
-            width: 280px; background: #f8f9fa; padding: 12px;
-            overflow-y: auto; border-left: 1px solid #e0e0e0;
-            display: flex; flex-direction: column;
-          }
-
-          /* Compact Document Content Styles */
-          .document-content {
-            max-width: none; margin: 0;
-          }
-
-          .document-content h1, .document-content h2, .document-content h3, .document-content h4 {
-            font-weight: 500; margin-top: 1.2em; margin-bottom: 0.6em; color: #00838f;
-          }
-          .document-content h1 {
-            font-size: 1.8em; border-bottom: 1px solid #e0e0e0;
-            padding-bottom: 8px; margin-top: 0;
-          }
-          .document-content p { 
-            margin-bottom: 0.8em; line-height: 1.5;
-          }
-          .document-content img {
-            max-width: 100%; height: auto; display: block; margin: 0.8em auto;
-            border: 1px solid #e0e0e0; border-radius: 4px;
-          }
-
-          .document-content ul, .document-content ol {
-            margin-bottom: 0.8em; padding-left: 1.5em;
-          }
-          .document-content li {
-            margin-bottom: 0.3em;
-          }
-
-          /* Enhanced Reviewable Text with Hover */
-          .reviewable-text { 
-            cursor: text; user-select: text; position: relative;
-            transition: background-color 0.2s;
-          }
-          .reviewable-text:hover {
-            background-color: rgba(255, 235, 59, 0.1); border-radius: 2px;
-          }
-
-          /* Fixed Feedback Highlights with Working Hover Tooltips */
-          .review-feedback-highlight {
-            background-color: #e3f2fd; border-left: 2px solid #2196f3;
-            padding: 1px 3px; margin: 1px 0; border-radius: 2px;
-            cursor: pointer; position: relative; display: inline;
-            transition: all 0.2s ease;
-          }
-
-          .review-feedback-highlight:hover {
-            background-color: #bbdefb; border-left-color: #1976d2;
-          }
-
-          /* Working Hover Tooltips */
-          .feedback-tooltip {
-            position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
-            background: #333; color: white; padding: 6px 8px; border-radius: 4px;
-            font-size: 0.75em; white-space: nowrap; z-index: 3000;
-            opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
-            max-width: 250px; white-space: normal; text-align: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            margin-bottom: 5px;
-          }
-
-          .feedback-tooltip:after {
-            content: ''; position: absolute; top: 100%; left: 50%;
-            transform: translateX(-50%); border: 5px solid transparent;
-            border-top-color: #333;
-          }
-
-          .review-feedback-highlight:hover .feedback-tooltip {
-            opacity: 1; pointer-events: auto;
-          }
-
-          /* Compact Feedback Panel Styles */
-          .feedback-panel h3 {
-            color: #333; margin-bottom: 12px; padding-bottom: 6px;
-            border-bottom: 1px solid #e0e0e0; font-size: 1.1em; font-weight: 600;
-          }
-
-          .feedback-list {
-            flex: 1; overflow-y: auto;
-          }
-
-          .feedback-group {
-            background: white; border: 1px solid #e0e0e0; border-radius: 6px;
-            margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            overflow: hidden; border-left: 3px solid #2196f3;
-            cursor: pointer; transition: all 0.2s ease;
-          }
-
-          .feedback-group:hover {
-            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-            transform: translateY(-1px);
-          }
-
-          .selected-text-header {
-            background: #f8f9fa; padding: 8px 10px; border-bottom: 1px solid #e9ecef;
-            font-weight: 500; color: #495057; font-size: 0.85em;
-          }
-
-          .selected-text-content {
-            font-style: italic; background: #e9ecef; padding: 6px 8px;
-            border-radius: 3px; margin-top: 6px; font-size: 0.8em;
-            border-left: 2px solid #6c757d; color: #495057;
-            word-wrap: break-word; overflow-wrap: break-word;
-            line-height: 1.3;
-          }
-
-          .feedback-details {
-            padding: 10px;
-          }
-
-          .feedback-meta {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 6px; font-size: 0.75em; color: #6c757d;
-          }
-
-          .feedback-type-badge {
-            padding: 2px 6px; border-radius: 10px; font-size: 0.7em;
-            font-weight: bold; text-transform: uppercase;
-            background: #e3f2fd; color: #1976d2;
-          }
-
-          .feedback-text {
-            margin: 6px 0; line-height: 1.4; font-size: 0.9em; color: #333;
-            word-wrap: break-word; overflow-wrap: break-word;
-          }
-
-          .feedback-actions {
-            display: flex; gap: 6px; margin-top: 8px; padding-top: 6px;
-            border-top: 1px solid #f0f0f0;
-          }
-
-          .feedback-btn {
-            padding: 3px 8px; border: 1px solid #ddd; border-radius: 3px;
-            background: #f8f9fa; cursor: pointer; font-size: 0.75em;
-            transition: all 0.2s; display: flex; align-items: center; gap: 3px;
-          }
-          .feedback-btn:hover { 
-            background: #e9ecef; transform: translateY(-1px);
-          }
-          .feedback-btn.delete { 
-            border-color: #dc3545; color: #dc3545; 
-          }
-          .feedback-btn.delete:hover { 
-            background: #dc3545; color: white; 
-          }
-
-          .no-feedback {
-            text-align: center; color: #6c757d; font-style: italic; 
-            padding: 20px 15px; background: white; border-radius: 6px;
-            border: 1px dashed #dee2e6; font-size: 0.9em;
-          }
-
-          /* Compact Feedback Dialog */
-          .dialog-overlay {
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.5); z-index: 2999; display: none;
-            animation: fadeIn 0.2s ease-out;
-          }
-          .dialog-overlay.show { display: block; }
-
-          @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-          }
-
-          .feedback-dialog {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: white; border: 2px solid #2c5aa0; border-radius: 6px;
-            padding: 15px; width: 400px; max-width: 90vw; z-index: 3000;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.3); display: none;
-            animation: slideIn 0.3s ease-out;
-          }
-          .feedback-dialog.show { display: block; }
-
-          @keyframes slideIn {
-            from { transform: translate(-50%, -60%); opacity: 0; }
-            to { transform: translate(-50%, -50%); opacity: 1; }
-          }
-
-          .feedback-dialog h3 { 
-            color: #2c5aa0; margin-bottom: 10px; font-size: 1.1em;
-          }
-          .feedback-dialog textarea {
-            width: 100%; height: 80px; padding: 8px; border: 1px solid #ddd;
-            border-radius: 4px; font-family: inherit; resize: vertical;
-            font-size: 0.9em;
-          }
-
-          .dialog-actions {
-            display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px;
-          }
-          .dialog-btn {
-            padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px;
-            cursor: pointer; font-size: 0.85em; transition: all 0.2s;
-          }
-          .dialog-btn.primary {
-            background: #2c5aa0; color: white; border-color: #2c5aa0;
-          }
-          .dialog-btn.primary:hover {
-            background: #1e3f73; border-color: #1e3f73;
-          }
-          .dialog-btn.secondary { 
-            background: #f5f5f5; 
-          }
-          .dialog-btn.secondary:hover { 
-            background: #e0e0e0; 
-          }
-
-          /* Responsive Optimizations */
-          @media (max-width: 1400px) {
-            .feedback-panel { width: 260px; }
-          }
-
-          @media (max-width: 1200px) {
-            .document-panel { padding: 12px 15px; }
-            .feedback-panel { width: 240px; padding: 10px; }
-          }
-
-          @media (max-width: 1000px) {
-            .review-layout { flex-direction: column; }
-            .document-panel { height: 60%; border-right: none; border-bottom: 1px solid #e0e0e0; }
-            .feedback-panel { width: 100%; height: 40%; border-left: none; }
-          }
-          EOF
-
-      # Step 12: Create Fixed Archive Viewer CSS
-      - name: Create Fixed Archive Viewer CSS
+      # Step 12: Create README
+      - name: Create README
         run: |
-          cat > ./site/css/archive-viewer.css << 'EOF'
-          /* Complete Fixed Archive Viewer Styles */
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          
-          body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.5; background: #f5f5f5; color: #333;
-          }
-          
-          .archive-header {
-            background: linear-gradient(135deg, #673ab7, #512da8); color: white;
-            padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-          }
-          
-          .archive-title {
-            font-size: 1.5em; font-weight: 600; margin-bottom: 8px;
-            display: flex; align-items: center; gap: 10px;
-          }
-          .archive-title::before { content: "📁"; font-size: 1.4em; }
-          
-          .archive-stats {
-            opacity: 0.9; font-size: 0.9em;
-          }
-          
-          .archive-controls {
-            margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;
-          }
-          
-          .archive-btn {
-            padding: 8px 16px; background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.3); color: white;
-            border-radius: 5px; cursor: pointer; font-size: 0.9em;
-            transition: all 0.3s;
-          }
-          .archive-btn:hover {
-            background: rgba(255,255,255,0.3); transform: translateY(-1px);
-          }
-          
-          .archive-content {
-            padding: 20px; max-width: 1200px; margin: 0 auto;
-          }
-          
-          .page-group {
-            background: white; border-radius: 8px; margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden;
-          }
-          
-          .page-header {
-            background: #f8f9fa; padding: 15px 20px; border-bottom: 1px solid #e9ecef;
-            display: flex; justify-content: space-between; align-items: center;
-          }
-          
-          .page-title {
-            font-weight: 600; color: #495057; font-size: 1.1em;
-          }
-          
-          .page-stats {
-            font-size: 0.85em; color: #6c757d;
-          }
-          
-          .archive-list {
-            padding: 0;
-          }
-          
-          .archive-item {
-            padding: 15px 20px; border-bottom: 1px solid #f1f3f4;
-            display: flex; justify-content: space-between; align-items: center;
-            transition: background-color 0.2s;
-          }
-          .archive-item:hover { background: #f8f9fa; }
-          .archive-item:last-child { border-bottom: none; }
-          
-          .archive-info {
-            flex: 1;
-          }
-          
-          .archive-version {
-            font-weight: 500; color: #495057; margin-bottom: 4px;
-          }
-          
-          .archive-meta {
-            font-size: 0.85em; color: #6c757d; display: flex; gap: 15px; flex-wrap: wrap;
-          }
-          
-          .archive-status {
-            padding: 2px 8px; border-radius: 12px; font-size: 0.75em;
-            font-weight: bold; text-transform: uppercase;
-          }
-          .status-active { background: #e3f2fd; color: #1976d2; }
-          .status-resolved { background: #e8f5e8; color: #2e7d32; }
-          
-          .archive-actions {
-            display: flex; gap: 8px; flex-wrap: wrap;
-          }
-          
-          .action-btn {
-            padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px;
-            background: white; cursor: pointer; font-size: 0.8em;
-            transition: all 0.2s; display: flex; align-items: center; gap: 4px;
-            white-space: nowrap;
-          }
-          .action-btn:hover { background: #f8f9fa; transform: translateY(-1px); }
-          .action-btn.view { border-color: #2196f3; color: #2196f3; }
-          .action-btn.view:hover { background: #2196f3; color: white; }
-          .action-btn.download { border-color: #4caf50; color: #4caf50; }
-          .action-btn.download:hover { background: #4caf50; color: white; }
-          .action-btn.download-with-comments { border-color: #ff9800; color: #ff9800; }
-          .action-btn.download-with-comments:hover { background: #ff9800; color: white; }
-          .action-btn.download-comments { border-color: #9c27b0; color: #9c27b0; }
-          .action-btn.download-comments:hover { background: #9c27b0; color: white; }
-          .action-btn.delete { border-color: #f44336; color: #f44336; }
-          .action-btn.delete:hover { background: #f44336; color: white; }
-          
-          .no-archives {
-            text-align: center; padding: 40px 20px; color: #6c757d;
-            font-style: italic; background: white; border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          }
-          
-          .no-archives h3 {
-            color: #495057; margin-bottom: 15px;
-          }
-          
-          .no-archives ul, .no-archives ol {
-            display: inline-block; text-align: left; margin-top: 10px;
-          }
-          
-          .search-archives {
-            margin-bottom: 20px; display: flex; gap: 10px;
-          }
-          .search-archives input {
-            flex: 1; padding: 10px; border: 1px solid #ddd;
-            border-radius: 5px; font-size: 0.9em;
-          }
-          .search-archives button {
-            padding: 10px 15px; background: #673ab7; color: white;
-            border: none; border-radius: 5px; cursor: pointer;
-          }
+          cat > ./README.md << 'ENDOFFILE'
+# Complete DITA Review System
 
-          /* Responsive Design */
-          @media (max-width: 768px) {
-            .archive-item {
-              flex-direction: column; align-items: flex-start; gap: 10px;
-            }
-            .archive-actions {
-              width: 100%; justify-content: flex-start;
-            }
-            .action-btn {
-              font-size: 0.75em; padding: 4px 8px;
-            }
-          }
-          EOF
+A comprehensive documentation review system with three integrated applications:
 
-      # Step 13: Create Complete Fixed Main Application JavaScript
-      - name: Create Complete Fixed Main Application JavaScript
+1. **DITA Publication Site** - Static site generated from DITA source files
+2. **Review Portal** - User-facing application for document review and collaboration
+3. **Admin Console** - Technical writer dashboard for managing all review requests
+
+## Quick Start
+
+### 1. Fork and Enable GitHub Actions
+1. Fork this repository
+2. Go to Settings → Actions → General
+3. Enable "Read and write permissions" for workflows
+4. Run the workflow from Actions tab
+
+### 2. Access the Applications
+- **DITA Site**: `https://[username].github.io/[repo-name]/dita-publication/site/`
+- **Review Portal**: `https://[username].github.io/[repo-name]/review-portal/`
+- **Admin Console**: `https://[username].github.io/[repo-name]/admin-console/`
+
+## User Credentials
+
+### Review Portal Users
+- Username: `vincent` / Password: `zoox`
+- Username: `sree` / Password: `zoox`
+
+### Admin Console
+- Username: `admin` / Password: `admin123`
+
+## Features
+
+- User authentication and segregation
+- Document review workflow
+- Peer approval system
+- Admin oversight capabilities
+- Comment and feedback system
+
+## License
+
+MIT License
+ENDOFFILE
+
+      # Step 13: Create placeholder files
+      - name: Create Placeholder Files
         run: |
-          cat > ./site/js/app.js << 'EOF'
-          // Complete Fixed SPA Application with Archive System
-
-          // === INITIALIZATION AND STATE ===
-          const DEBUG_MODE = true;
-          const debug = (message, data) => {
-            if (DEBUG_MODE) console.log(`[DITA-SPA] ${message}`, data || '');
-          };
-
-          // DOM Elements - Safe initialization
-          let contentEl, contentTitleEl, navigationEl, searchInput, searchButton, searchResultsEl;
-
-          // Initialize DOM elements safely
-          function initializeDOMElements() {
-            contentEl = document.getElementById('content');
-            contentTitleEl = document.getElementById('content-title');
-            navigationEl = document.getElementById('navigation');
-            searchInput = document.getElementById('searchInput');
-            searchButton = document.getElementById('searchButton');
-            searchResultsEl = document.getElementById('searchResults');
-            
-            debug('DOM elements initialized');
-          }
-
-          // Application State
-          const getBasePath = () => {
-            if (location.hostname.includes('github.io')) {
-              const pathSegments = location.pathname.split('/');
-              if (pathSegments.length > 1) return '/' + pathSegments[1];
-            }
-            return '';
-          };
-
-          window.currentPage = null;
-          window.reviewMode = false;
-          window.currentSelection = null;
-          window.feedback = {};
-          window.archives = {};
-          const basePath = getBasePath();
-          let connectionStatus = 'connecting';
-          let reviewWindow = null;
-
-          // === CONNECTION MANAGEMENT ===
-          function createConnectionStatus() {
-            const statusEl = document.createElement('div');
-            statusEl.id = 'connectionStatus';
-            statusEl.className = 'connection-status connecting';
-            statusEl.innerHTML = '🔄 Connecting...';
-            statusEl.title = 'Click to test connection';
-            statusEl.addEventListener('click', testConnection);
-            document.body.appendChild(statusEl);
-            debug('Connection status indicator created');
-            return statusEl;
-          }
-
-          function updateConnectionStatus(connected, message) {
-            let statusEl = document.getElementById('connectionStatus');
-            if (!statusEl) statusEl = createConnectionStatus();
-            
-            if (connected) {
-              statusEl.className = 'connection-status connected';
-              statusEl.innerHTML = '🟢 Database Connected';
-              statusEl.title = 'Database connection active - Click to refresh';
-              connectionStatus = 'connected';
-              debug('Connection status: Connected');
-            } else {
-              statusEl.className = 'connection-status disconnected';
-              statusEl.innerHTML = '🔴 Database Offline';
-              statusEl.title = 'Database connection failed - Click to retry';
-              connectionStatus = 'disconnected';
-              debug('Connection status: Disconnected');
-            }
-          }
-
-          async function testConnection() {
-            const statusEl = document.getElementById('connectionStatus');
-            if (statusEl) {
-              statusEl.className = 'connection-status connecting';
-              statusEl.innerHTML = '🔄 Testing...';
-            }
-            
-            try {
-              const connected = await window.supabaseClient.testConnection();
-              updateConnectionStatus(connected);
-              return connected;
-            } catch (error) {
-              debug('Connection test error:', error);
-              updateConnectionStatus(false);
-              return false;
-            }
-          }
-
-          // === ACTION BUTTONS CONTAINER ===
-          function createActionButtons() {
-            const container = document.createElement('div');
-            container.className = 'action-buttons';
-            container.id = 'actionButtons';
-            
-            // Review Mode Button
-            const reviewBtn = document.createElement('button');
-            reviewBtn.className = 'action-btn review-window-btn';
-            reviewBtn.id = 'openReviewWindow';
-            reviewBtn.innerHTML = '🔍 Review Mode';
-            reviewBtn.title = 'Open dedicated review window for this document';
-            reviewBtn.addEventListener('click', openReviewWindow);
-            
-            // Archive Viewer Button
-            const archiveBtn = document.createElement('button');
-            archiveBtn.className = 'action-btn archive-viewer-btn';
-            archiveBtn.id = 'openArchiveViewer';
-            archiveBtn.innerHTML = '📁 View Archives';
-            archiveBtn.title = 'View all archived document versions';
-            archiveBtn.addEventListener('click', openArchiveViewer);
-            
-            container.appendChild(reviewBtn);
-            container.appendChild(archiveBtn);
-            document.body.appendChild(container);
-            
-            debug('Action buttons created');
-            return container;
-          }
-
-          // === FIXED REVIEW WINDOW SYSTEM ===
-          async function openReviewWindow() {
-            if (!window.currentPage) {
-              alert('Please select a document first before opening review mode.');
-              return;
-            }
-
-            if (reviewWindow && !reviewWindow.closed) {
-              reviewWindow.focus();
-              return;
-            }
-
-            debug(`Opening review window for page: ${window.currentPage}`);
-
-            try {
-              // Get current content
-              const currentContent = contentEl ? contentEl.innerHTML : '';
-              const currentTitle = contentTitleEl ? contentTitleEl.textContent : 'Document';
-              
-              // Load feedback and archives for this page
-              const feedback = await window.supabaseClient.getComments(window.currentPage);
-              const archives = await window.supabaseClient.getArchives(window.currentPage);
-
-              // Open review window
-              reviewWindow = window.open('', 'ReviewWindow', 
-                'width=1400,height=900,scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no'
-              );
-
-              if (!reviewWindow) {
-                alert('Please allow popups to open the review window.');
-                return;
-              }
-
-              // Create review window content
-              reviewWindow.document.write(createReviewWindowHTML(currentTitle, currentContent, feedback, archives));
-              reviewWindow.document.close();
-
-              // Initialize review window functionality - FIXED
-              initializeReviewWindowFixed(reviewWindow, feedback, archives);
-
-              debug('Review window opened successfully');
-
-            } catch (error) {
-              debug('Error opening review window:', error);
-              alert('Failed to open review window. Error: ' + error.message);
-            }
-          }
-
-          function createReviewWindowHTML(title, content, feedback, archives) {
-            return `
-              <!DOCTYPE html>
-              <html lang="en">
-              <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Review: ${title}</title>
-                <link rel="stylesheet" href="${basePath}/css/review-window.css">
-                <script src="${basePath}/js/supabase-config.js"></script>
-              </head>
-              <body>
-                <div class="review-header">
-                  <div class="review-title">Review Mode: ${title}</div>
-                  <div class="review-actions">
-                    <button class="review-btn success" onclick="completeReview()">✅ Complete Review</button>
-                    <button class="review-btn danger" onclick="clearAllReview()">🗑️ Clear All</button>
-                    <button class="review-btn close" onclick="window.close()">✕ Close</button>
-                  </div>
-                </div>
-
-                <div class="review-layout">
-                  <div class="document-panel">
-                    <div class="document-content" id="documentContent">
-                      ${content}
-                    </div>
-                  </div>
-
-                  <div class="feedback-panel">
-                    <h3>💬 Document Feedback</h3>
-                    <div class="feedback-list" id="feedbackList">
-                      <div class="no-feedback">
-                        <p>No feedback yet.</p>
-                        <p>Select text in the document to leave feedback.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Feedback Dialog -->
-                <div class="dialog-overlay" id="dialogOverlay"></div>
-                <div class="feedback-dialog" id="feedbackDialog">
-                  <h3>📝 Leave Feedback</h3>
-                  <div style="margin: 15px 0;">
-                    <textarea id="feedbackText" placeholder="Enter your feedback about the selected text..."></textarea>
-                  </div>
-                  <div class="dialog-actions">
-                    <button class="dialog-btn secondary" onclick="closeFeedbackDialog()">Cancel</button>
-                    <button class="dialog-btn primary" onclick="saveFeedback()">Save Feedback</button>
-                  </div>
-                </div>
-              </body>
-              </html>
-            `;
-          }
-
-          // FIXED Review Window Initialization
-          function initializeReviewWindowFixed(reviewWin, feedback, archives) {
-            debug('Initializing review window with fixed event handling');
-            
-            // Wait for window to be fully loaded
-            if (reviewWin.document.readyState === 'loading') {
-              reviewWin.document.addEventListener('DOMContentLoaded', function() {
-                setupReviewWindowFunctionality(reviewWin, feedback, archives);
-              });
-            } else {
-              setupReviewWindowFunctionality(reviewWin, feedback, archives);
-            }
-          }
-
-          function setupReviewWindowFunctionality(reviewWin, feedback, archives) {
-            // Pass comprehensive initialization script to review window
-            reviewWin.eval(`
-              // Enhanced Review Window Initialization Script - FIXED
-              const DEBUG_MODE = true;
-              const debug = (message, data) => {
-                if (DEBUG_MODE) console.log('[Review Window] ' + message, data || '');
-              };
-
-              // Global variables
-              window.currentPage = '${window.currentPage}';
-              window.currentSelection = null;
-              window.parentWindow = window.opener;
-              window.feedbackHighlights = new Map();
-
-              // Initialize review functionality - FIXED
-              function initializeReviewWindow() {
-                debug('Initializing enhanced review window functionality');
-                
-                try {
-                  // Make all text elements reviewable
-                  const contentEl = document.getElementById('documentContent');
-                  if (!contentEl) {
-                    debug('Document content element not found');
-                    return;
-                  }
-                  
-                  const textElements = contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, div');
-                  
-                  textElements.forEach(element => {
-                    if (element.children.length === 0 || element.textContent.trim()) {
-                      element.classList.add('reviewable-text');
-                      element.addEventListener('mouseup', handleTextSelection);
-                    }
-                  });
-
-                  // Load existing feedback and create highlights
-                  loadFeedback();
-                  
-                  // Setup dialog overlay click handler
-                  const dialogOverlay = document.getElementById('dialogOverlay');
-                  if (dialogOverlay) {
-                    dialogOverlay.addEventListener('click', closeFeedbackDialog);
-                  }
-                  
-                  debug('Review window initialization complete');
-                } catch (error) {
-                  debug('Error in review window initialization:', error);
-                }
-              }
-
-              function handleTextSelection(event) {
-                try {
-                  const selection = window.getSelection();
-                  if (selection.toString().trim().length === 0) return;
-                  
-                  const selectedText = selection.toString().trim();
-                  if (selectedText.length < 3) return;
-                  
-                  debug('Text selected in review window:', selectedText);
-                  
-                  window.currentSelection = {
-                    type: 'text',
-                    text: selectedText,
-                    element: event.target
-                  };
-                  
-                  showFeedbackDialog();
-                } catch (error) {
-                  debug('Error handling text selection:', error);
-                }
-              }
-
-              function showFeedbackDialog() {
-                try {
-                  const dialog = document.getElementById('feedbackDialog');
-                  const overlay = document.getElementById('dialogOverlay');
-                  
-                  if (dialog && overlay) {
-                    dialog.classList.add('show');
-                    overlay.classList.add('show');
-                    
-                    const selectedText = window.currentSelection?.text || '';
-                    if (selectedText) {
-                      const textArea = document.getElementById('feedbackText');
-                      if (textArea) {
-                        textArea.placeholder = 'Leave feedback about: "' + selectedText.substring(0, 50) + (selectedText.length > 50 ? '...' : '') + '"';
-                        textArea.focus();
-                      }
-                    }
-                  }
-                } catch (error) {
-                  debug('Error showing feedback dialog:', error);
-                }
-              }
-
-              function closeFeedbackDialog() {
-                try {
-                  const dialog = document.getElementById('feedbackDialog');
-                  const overlay = document.getElementById('dialogOverlay');
-                  
-                  if (dialog && overlay) {
-                    dialog.classList.remove('show');
-                    overlay.classList.remove('show');
-                    
-                    const textArea = document.getElementById('feedbackText');
-                    if (textArea) {
-                      textArea.value = '';
-                      textArea.placeholder = 'Enter your feedback about the selected text...';
-                    }
-                  }
-                  
-                  window.getSelection().removeAllRanges();
-                  window.currentSelection = null;
-                } catch (error) {
-                  debug('Error closing feedback dialog:', error);
-                }
-              }
-
-              async function saveFeedback() {
-                if (!window.currentSelection) {
-                  closeFeedbackDialog();
-                  return;
-                }
-                
-                try {
-                  const feedbackTextEl = document.getElementById('feedbackText');
-                  if (!feedbackTextEl) return;
-                  
-                  const feedbackText = feedbackTextEl.value.trim();
-                  
-                  if (!feedbackText) {
-                    alert('Please enter your feedback.');
-                    return;
-                  }
-                  
-                  const feedbackData = {
-                    page_id: window.currentPage,
-                    comment_text: feedbackText,
-                    selected_text: window.currentSelection.text,
-                    selection_type: 'text',
-                    createArchive: true,
-                    contentHtml: document.getElementById('documentContent').innerHTML
-                  };
-                  
-                  debug('Saving feedback from review window:', feedbackData);
-                  
-                  const result = await window.supabaseClient.saveFeedback(feedbackData);
-                  debug('Feedback saved successfully:', result);
-                  
-                  const saveBtn = document.querySelector('.dialog-btn.primary');
-                  if (saveBtn) {
-                    const originalText = saveBtn.textContent;
-                    saveBtn.textContent = '✓ Saved!';
-                    saveBtn.style.background = '#4caf50';
-                    
-                    setTimeout(() => {
-                      saveBtn.textContent = originalText;
-                      saveBtn.style.background = '';
-                      closeFeedbackDialog();
-                      loadFeedback(); // Refresh feedback display
-                    }, 1000);
-                  }
-                  
-                } catch (error) {
-                  debug('Error saving feedback:', error);
-                  alert('Failed to save feedback. Error: ' + error.message);
-                }
-              }
-
-              async function loadFeedback() {
-                try {
-                  debug('Loading feedback for review window');
-                  const feedback = await window.supabaseClient.getComments(window.currentPage);
-                  displayFeedback(feedback);
-                  createTextHighlights(feedback);
-                } catch (error) {
-                  debug('Failed to load feedback:', error);
-                }
-              }
-
-              function createTextHighlights(feedbackItems) {
-                if (!feedbackItems || feedbackItems.length === 0) return;
-
-                const contentEl = document.getElementById('documentContent');
-                if (!contentEl) return;
-                
-                feedbackItems.forEach(item => {
-                  if (item.selected_text && item.selected_text.trim()) {
-                    highlightTextInDocument(contentEl, item.selected_text, item);
-                  }
-                });
-              }
-
-              function highlightTextInDocument(container, selectedText, feedbackItem) {
-                try {
-                  const walker = document.createTreeWalker(
-                    container,
-                    NodeFilter.SHOW_TEXT,
-                    null,
-                    false
-                  );
-                  
-                  let node;
-                  while (node = walker.nextNode()) {
-                    const text = node.textContent;
-                    const index = text.toLowerCase().indexOf(selectedText.toLowerCase());
-                    
-                    if (index !== -1 && !node.parentNode.classList.contains('review-feedback-highlight')) {
-                      const parent = node.parentNode;
-                      const beforeText = text.substring(0, index);
-                      const actualText = text.substring(index, index + selectedText.length);
-                      const afterText = text.substring(index + selectedText.length);
-                      
-                      // Create highlight span
-                      const span = document.createElement('span');
-                      span.className = 'review-feedback-highlight';
-                      span.setAttribute('data-feedback-id', feedbackItem.id);
-                      span.textContent = actualText;
-                      
-                      // Create tooltip
-                      const tooltip = document.createElement('div');
-                      tooltip.className = 'feedback-tooltip';
-                      tooltip.textContent = feedbackItem.comment_text.substring(0, 100) + 
-                        (feedbackItem.comment_text.length > 100 ? '...' : '');
-                      span.appendChild(tooltip);
-                      
-                      // Replace text node
-                      parent.removeChild(node);
-                      if (beforeText) parent.appendChild(document.createTextNode(beforeText));
-                      parent.appendChild(span);
-                      if (afterText) parent.appendChild(document.createTextNode(afterText));
-                      
-                      // Store highlight reference
-                      window.feedbackHighlights.set(feedbackItem.id, span);
-                      
-                      break;
-                    }
-                  }
-                } catch (error) {
-                  debug('Error highlighting text:', error);
-                }
-              }
-
-              function displayFeedback(feedbackItems) {
-                try {
-                  const feedbackListEl = document.getElementById('feedbackList');
-                  if (!feedbackListEl) return;
-                  
-                  if (!feedbackItems || feedbackItems.length === 0) {
-                    feedbackListEl.innerHTML = '<div class="no-feedback"><p>No feedback yet.</p><p>Select text in the document to leave feedback.</p></div>';
-                    return;
-                  }
-                  
-                  // Group feedback by selected text
-                  const groupedFeedback = {};
-                  feedbackItems.forEach(item => {
-                    if (!item || !item.comment_text) return;
-                    
-                    const key = item.selected_text && item.selected_text.trim() ? 
-                               item.selected_text.trim() : 'General';
-                    if (!groupedFeedback[key]) {
-                      groupedFeedback[key] = [];
-                    }
-                    groupedFeedback[key].push(item);
-                  });
-                  
-                  let feedbackHtml = '';
-                  
-                  Object.keys(groupedFeedback).forEach(selectedText => {
-                    const feedbackGroup = groupedFeedback[selectedText];
-                    
-                    feedbackHtml += '<div class="feedback-group" onclick="scrollToHighlight(' + feedbackGroup[0].id + ')">';
-                    
-                    if (selectedText !== 'General') {
-                      feedbackHtml += '<div class="selected-text-header">📝 Selected Text:<div class="selected-text-content">"' + escapeHtml(selectedText) + '"</div></div>';
-                    }
-                    
-                    feedbackGroup.forEach(item => {
-                      feedbackHtml += '<div class="feedback-details">';
-                      feedbackHtml += '<div class="feedback-meta">';
-                      feedbackHtml += '<span class="feedback-type-badge">💬 feedback</span>';
-                      feedbackHtml += '<span class="feedback-date">' + formatDate(item.created_at) + '</span>';
-                      feedbackHtml += '</div>';
-                      feedbackHtml += '<div class="feedback-text">' + escapeHtml(item.comment_text) + '</div>';
-                      feedbackHtml += '<div class="feedback-actions">';
-                      feedbackHtml += '<button class="feedback-btn delete" onclick="event.stopPropagation(); deleteFeedback(' + item.id + ')">🗑️ Delete</button>';
-                      feedbackHtml += '</div>';
-                      feedbackHtml += '</div>';
-                    });
-                    
-                    feedbackHtml += '</div>';
-                  });
-                  
-                  feedbackListEl.innerHTML = feedbackHtml;
-                } catch (error) {
-                  debug('Error displaying feedback:', error);
-                }
-              }
-
-              // Click-to-scroll functionality
-              function scrollToHighlight(feedbackId) {
-                try {
-                  debug('Scrolling to highlight for feedback ID:', feedbackId);
-                  const highlight = window.feedbackHighlights.get(feedbackId);
-                  
-                  if (highlight) {
-                    // Scroll to the highlight
-                    highlight.scrollIntoView({ 
-                      behavior: 'smooth', 
-                      block: 'center',
-                      inline: 'center'
-                    });
-                    
-                    // Temporarily emphasize the highlight
-                    highlight.style.backgroundColor = '#ffeb3b';
-                    highlight.style.borderLeft = '3px solid #f57c00';
-                    highlight.style.transform = 'scale(1.05)';
-                    
-                    setTimeout(() => {
-                      highlight.style.backgroundColor = '#e3f2fd';
-                      highlight.style.borderLeft = '2px solid #2196f3';
-                      highlight.style.transform = 'scale(1)';
-                    }, 2000);
-                  } else {
-                    debug('Highlight not found for feedback ID:', feedbackId);
-                    // Try to find any highlight with the same feedback ID
-                    const highlightElement = document.querySelector('[data-feedback-id="' + feedbackId + '"]');
-                    if (highlightElement) {
-                      highlightElement.scrollIntoView({ 
-                        behavior: 'smooth', 
-                        block: 'center' 
-                      });
-                    }
-                  }
-                } catch (error) {
-                  debug('Error scrolling to highlight:', error);
-                }
-              }
-
-              async function deleteFeedback(feedbackId) {
-                if (!confirm('Are you sure you want to delete this feedback?')) return;
-                
-                try {
-                  debug('Deleting feedback from review window:', feedbackId);
-                  await window.supabaseClient.deleteFeedback(feedbackId);
-                  
-                  // Remove highlight from document
-                  const highlight = window.feedbackHighlights.get(feedbackId);
-                  if (highlight) {
-                    const parent = highlight.parentNode;
-                    parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
-                    parent.removeChild(highlight);
-                    window.feedbackHighlights.delete(feedbackId);
-                  }
-                  
-                  await loadFeedback();
-                } catch (error) {
-                  debug('Delete feedback error:', error);
-                  alert('Failed to delete feedback. Error: ' + error.message);
-                }
-              }
-
-              async function completeReview() {
-                const resolutionNotes = prompt('Enter resolution notes (optional):') || '';
-                
-                try {
-                  debug('Marking review complete from review window');
-                  await window.supabaseClient.markReviewComplete(window.currentPage, resolutionNotes);
-                  alert('Review marked as complete! All feedback has been resolved and archived.');
-                  if (window.parentWindow) {
-                    window.parentWindow.postMessage({ type: 'reviewCompleted', pageId: window.currentPage }, '*');
-                  }
-                } catch (error) {
-                  debug('Error completing review:', error);
-                  alert('Failed to complete review. Error: ' + error.message);
-                }
-              }
-
-              async function clearAllReview() {
-                if (!confirm('Are you sure you want to clear ALL feedback for this document? This cannot be undone.')) return;
-                
-                try {
-                  debug('Clearing all review data from review window');
-                  await window.supabaseClient.clearAllFeedback();
-                  
-                  // Clear all highlights
-                  window.feedbackHighlights.forEach((highlight, id) => {
-                    const parent = highlight.parentNode;
-                    parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
-                    parent.removeChild(highlight);
-                  });
-                  window.feedbackHighlights.clear();
-                  
-                  await loadFeedback();
-                  alert('All feedback has been cleared successfully.');
-                } catch (error) {
-                  debug('Error clearing review data:', error);
-                  alert('Failed to clear review data. Error: ' + error.message);
-                }
-              }
-
-              // Utility functions
-              function formatDate(dateString) {
-                try {
-                  const date = new Date(dateString);
-                  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                } catch (error) {
-                  return dateString;
-                }
-              }
-
-              function escapeHtml(text) {
-                if (!text) return '';
-                try {
-                  const div = document.createElement('div');
-                  div.textContent = text;
-                  return div.innerHTML;
-                } catch (error) {
-                  return text;
-                }
-              }
-
-              // Initialize when DOM is ready
-              if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', initializeReviewWindow);
-              } else {
-                initializeReviewWindow();
-              }
-            `);
-          }
-
-          // === FIXED ARCHIVE VIEWER SYSTEM ===
-          async function openArchiveViewer() {
-            debug('Opening archive viewer');
-            
-            try {
-              // Get all archives from database
-              const archives = await window.supabaseClient.getAllArchives();
-              debug('Retrieved archives:', archives);
-              
-              // Group archives by page_id (handle null/undefined case)
-              const groupedArchives = groupArchivesByPage(archives || []);
-              
-              // Create archive viewer window
-              const archiveWindow = window.open('', 'ArchiveViewer', 
-                'width=1200,height=800,scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no'
-              );
-              
-              if (!archiveWindow) {
-                alert('Please allow popups to open the archive viewer.');
-                return;
-              }
-              
-              // Create archive viewer HTML
-              archiveWindow.document.write(createArchiveViewerHTML(groupedArchives));
-              archiveWindow.document.close();
-              
-              // Initialize archive viewer functionality - FIXED
-              initializeArchiveViewerFixed(archiveWindow, groupedArchives);
-              
-            } catch (error) {
-              debug('Error opening archive viewer:', error);
-              alert('Failed to load archives. Error: ' + error.message + '\\n\\nPlease check your connection and try again.');
-            }
-          }
-
-          function groupArchivesByPage(archives) {
-            if (!archives || !Array.isArray(archives)) {
-              debug('No archives provided or invalid format');
-              return {};
-            }
-            
-            const grouped = {};
-            archives.forEach(archive => {
-              if (archive && archive.page_id) {
-                if (!grouped[archive.page_id]) {
-                  grouped[archive.page_id] = [];
-                }
-                grouped[archive.page_id].push(archive);
-              }
-            });
-            
-            // Sort each group by created date (newest first)
-            Object.keys(grouped).forEach(pageId => {
-              grouped[pageId].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-            });
-            
-            return grouped;
-          }
-
-          function createArchiveViewerHTML(groupedArchives) {
-            const pageCount = Object.keys(groupedArchives).length;
-            const totalArchives = Object.values(groupedArchives).reduce((sum, archives) => sum + archives.length, 0);
-            
-            return `
-              <!DOCTYPE html>
-              <html lang="en">
-              <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Archive Viewer - Document History</title>
-                <link rel="stylesheet" href="${basePath}/css/archive-viewer.css">
-                <script src="${basePath}/js/supabase-config.js"></script>
-              </head>
-              <body>
-                <div class="archive-header">
-                  <div class="archive-title">Document Archive Viewer</div>
-                  <div class="archive-stats">
-                    ${pageCount} documents • ${totalArchives} archived versions
-                  </div>
-                  <div class="archive-controls">
-                    <button class="archive-btn" onclick="refreshArchives()">🔄 Refresh</button>
-                    <button class="archive-btn" onclick="exportAllData()">📤 Export All</button>
-                    <button class="archive-btn" onclick="window.close()">✕ Close</button>
-                  </div>
-                </div>
-                
-                <div class="archive-content">
-                  <div class="search-archives">
-                    <input type="text" id="archiveSearch" placeholder="Search archives by document name...">
-                    <button onclick="searchArchives()">🔍 Search</button>
-                  </div>
-                  
-                  <div id="archiveList">
-                    ${createArchiveListHTML(groupedArchives)}
-                  </div>
-                </div>
-              </body>
-              </html>
-            `;
-          }
-
-          function createArchiveListHTML(groupedArchives) {
-            if (!groupedArchives || Object.keys(groupedArchives).length === 0) {
-              return `
-                <div class="no-archives">
-                  <h3>📁 No archived documents found</h3>
-                  <p>Archives are created automatically when you:</p>
-                  <ul style="text-align: left; margin-top: 10px;">
-                    <li>Open Review Mode on any document</li>
-                    <li>Add feedback to any document</li>
-                    <li>Complete a document review</li>
-                  </ul>
-                  <p style="margin-top: 15px;"><strong>To get started:</strong></p>
-                  <ol style="text-align: left; margin-top: 10px;">
-                    <li>Go back to the main application</li>
-                    <li>Select any document from your DITA content</li>
-                    <li>Click the blue "🔍 Review Mode" button</li>
-                    <li>Select text and add a comment</li>
-                    <li>Return here to see your first archive!</li>
-                  </ol>
-                </div>
-              `;
-            }
-            
-            let html = '';
-            
-            Object.keys(groupedArchives).forEach(pageId => {
-              const archives = groupedArchives[pageId];
-              const pageTitle = pageId.replace(/-/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase());
-              
-              html += `
-                <div class="page-group">
-                  <div class="page-header">
-                    <div class="page-title">${pageTitle}</div>
-                    <div class="page-stats">${archives.length} version${archives.length !== 1 ? 's' : ''}</div>
-                  </div>
-                  <div class="archive-list">
-              `;
-              
-              archives.forEach(archive => {
-                const createdDate = new Date(archive.created_at).toLocaleString();
-                const isResolved = archive.resolution_status === 'resolved';
-                
-                html += `
-                  <div class="archive-item">
-                    <div class="archive-info">
-                      <div class="archive-version">Version ${archive.archive_version}</div>
-                      <div class="archive-meta">
-                        <span>📅 ${createdDate}</span>
-                        <span class="archive-status ${isResolved ? 'status-resolved' : 'status-active'}">
-                          ${isResolved ? 'Resolved' : 'Active'}
-                        </span>
-                        ${archive.session_id ? `<span>🔗 ${archive.session_id.substring(0, 8)}...</span>` : ''}
-                      </div>
-                    </div>
-                    <div class="archive-actions">
-                      <button class="action-btn view" onclick="viewArchive(${archive.id})" title="View archived document">
-                        👁️ View
-                      </button>
-                      <button class="action-btn download" onclick="downloadArchive(${archive.id})" title="Download HTML file">
-                        💾 HTML
-                      </button>
-                      <button class="action-btn download-with-comments" onclick="downloadArchiveWithComments(${archive.id})" title="Download HTML with embedded comments">
-                        📄 HTML+Comments
-                      </button>
-                      <button class="action-btn download-comments" onclick="downloadCommentsOnly('${archive.page_id}')" title="Download comments as JSON">
-                        💬 Comments
-                      </button>
-                      <button class="action-btn delete" onclick="deleteArchive(${archive.id})" title="Delete this archive version">
-                        🗑️ Delete
-                      </button>
-                    </div>
-                  </div>
-                `;
-              });
-              
-              html += `
-                  </div>
-                </div>
-              `;
-            });
-            
-            return html;
-          }
-
-          // Fixed Archive Viewer Initialization
-          function initializeArchiveViewerFixed(archiveWindow, groupedArchives) {
-            debug('Initializing archive viewer with fixed event handling');
-            
-            // Wait for window to be fully loaded
-            if (archiveWindow.document.readyState === 'loading') {
-              archiveWindow.document.addEventListener('DOMContentLoaded', function() {
-                setupArchiveViewerFunctionality(archiveWindow, groupedArchives);
-              });
-            } else {
-              setupArchiveViewerFunctionality(archiveWindow, groupedArchives);
-            }
-          }
-
-          function setupArchiveViewerFunctionality(archiveWindow, groupedArchives) {
-            // Pass complete functionality to archive window
-            archiveWindow.eval(`
-              // Archive Viewer Functionality (Fixed)
-              const DEBUG_MODE = true;
-              const debug = (message, data) => {
-                if (DEBUG_MODE) console.log('[Archive Viewer] ' + message, data || '');
-              };
-              
-              // Global variables
-              window.parentWindow = window.opener;
-              window.allArchives = ${JSON.stringify(groupedArchives)};
-
-              // Initialize functionality
-              function initializeArchiveFunctionality() {
-                debug('Initializing archive functionality');
-                
-                try {
-                  // Add event listeners safely
-                  const searchInput = document.getElementById('archiveSearch');
-                  if (searchInput) {
-                    searchInput.addEventListener('keypress', function(e) {
-                      if (e.key === 'Enter') searchArchives();
-                    });
-                  }
-                  
-                  debug('Archive functionality initialized successfully');
-                } catch (error) {
-                  debug('Error initializing archive functionality:', error);
-                }
-              }
-              
-              async function viewArchive(archiveId) {
-                debug('Viewing archive:', archiveId);
-                
-                try {
-                  // Find the archive data
-                  let archive = null;
-                  Object.values(window.allArchives).forEach(archives => {
-                    const found = archives.find(a => a.id === archiveId);
-                    if (found) archive = found;
-                  });
-                  
-                  if (!archive) {
-                    alert('Archive not found');
-                    return;
-                  }
-                  
-                  // Open archive in new window
-                  const viewWindow = window.open('', 'ArchiveView_' + archiveId, 
-                    'width=1000,height=700,scrollbars=yes,resizable=yes'
-                  );
-                  
-                  if (!viewWindow) {
-                    alert('Please allow popups to view the archive.');
-                    return;
-                  }
-                  
-                  // Create archive view HTML
-                  const archiveHTML = createArchiveViewHTML(archive);
-                  viewWindow.document.write(archiveHTML);
-                  viewWindow.document.close();
-                  
-                } catch (error) {
-                  debug('Error viewing archive:', error);
-                  alert('Failed to view archive: ' + error.message);
-                }
-              }
-              
-              function createArchiveViewHTML(archive) {
-                const title = archive.page_id.replace(/-/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase());
-                
-                return \`
-                  <!DOCTYPE html>
-                  <html lang="en">
-                  <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Archive: \${title} - \${archive.archive_version}</title>
-                    <style>
-                      body { 
-                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                        line-height: 1.6; margin: 0; padding: 20px; background: #fff; 
-                      }
-                      .archive-header { 
-                        background: #f8f9fa; padding: 15px; border-radius: 8px; 
-                        margin-bottom: 20px; border-left: 4px solid #673ab7; 
-                      }
-                      .archive-title { font-size: 1.3em; font-weight: 600; color: #333; }
-                      .archive-info { font-size: 0.9em; color: #666; margin-top: 5px; }
-                      .archive-content { max-width: 800px; }
-                      .archive-content h1, .archive-content h2, .archive-content h3 {
-                        color: #333; margin-top: 1.5em; margin-bottom: 0.8em;
-                      }
-                      .archive-content p { margin-bottom: 1em; }
-                      .archive-content ul, .archive-content ol { margin-bottom: 1em; padding-left: 2em; }
-                      .archive-content img { max-width: 100%; height: auto; }
-                    </style>
-                  </head>
-                  <body>
-                    <div class="archive-header">
-                      <div class="archive-title">📁 \${title}</div>
-                      <div class="archive-info">
-                        Version: \${archive.archive_version} • 
-                        Created: \${new Date(archive.created_at).toLocaleString()} • 
-                        Status: \${archive.resolution_status}
-                      </div>
-                    </div>
-                    <div class="archive-content">
-                      \${archive.content_html}
-                    </div>
-                  </body>
-                  </html>
-                \`;
-              }
-              
-              async function downloadArchive(archiveId) {
-                debug('Downloading archive:', archiveId);
-                
-                try {
-                  if (window.parentWindow && window.parentWindow.supabaseClient) {
-                    const archive = await window.parentWindow.supabaseClient.getArchiveById(archiveId);
-                    if (archive) {
-                      window.parentWindow.supabaseClient.downloadArchive(archive);
-                      debug('Archive downloaded successfully');
-                    } else {
-                      alert('Archive not found');
-                    }
-                  } else {
-                    alert('Cannot download archive - connection lost.');
-                  }
-                } catch (error) {
-                  debug('Error downloading archive:', error);
-                  alert('Failed to download archive: ' + error.message);
-                }
-              }
-
-              async function downloadArchiveWithComments(archiveId) {
-                debug('Downloading archive with comments:', archiveId);
-                
-                try {
-                  if (window.parentWindow && window.parentWindow.supabaseClient) {
-                    await window.parentWindow.supabaseClient.downloadArchiveWithComments(archiveId);
-                    debug('Archive with comments downloaded successfully');
-                  } else {
-                    alert('Cannot download archive - connection lost.');
-                  }
-                } catch (error) {
-                  debug('Error downloading archive with comments:', error);
-                  alert('Failed to download archive with comments: ' + error.message);
-                }
-              }
-
-              async function downloadCommentsOnly(pageId) {
-                debug('Downloading comments only for page:', pageId);
-                
-                try {
-                  if (window.parentWindow && window.parentWindow.supabaseClient) {
-                    await window.parentWindow.supabaseClient.downloadCommentsOnly(pageId);
-                    debug('Comments downloaded successfully');
-                  } else {
-                    alert('Cannot download comments - connection lost.');
-                  }
-                } catch (error) {
-                  debug('Error downloading comments:', error);
-                  if (error.message.includes('No comments found')) {
-                    alert('No comments found for this document. Add some feedback in Review Mode first!');
-                  } else {
-                    alert('Failed to download comments: ' + error.message);
-                  }
-                }
-              }
-              
-              async function deleteArchive(archiveId) {
-                if (!confirm('Are you sure you want to delete this archive? This cannot be undone.')) return;
-                
-                debug('Deleting archive:', archiveId);
-                
-                try {
-                  if (window.parentWindow && window.parentWindow.supabaseClient) {
-                    await window.parentWindow.supabaseClient.deleteArchive(archiveId);
-                    alert('Archive deleted successfully.');
-                    refreshArchives();
-                  } else {
-                    alert('Cannot delete archive - connection lost.');
-                  }
-                } catch (error) {
-                  debug('Error deleting archive:', error);
-                  alert('Failed to delete archive: ' + error.message);
-                }
-              }
-              
-              async function refreshArchives() {
-                debug('Refreshing archives');
-                window.location.reload();
-              }
-              
-              async function exportAllData() {
-                debug('Exporting all data');
-                
-                try {
-                  if (window.parentWindow && window.parentWindow.supabaseClient) {
-                    await window.parentWindow.supabaseClient.exportAllData();
-                    debug('All data exported successfully');
-                  } else {
-                    alert('Cannot export data - connection lost.');
-                  }
-                } catch (error) {
-                  debug('Error exporting all data:', error);
-                  alert('Failed to export data: ' + error.message);
-                }
-              }
-              
-              function searchArchives() {
-                try {
-                  const searchInput = document.getElementById('archiveSearch');
-                  if (!searchInput) return;
-                  
-                  const query = searchInput.value.toLowerCase();
-                  const archiveItems = document.querySelectorAll('.page-group');
-                  
-                  archiveItems.forEach(item => {
-                    const pageTitle = item.querySelector('.page-title');
-                    if (pageTitle) {
-                      const titleText = pageTitle.textContent.toLowerCase();
-                      if (titleText.includes(query) || query === '') {
-                        item.style.display = 'block';
-                      } else {
-                        item.style.display = 'none';
-                      }
-                    }
-                  });
-                } catch (error) {
-                  debug('Error searching archives:', error);
-                }
-              }
-              
-              // Initialize when DOM is ready
-              if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', initializeArchiveFunctionality);
-              } else {
-                initializeArchiveFunctionality();
-              }
-            `);
-          }
-
-          // === NAVIGATION SYSTEM ===
-          function renderNavigation(items, parentEl = navigationEl) {
-            if (!parentEl || !items || items.length === 0) {
-              debug('No navigation items to render');
-              return;
-            }
-            
-            const ul = document.createElement('ul');
-            ul.setAttribute('role', 'menu');
-
-            items.forEach(item => {
-              const li = document.createElement('li');
-              li.setAttribute('role', 'presentation');
-
-              if (item.children && item.children.length > 0) {
-                li.classList.add('has-children');
-                const toggle = document.createElement('span');
-                toggle.className = 'toggle-arrow';
-                toggle.addEventListener('click', (e) => {
-                  e.stopPropagation();
-                  li.classList.toggle('expanded');
-                });
-                li.appendChild(toggle);
-              }
-
-              const a = document.createElement('a');
-              a.setAttribute('role', 'menuitem');
-              a.textContent = item.title;
-              a.setAttribute('data-id', item.id);
-              a.href = `#${item.id}`;
-
-              a.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (item.children && item.children.length > 0) {
-                  li.classList.toggle('expanded');
-                }
-                navigateToPage(item.id);
-                if (searchResultsEl) searchResultsEl.innerHTML = '';
-                if (searchInput) searchInput.value = '';
-              });
-
-              li.appendChild(a);
-              if (item.children && item.children.length > 0) {
-                renderNavigation(item.children, li);
-              }
-              ul.appendChild(li);
-            });
-
-            parentEl.appendChild(ul);
-          }
-
-          function navigateToPage(pageId, pushState = true) {
-            debug(`Navigating to page: ${pageId}`);
-            
-            if (!pageId) {
-              showErrorContent('undefined');
-              return;
-            }
-
-            updateActiveNavItem(pageId);
-            expandNavigationTo(pageId);
-
-            if (pushState) {
-              history.pushState({ pageId }, '', `#${pageId}`);
-            }
-
-            document.body.classList.add('loading');
-            window.currentPage = pageId;
-
-            loadContent(pageId)
-              .then(content => {
-                const title = getPageTitle(pageId);
-                if (contentTitleEl) contentTitleEl.textContent = title;
-                document.title = title;
-                if (contentEl) contentEl.innerHTML = content;
-                
-                document.body.classList.remove('loading');
-                debug(`Content loaded successfully for: ${pageId}`);
-              })
-              .catch(error => {
-                debug(`Content load error for ${pageId}:`, error);
-                showErrorContent(pageId);
-              });
-          }
-
-          async function loadContent(pageId) {
-            const contentPath = `${basePath}/content/${pageId}.html`;
-            debug(`Fetching content from: ${contentPath}`);
-
-            try {
-              const response = await fetch(contentPath);
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-              }
-              return await response.text();
-            } catch (error) {
-              debug(`Content fetch error: ${error.message}`);
-              throw error;
-            }
-          }
-
-          function updateActiveNavItem(pageId) {
-            const allNavItems = document.querySelectorAll('.sidebar a');
-            allNavItems.forEach(item => item.classList.remove('active'));
-
-            const activeItem = document.querySelector(`.sidebar a[data-id="${pageId}"]`);
-            if (activeItem) {
-              activeItem.classList.add('active');
-              let parent = activeItem.parentElement;
-              while (parent && !parent.classList.contains('sidebar')) {
-                if (parent.classList.contains('has-children')) {
-                  parent.classList.add('expanded');
-                }
-                parent = parent.parentElement;
-              }
-            }
-          }
-
-          function expandNavigationTo(pageId) {
-            if (!window.navigationConfig || window.navigationConfig.length === 0) return;
-            
-            function findPageInNavigation(items, id, path = []) {
-              for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                const currentPath = [...path, item];
-                if (item.id === id) return currentPath;
-                if (item.children && item.children.length > 0) {
-                  const result = findPageInNavigation(item.children, id, currentPath);
-                  if (result) return result;
-                }
-              }
-              return null;
-            }
-
-            const path = findPageInNavigation(window.navigationConfig, pageId);
-            if (!path) return;
-
-            for (let i = 0; i < path.length - 1; i++) {
-              const item = path[i];
-              const li = document.querySelector(`.sidebar li a[data-id="${item.id}"]`)?.parentElement;
-              if (li) li.classList.add('expanded');
-            }
-          }
-
-          function handlePopState(event) {
-            const pageId = event.state?.pageId || getPageIdFromUrl() || (window.navigationConfig && window.navigationConfig[0]?.id);
-            debug(`Popstate event, loading page: ${pageId}`);
-            if (pageId) {
-              navigateToPage(pageId, false);
-            } else {
-              showWelcomeScreen();
-            }
-          }
-
-          function getPageIdFromUrl() {
-            return window.location.hash.substring(1) || null;
-          }
-
-          function getPageTitle(pageId) {
-            if (window.contentIdMap && contentIdMap[pageId]) {
-              return contentIdMap[pageId].title;
-            }
-
-            if (window.navigationConfig && window.navigationConfig.length > 0) {
-              function findTitleInNav(items, id) {
-                for (const item of items) {
-                  if (item.id === id) return item.title;
-                  if (item.children && item.children.length > 0) {
-                    const title = findTitleInNav(item.children, id);
-                    if (title) return title;
-                  }
-                }
-                return null;
-              }
-
-              const navTitle = findTitleInNav(window.navigationConfig, pageId);
-              if (navTitle) return navTitle;
-            }
-
-            return pageId.split(/-|_/).map(word =>
-              word.charAt(0).toUpperCase() + word.slice(1)
-            ).join(' ');
-          }
-
-          function showErrorContent(pageId) {
-            debug(`Showing error content for: ${pageId}`);
-            if (contentEl) {
-              contentEl.innerHTML = `
-                <div class="no-content">
-                  <h3>Content Not Found</h3>
-                  <p>The requested content "${pageId}" could not be loaded.</p>
-                  <p>This might be because:</p>
-                  <ul>
-                    <li>No DITA source files were processed</li>
-                    <li>The content file doesn't exist</li>
-                    <li>There was an error in the build process</li>
-                  </ul>
-                  <p><strong>To add content:</strong></p>
-                  <ol>
-                    <li>Add DITA files to the dita-source/ directory</li>
-                    <li>Create a .ditamap file</li>
-                    <li>Re-run the workflow</li>
-                  </ol>
-                </div>
-              `;
-            }
-            document.body.classList.remove('loading');
-          }
-
-          function showWelcomeScreen() {
-            if (contentTitleEl) contentTitleEl.textContent = 'Documentation';
-            document.title = 'Documentation';
-            if (contentEl) {
-              const hasContent = window.navigationConfig && window.navigationConfig.length > 0;
-              
-              contentEl.innerHTML = `
-                <div class="welcome-screen">
-                  <h2>📚 DITA Documentation System</h2>
-                  ${hasContent 
-                    ? '<p>Select a topic from the navigation menu to begin exploring your documentation.</p>' 
-                    : '<div class="no-content"><h3>No Content Available</h3><p>No DITA source files were found or processed.</p><p><strong>To get started:</strong></p><ol><li>Add your DITA files to the <code>dita-source/</code> directory</li><li>Include a .ditamap file that references your topics</li><li>Re-run the GitHub Actions workflow</li><li>Your content will then appear in the navigation menu</li></ol></div>'
-                  }
-                  
-                  <div style="margin-top: 30px; padding: 20px; background: #f0f8ff; border-radius: 8px; border-left: 4px solid #2196f3;">
-                    <h3>🔍 Complete Review & Archive System Features:</h3>
-                    <ul style="text-align: left; margin-top: 15px; line-height: 1.8;">
-                      <li><strong>📁 Archive Viewer:</strong> View all archived document versions with complete history</li>
-                      <li><strong>🔍 Review Mode:</strong> Dedicated side-by-side review interface with space optimization</li>
-                      <li><strong>💾 Multiple Downloads:</strong> HTML only, HTML with comments, or comments JSON</li>
-                      <li><strong>💬 Enhanced Comments:</strong> Hover tooltips and click-to-scroll navigation</li>
-                      <li><strong>📤 Data Export:</strong> Complete database export functionality</li>
-                      <li><strong>🎯 Space Optimized:</strong> 35% more reading space in review mode</li>
-                      <li><strong>⚡ Real-time Sync:</strong> All changes sync across windows and sessions</li>
-                      <li><strong>🔄 Auto-Archive:</strong> Automatic snapshots when feedback is first added</li>
-                    </ul>
-                  </div>
-                  
-                  <div style="margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 8px; border-left: 4px solid #4caf50;">
-                    <h4>🚀 How to Use the Archive System:</h4>
-                    <ul style="text-align: left; margin-top: 10px; font-size: 0.95em;">
-                      <li><strong>Start Review:</strong> Click blue "🔍 Review Mode" button (top-right)</li>
-                      <li><strong>Add Feedback:</strong> Select text and leave comments - archive created automatically</li>
-                      <li><strong>View Archives:</strong> Click purple "📁 View Archives" button</li>
-                      <li><strong>Download:</strong> Get HTML files, comments, or combined versions</li>
-                      <li><strong>Track Status:</strong> Monitor connection in bottom-left corner</li>
-                    </ul>
-                  </div>
-                  
-                  <div style="margin-top: 20px; font-size: 0.9em; color: #666; padding: 15px; background: #fff3e0; border-radius: 8px;">
-                    <p>🎯 <strong>Archive System Status:</strong> Ready for document review and archiving</p>
-                    <p>💡 <strong>Tip:</strong> Archives are created automatically when you first add feedback to any document</p>
-                  </div>
-                </div>
-              `;
-            }
-            document.body.classList.remove('loading');
-          }
-
-          // === SEARCH FUNCTIONALITY ===
-          function performSearch() {
-            if (!searchInput || !searchResultsEl) return;
-            
-            const query = searchInput.value.toLowerCase().trim();
-            searchResultsEl.innerHTML = '';
-
-            if (query.length < 2) {
-              if (query.length > 0) {
-                searchResultsEl.innerHTML = '<li><p>Please enter at least 2 characters to search.</p></li>';
-              }
-              return;
-            }
-
-            debug(`Performing search for: ${query}`);
-            const results = [];
-            
-            if (window.contentIdMap) {
-              for (const id in contentIdMap) {
-                if (contentIdMap.hasOwnProperty(id) && id !== 'default') {
-                  const item = contentIdMap[id];
-                  const title = item.title.toLowerCase();
-                  const content = item.content ? item.content.toLowerCase() : '';
-
-                  let snippet = '';
-                  let matchCount = 0;
-
-                  if (title.includes(query)) {
-                    matchCount += 10;
-                    snippet = `Found in title: "${highlightMatch(item.title, query)
+          touch ./review-portal/assets/icons/.gitkeep
+          touch ./admin-console/assets/icons/.gitkeep
+
+      # Step 14: Commit and Push
+      - name: Commit and Push
+        run: |
+          git add -A
+          git status
+          git commit -m "Complete DITA Review System Setup" -m "- Three integrated applications" -m "- User authentication system" -m "- Review workflow implementation" || echo "No changes to commit"
+          git push origin main || git push origin HEAD:main || echo "Push failed - check permissions"
