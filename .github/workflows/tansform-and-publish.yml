@@ -69,7 +69,7 @@ jobs:
           if [ -d "dita-source" ] && [ "$(ls -A dita-source/*.ditamap 2>/dev/null)" ]; then
             
             # Create XSLT for navigation extraction using base64 encoding to avoid YAML issues
-            echo "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHhzbDpzdHlsZXNoZWV0IHZlcnNpb249IjEuMCIgeG1sbnM6eHNsPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L1hTTC9UcmFuc2Zvcm0iPgogIDx4c2w6b3V0cHV0IG1ldGhvZD0idGV4dCIvPgogIDx4c2w6dGVtcGxhdGUgbWF0Y2g9Ii8iPgogICAgWzx4c2w6YXBwbHktdGVtcGxhdGVzIHNlbGVjdD0iLy90b3BpY3JlZltub3QoYW5jZXN0b3I6OnRvcGljcmVmKV0iLz5dCiAgPC94c2w6dGVtcGxhdGU+CiAgPHhzbDp0ZW1wbGF0ZSBtYXRjaD0idG9waWNyZWYiPgogICAgPHhzbDp2YXJpYWJsZSBuYW1lPSJocmVmIiBzZWxlY3Q9IkBocmVmIi8+CiAgICA8eHNsOnZhcmlhYmxlIG5hbWU9ImZpbGVuYW1lIj4KICAgICAgPHhzbDpjaG9vc2U+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9ImNvbnRhaW5zKCRocmVmLCAnLycpIj4KICAgICAgICAgIDx4c2w6dmFsdWUtb2Ygc2VsZWN0PSJzdWJzdHJpbmctYWZ0ZXIoc3Vic3RyaW5nLWJlZm9yZSgkaHJlZiwgJy4nKSwgJy8nKSIvPgogICAgICAgIDwveHNsOndoZW4+CiAgICAgICAgPHhzbDpvdGhlcndpc2U+CiAgICAgICAgICA8eHNsOnZhbHVlLW9mIHNlbGVjdD0ic3Vic3RyaW5nLWJlZm9yZSgkaHJlZiwgJy4nKSIvPgogICAgICAgIDwveHNsOm90aGVyd2lzZT4KICAgICAgPC94c2w6Y2hvb3NlPgogICAgPC94c2w6dmFyaWFibGU+CiAgICA8eHNsOnZhcmlhYmxlIG5hbWU9ImlkIj4KICAgICAgPHhzbDpjaG9vc2U+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9IkBpZCI+PHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IkBpZCIvPjwveHhzbDp3aGVuPgogICAgICAgIDx4c2w6b3RoZXJ3aXNlPjx4c2w6dmFsdWUtb2Ygc2VsZWN0PSJ0cmFuc2xhdGUoJGZpbGVuYW1lLCAnXycsICctJykiLz48L3hzbDpvdGhlcndpc2U+CiAgICAgIDwveHNsOmNob29zZT4KICAgIDwveHNsOnZhcmlhYmxlPgogICAgPHhzbDp2YXJpYWJsZSBuYW1lPSJ0aXRsZSI+CiAgICAgIDx4c2w6Y2hvb3NlPgogICAgICAgIDx4c2w6d2hlbiB0ZXN0PSJAQG5hdnRpdGxlIj48eHNsOnZhbHVlLW9mIHNlbGVjdD0iQG5hdnRpdGxlIi8+PC94c2w6d2hlbj4KICAgICAgICA8eHNsOndoZW4gdGVzdD0idG9waWNtZXRhL25hdnRpdGxlIj48eHNsOnZhbHVlLW9mIHNlbGVjdD0idG9waWNtZXRhL25hdnRpdGxlIi8+PC94c2w6d2hlbj4KICAgICAgICA8eHNsOm90aGVyd2lzZT4KICAgICAgICAgIDx4c2w6dmFsdWUtb2Ygc2VsZWN0PSJ0cmFuc2xhdGUodHJhbnNsYXRlKCRpZCwgJy0nLCAnICcpLCAnXycsICcgJykiLz4KICAgICAgICA8L3hzbDpvdGhlcndpc2U+CiAgICAgIDwveHNsOmNob29zZT4KICAgIDwveHNsOnZhcmlhYmxlPgogICAgcwogICAgICAiaWQiOiAiPHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IiRpZCIvPiIsCiAgICAgICJ0aXRsZSI6ICI8eHNsOnZhbHVlLW9mIHNlbGVjdD0iJHRpdGxlIi8+IiwKICAgICAgImZpbGVuYW1lIjogIjx4c2w6dmFsdWUtb2Ygc2VsZWN0PSIkZmlsZW5hbWUiLz4iLAogICAgICAiaHJlZiI6ICI8eHNsOnZhbHVlLW9mIHNlbGVjdD0iJGhyZWYiLz4iCiAgICAgIDx4c2w6aWYgdGVzdD0idG9waWNyZWYiPgogICAgICAgICJjaGlsZHJlbiI6IFs8eHNsOmFwcGx5LXRlbXBsYXRlcyBzZWxlY3Q9InRvcGljcmVmIi8+XQogICAgICA8L3hzbDppZj4KICAgIH08eHNsOmlmIHRlc3Q9ImZvbGxvd2luZy1zaWJsaW5nOjp0b3BpY3JlZiI+LDwveHNsOmlmPgogIDwveHNsOnRlbXBsYXRlPgo8L3hzbDpzdHlsZXNoZWV0Pg==" | base64 -d > extract-nav.xsl
+            echo "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHhzbDpzdHlsZXNoZWV0IHZlcnNpb249IjEuMCIgeG1sbnM6eHNsPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L1hTTC9UcmFuc2Zvcm0iPgogIDx4c2w6b3V0cHV0IG1ldGhvZD0idGV4dCIvPgogIDx4c2w6dGVtcGxhdGUgbWF0Y2g9Ii8iPgogICAgWzx4c2w6YXBwbHktdGVtcGxhdGVzIHNlbGVjdD0iLy90b3BpY3JlZltub3QoYW5jZXN0b3I6OnRvcGljcmVmKV0iLz5dCiAgPC94c2w6dGVtcGxhdGU+CiAgPHhzbDp0ZW1wbGF0ZSBtYXRjaD0idG9waWNyZWYiPgogICAgPHhzbDp2YXJpYWJsZSBuYW1lPSJocmVmIiBzZWxlY3Q9IkBocmVmIi8+CiAgICA8eHNsOnZhcmlhYmxlIG5hbWU9ImZpbGVuYW1lIj4KICAgICAgPHhzbDpjaG9vc2U+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9ImNvbnRhaW5zKCRocmVmLCAnLycpIj4KICAgICAgICAgIDx4c2w6dmFsdWUtb2Ygc2VsZWN0PSJzdWJzdHJpbmctYWZ0ZXIoc3Vic3RyaW5nLWJlZm9yZSgkaHJlZiwgJy4nKSwgJy8nKSIvPgogICAgICAgIDwveHNsOndoZW4+CiAgICAgICAgPHhzbDpvdGhlcndpc2U+CiAgICAgICAgICA8eHNsOnZhbHVlLW9mIHNlbGVjdD0ic3Vic3RyaW5nLWJlZm9yZSgkaHJlZiwgJy4nKSIvPgogICAgICAgIDwveHNsOm90aGVyd2lzZT4KICAgICAgPC94c2w6Y2hvb3NlPgogICAgPC94c2w6dmFyaWFibGU+CiAgICA8eHNsOnZhcmlhYmxlIG5hbWU9ImlkIj4KICAgICAgPHhzbDpjaG9vc2U+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9IkBpZCI+PHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IkBpZCIvPjwveHNsOndoZW4+CiAgICAgICAgPHhzbDpvdGhlcndpc2U+PHhzbDp2YWx1ZS1vZiBzZWxlY3Q9InRyYW5zbGF0ZSgkZmlsZW5hbWUsICdfJywgJy0nKSIvPjwveHNsOm90aGVyd2lzZT4KICAgICAgPC94c2w6Y2hvb3NlPgogICAgPC94c2w6dmFyaWFibGU+CiAgICA8eHNsOnZhcmlhYmxlIG5hbWU9InRpdGxlIj4KICAgICAgPHhzbDpjaG9vc2U+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9IkBuYXZ0aXRsZSI+PHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IkBuYXZ0aXRsZSIvPjwveHNsOndoZW4+CiAgICAgICAgPHhzbDp3aGVuIHRlc3Q9InRvcGljbWV0YS9uYXZ0aXRsZSI+PHhzbDp2YWx1ZS1vZiBzZWxlY3Q9InRvcGljbWV0YS9uYXZ0aXRsZSIvPjwveHNsOndoZW4+CiAgICAgICAgPHhzbDpvdGhlcndpc2U+CiAgICAgICAgICA8eHNsOnZhbHVlLW9mIHNlbGVjdD0idHJhbnNsYXRlKHRyYW5zbGF0ZSgkaWQsICctJywgJyAnKSwgJ18nLCAnICcpIi8+CiAgICAgICAgPC94c2w6b3RoZXJ3aXNlPgogICAgICA8L3hzbDpjaG9vc2U+CiAgICA8L3hzbDp2YXJpYWJsZT4KICAgIHsKICAgICAgImlkIjogIjx4c2w6dmFsdWUtb2Ygc2VsZWN0PSIkaWQiLz4iLAogICAgICAidGl0bGUiOiAiPHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IiR0aXRsZSIvPiIsCiAgICAgICJmaWxlbmFtZSI6ICI8eHNsOnZhbHVlLW9mIHNlbGVjdD0iJGZpbGVuYW1lIi8+IiwKICAgICAgImhyZWYiOiAiPHhzbDp2YWx1ZS1vZiBzZWxlY3Q9IiRocmVmIi8+IgogICAgICA8eHNsOmlmIHRlc3Q9InRvcGljcmVmIj4KICAgICAgICAiY2hpbGRyZW4iOiBbPHhzbDphcHBseS10ZW1wbGF0ZXMgc2VsZWN0PSJ0b3BpY3JlZiIvPl0KICAgICAgPC94c2w6aWY+CiAgICB9PHhzbDppZiB0ZXN0PSJmb2xsb3dpbmctc2libGluZzo6dG9waWNyZWYiPiw8L3hzbDppZj4KICA8L3hzbDp0ZW1wbGF0ZT4KPC94c2w6c3R5bGVzaGVldD4=" | base64 -d > extract-nav.xsl
             
             # Process DITAMAP
             for ditamap in dita-source/*.ditamap; do
@@ -104,25 +104,25 @@ jobs:
           mkdir -p ./shared/js
           cat > ./shared/js/supabase-config.js << 'ENDOFFILE'
 // Shared Supabase configuration
-const SUPABASE_URL = 'https://oiluavgeyngmkqozzmnz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ';
+const SUPABASE_URL = "https://oiluavgeyngmkqozzmnz.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pbHVhdmdleW5nbWtxb3p6bW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NjIxOTgsImV4cCI6MjA2NDAzODE5OH0.zsfYoYDgArOBjP7SziUMgRQpIHhwTb-qgtw7t54MsXQ";
 
 class SupabaseAuthClient {
   constructor() {
     this.baseUrl = SUPABASE_URL;
     this.headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      'apikey': SUPABASE_ANON_KEY
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+      "apikey": SUPABASE_ANON_KEY
     };
     this.currentUser = null;
   }
 
   async login(username, password) {
     const validUsers = {
-      'vincent': { password: 'zoox', id: 'user-vincent', role: 'user' },
-      'sree': { password: 'zoox', id: 'user-sree', role: 'user' },
-      'admin': { password: 'admin123', id: 'user-admin', role: 'admin' }
+      "vincent": { password: "zoox", id: "user-vincent", role: "user" },
+      "sree": { password: "zoox", id: "user-sree", role: "user" },
+      "admin": { password: "admin123", id: "user-admin", role: "admin" }
     };
     
     if (validUsers[username] && validUsers[username].password === password) {
@@ -131,21 +131,21 @@ class SupabaseAuthClient {
         username: username,
         role: validUsers[username].role
       };
-      localStorage.setItem('review_user', JSON.stringify(this.currentUser));
+      localStorage.setItem("review_user", JSON.stringify(this.currentUser));
       return { success: true, user: this.currentUser };
     }
     
-    return { success: false, error: 'Invalid credentials' };
+    return { success: false, error: "Invalid credentials" };
   }
 
   logout() {
     this.currentUser = null;
-    localStorage.removeItem('review_user');
+    localStorage.removeItem("review_user");
   }
 
   getCurrentUser() {
     if (!this.currentUser) {
-      const stored = localStorage.getItem('review_user');
+      const stored = localStorage.getItem("review_user");
       if (stored) {
         this.currentUser = JSON.parse(stored);
       }
@@ -159,7 +159,7 @@ class SupabaseAuthClient {
 
   isAdmin() {
     const user = this.getCurrentUser();
-    return user && user.role === 'admin';
+    return user && user.role === "admin";
   }
 }
 
@@ -167,27 +167,27 @@ class SupabaseAuthClient {
 class ReviewSystemClient extends SupabaseAuthClient {
   async createReviewDocument(pageId, contentHtml) {
     const user = this.getCurrentUser();
-    if (!user) throw new Error('Not authenticated');
+    if (!user) throw new Error("Not authenticated");
     
     const doc = {
-      id: 'doc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      id: "doc_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
       original_page_id: pageId,
       content_html: contentHtml,
       user_id: user.id,
-      review_state: 'draft',
+      review_state: "draft",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
     
     const docs = this.getReviewDocuments();
     docs.push(doc);
-    localStorage.setItem('review_documents', JSON.stringify(docs));
+    localStorage.setItem("review_documents", JSON.stringify(docs));
     
     return doc;
   }
 
   getReviewDocuments() {
-    const stored = localStorage.getItem('review_documents');
+    const stored = localStorage.getItem("review_documents");
     return stored ? JSON.parse(stored) : [];
   }
 
@@ -208,33 +208,33 @@ class ReviewSystemClient extends SupabaseAuthClient {
     
     if (index !== -1) {
       docs[index] = { ...docs[index], ...updates, updated_at: new Date().toISOString() };
-      localStorage.setItem('review_documents', JSON.stringify(docs));
+      localStorage.setItem("review_documents", JSON.stringify(docs));
       return docs[index];
     }
     
-    throw new Error('Document not found');
+    throw new Error("Document not found");
   }
 
   async requestApproval(docId, approverId, message) {
     const request = {
-      id: 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      id: "req_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
       document_id: docId,
       requester_id: this.getCurrentUser().id,
       approver_id: approverId,
-      status: 'pending',
+      status: "pending",
       request_message: message,
       created_at: new Date().toISOString()
     };
     
     const requests = this.getApprovalRequests();
     requests.push(request);
-    localStorage.setItem('approval_requests', JSON.stringify(requests));
+    localStorage.setItem("approval_requests", JSON.stringify(requests));
     
     return request;
   }
 
   getApprovalRequests() {
-    const stored = localStorage.getItem('approval_requests');
+    const stored = localStorage.getItem("approval_requests");
     return stored ? JSON.parse(stored) : [];
   }
 
@@ -243,7 +243,7 @@ class ReviewSystemClient extends SupabaseAuthClient {
     if (!user) return [];
     
     return this.getApprovalRequests().filter(
-      req => req.approver_id === user.id && req.status === 'pending'
+      req => req.approver_id === user.id && req.status === "pending"
     );
   }
 
@@ -252,43 +252,43 @@ class ReviewSystemClient extends SupabaseAuthClient {
     const index = requests.findIndex(r => r.id === requestId);
     
     if (index !== -1) {
-      requests[index].status = approved ? 'approved' : 'rejected';
+      requests[index].status = approved ? "approved" : "rejected";
       requests[index].response_message = message;
       requests[index].responded_at = new Date().toISOString();
-      localStorage.setItem('approval_requests', JSON.stringify(requests));
+      localStorage.setItem("approval_requests", JSON.stringify(requests));
       
       if (approved) {
         await this.updateDocument(requests[index].document_id, {
-          review_state: 'approved'
+          review_state: "approved"
         });
       }
       
       return requests[index];
     }
     
-    throw new Error('Request not found');
+    throw new Error("Request not found");
   }
 
-  async addComment(docId, commentText, selectedText = '') {
+  async addComment(docId, commentText, selectedText = "") {
     const comment = {
-      id: 'com_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      id: "com_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
       document_id: docId,
       user_id: this.getCurrentUser().id,
       comment_text: commentText,
       selected_text: selectedText,
-      status: 'active',
+      status: "active",
       created_at: new Date().toISOString()
     };
     
     const comments = this.getComments();
     comments.push(comment);
-    localStorage.setItem('review_comments', JSON.stringify(comments));
+    localStorage.setItem("review_comments", JSON.stringify(comments));
     
     return comment;
   }
 
   getComments() {
-    const stored = localStorage.getItem('review_comments');
+    const stored = localStorage.getItem("review_comments");
     return stored ? JSON.parse(stored) : [];
   }
 
@@ -317,7 +317,7 @@ ENDOFFILE
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   line-height: 1.6; display: flex; height: 100vh;
   overflow: hidden; color: #333; background: #f8f8f8;
 }
@@ -381,22 +381,22 @@ let contentEl, navigationEl;
 window.currentPage = null;
 
 function initializeDOMElements() {
-  contentEl = document.getElementById('content');
-  navigationEl = document.getElementById('navigation');
+  contentEl = document.getElementById("content");
+  navigationEl = document.getElementById("navigation");
 }
 
 function renderNavigation(items, parentEl = navigationEl) {
   if (!parentEl || !items || items.length === 0) return;
   
-  const ul = document.createElement('ul');
+  const ul = document.createElement("ul");
   items.forEach(item => {
-    const li = document.createElement('li');
-    const a = document.createElement('a');
+    const li = document.createElement("li");
+    const a = document.createElement("a");
     a.textContent = item.title;
-    a.setAttribute('data-id', item.id);
-    a.href = '#' + item.id;
+    a.setAttribute("data-id", item.id);
+    a.href = "#" + item.id;
     
-    a.addEventListener('click', (e) => {
+    a.addEventListener("click", (e) => {
       e.preventDefault();
       navigateToPage(item.id);
     });
@@ -414,53 +414,53 @@ function navigateToPage(pageId) {
   window.currentPage = pageId;
   updateActiveNavItem(pageId);
   
-  fetch('content/' + pageId + '.html')
+  fetch("content/" + pageId + ".html")
     .then(response => response.text())
     .then(content => {
       if (contentEl) contentEl.innerHTML = content;
     })
     .catch(() => {
       if (contentEl) {
-        contentEl.innerHTML = '<div class="error">Content not found</div>';
+        contentEl.innerHTML = "<div class=\"error\">Content not found</div>";
       }
     });
 }
 
 function updateActiveNavItem(pageId) {
-  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-  const activeItem = document.querySelector('.sidebar a[data-id="' + pageId + '"]');
-  if (activeItem) activeItem.classList.add('active');
+  document.querySelectorAll(".sidebar a").forEach(a => a.classList.remove("active"));
+  const activeItem = document.querySelector(".sidebar a[data-id=\"" + pageId + "\"]");
+  if (activeItem) activeItem.classList.add("active");
 }
 
 function addFeedbackButton() {
-  const feedbackBtn = document.createElement('button');
-  feedbackBtn.className = 'feedback-button';
-  feedbackBtn.innerHTML = 'Provide Feedback';
-  feedbackBtn.title = 'Open review portal to provide feedback';
+  const feedbackBtn = document.createElement("button");
+  feedbackBtn.className = "feedback-button";
+  feedbackBtn.innerHTML = "Provide Feedback";
+  feedbackBtn.title = "Open review portal to provide feedback";
   
-  feedbackBtn.addEventListener('click', openReviewPortal);
+  feedbackBtn.addEventListener("click", openReviewPortal);
   document.body.appendChild(feedbackBtn);
 }
 
 function openReviewPortal() {
-  const currentPageId = window.currentPage || 'home';
-  const pageTitle = document.querySelector('.sidebar a.active')?.textContent || 'Document';
-  const pageContent = contentEl ? contentEl.innerHTML : '';
+  const currentPageId = window.currentPage || "home";
+  const pageTitle = document.querySelector(".sidebar a.active")?.textContent || "Document";
+  const pageContent = contentEl ? contentEl.innerHTML : "";
   
-  sessionStorage.setItem('review_page_id', currentPageId);
-  sessionStorage.setItem('review_page_title', pageTitle);
-  sessionStorage.setItem('review_page_content', pageContent);
+  sessionStorage.setItem("review_page_id", currentPageId);
+  sessionStorage.setItem("review_page_title", pageTitle);
+  sessionStorage.setItem("review_page_content", pageContent);
   
-  const reviewWindow = window.open('../review-portal/index.html', 'ReviewPortal', 
-    'width=1400,height=900,scrollbars=yes,resizable=yes'
+  const reviewWindow = window.open("../review-portal/index.html", "ReviewPortal", 
+    "width=1400,height=900,scrollbars=yes,resizable=yes"
   );
   
   if (!reviewWindow) {
-    alert('Please allow popups to open the review portal.');
+    alert("Please allow popups to open the review portal.");
   }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener("DOMContentLoaded", function() {
   initializeDOMElements();
   
   if (window.navigationConfig && navigationConfig.length > 0) {
@@ -560,7 +560,7 @@ ENDOFFILE
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   min-height: 100vh; display: flex; align-items: center;
   justify-content: center; padding: 20px;
@@ -638,39 +638,39 @@ ENDOFFILE
 
           # Create auth.js
           cat > ./review-portal/js/auth.js << 'ENDOFFILE'
-document.addEventListener('DOMContentLoaded', function() {
-  const loginForm = document.getElementById('login-form');
-  const errorMessage = document.getElementById('error-message');
+document.addEventListener("DOMContentLoaded", function() {
+  const loginForm = document.getElementById("login-form");
+  const errorMessage = document.getElementById("error-message");
   
   if (window.supabaseAuth.isAuthenticated()) {
-    window.location.href = 'dashboard.html';
+    window.location.href = "dashboard.html";
   }
   
-  loginForm.addEventListener('submit', async (e) => {
+  loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
     
-    errorMessage.classList.remove('show');
+    errorMessage.classList.remove("show");
     
     try {
       const result = await window.supabaseAuth.login(username, password);
       
       if (result.success) {
-        const reviewPageId = sessionStorage.getItem('review_page_id');
+        const reviewPageId = sessionStorage.getItem("review_page_id");
         if (reviewPageId) {
-          window.location.href = 'review.html?page=' + reviewPageId + '&new=true';
+          window.location.href = "review.html?page=" + reviewPageId + "&new=true";
         } else {
-          window.location.href = 'dashboard.html';
+          window.location.href = "dashboard.html";
         }
       } else {
-        errorMessage.textContent = result.error || 'Invalid credentials';
-        errorMessage.classList.add('show');
+        errorMessage.textContent = result.error || "Invalid credentials";
+        errorMessage.classList.add("show");
       }
     } catch (error) {
-      errorMessage.textContent = 'Login failed. Please try again.';
-      errorMessage.classList.add('show');
+      errorMessage.textContent = "Login failed. Please try again.";
+      errorMessage.classList.add("show");
     }
   });
 });
@@ -701,12 +701,12 @@ ENDOFFILE
   <script src="js/supabase-config.js"></script>
   <script>
     if (!window.supabaseAuth.isAuthenticated()) {
-      window.location.href = 'index.html';
+      window.location.href = "index.html";
     }
     
     function logout() {
       window.supabaseAuth.logout();
-      window.location.href = 'index.html';
+      window.location.href = "index.html";
     }
   </script>
 </body>
