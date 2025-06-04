@@ -76,52 +76,50 @@ jobs:
             echo "Found DITA source files, processing..."
             
             # Create XSLT for navigation extraction
-            cat > extract-nav.xsl << 'ENDXSL'
-<?xml version="1.0" encoding="UTF-8"?>
-<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-  <xsl:output method="text"/>
-  <xsl:template match="/">
-    [<xsl:apply-templates select="//topicref[not(ancestor::topicref)]"/>]
-  </xsl:template>
-  <xsl:template match="topicref">
-    <xsl:variable name="href" select="@href"/>
-    <xsl:variable name="filename">
-      <xsl:choose>
-        <xsl:when test="contains($href, '/')">
-          <xsl:value-of select="substring-after(substring-before($href, '.'), '/')"/>
-        </xsl:when>
-        <xsl:otherwise>
-          <xsl:value-of select="substring-before($href, '.')"/>
-        </xsl:otherwise>
-      </xsl:choose>
-    </xsl:variable>
-    <xsl:variable name="id">
-      <xsl:choose>
-        <xsl:when test="@id"><xsl:value-of select="@id"/></xsl:when>
-        <xsl:otherwise><xsl:value-of select="translate($filename, '_', '-')"/></xsl:otherwise>
-      </xsl:choose>
-    </xsl:variable>
-    <xsl:variable name="title">
-      <xsl:choose>
-        <xsl:when test="@navtitle"><xsl:value-of select="@navtitle"/></xsl:when>
-        <xsl:when test="topicmeta/navtitle"><xsl:value-of select="topicmeta/navtitle"/></xsl:when>
-        <xsl:otherwise>
-          <xsl:value-of select="translate(translate($id, '-', ' '), '_', ' ')"/>
-        </xsl:otherwise>
-      </xsl:choose>
-    </xsl:variable>
-    {
-      "id": "<xsl:value-of select="$id"/>",
-      "title": "<xsl:value-of select="$title"/>",
-      "filename": "<xsl:value-of select="$filename"/>",
-      "href": "<xsl:value-of select="$href"/>"
-      <xsl:if test="topicref">
-        "children": [<xsl:apply-templates select="topicref"/>]
-      </xsl:if>
-    }<xsl:if test="following-sibling::topicref">,</xsl:if>
-  </xsl:template>
-</xsl:stylesheet>
-ENDXSL
+            echo '<?xml version="1.0" encoding="UTF-8"?>' > extract-nav.xsl
+            echo '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">' >> extract-nav.xsl
+            echo '  <xsl:output method="text"/>' >> extract-nav.xsl
+            echo '  <xsl:template match="/">' >> extract-nav.xsl
+            echo '    [<xsl:apply-templates select="//topicref[not(ancestor::topicref)]"/>]' >> extract-nav.xsl
+            echo '  </xsl:template>' >> extract-nav.xsl
+            echo '  <xsl:template match="topicref">' >> extract-nav.xsl
+            echo '    <xsl:variable name="href" select="@href"/>' >> extract-nav.xsl
+            echo '    <xsl:variable name="filename">' >> extract-nav.xsl
+            echo '      <xsl:choose>' >> extract-nav.xsl
+            echo '        <xsl:when test="contains($href, '\''/'\'')">' >> extract-nav.xsl
+            echo '          <xsl:value-of select="substring-after(substring-before($href, '\''.'\''), '\''/'\'')">' >> extract-nav.xsl
+            echo '        </xsl:when>' >> extract-nav.xsl
+            echo '        <xsl:otherwise>' >> extract-nav.xsl
+            echo '          <xsl:value-of select="substring-before($href, '\''.'\'')"/>' >> extract-nav.xsl
+            echo '        </xsl:otherwise>' >> extract-nav.xsl
+            echo '      </xsl:choose>' >> extract-nav.xsl
+            echo '    </xsl:variable>' >> extract-nav.xsl
+            echo '    <xsl:variable name="id">' >> extract-nav.xsl
+            echo '      <xsl:choose>' >> extract-nav.xsl
+            echo '        <xsl:when test="@id"><xsl:value-of select="@id"/></xsl:when>' >> extract-nav.xsl
+            echo '        <xsl:otherwise><xsl:value-of select="translate($filename, '\''_'\'', '\''-'\'')"/></xsl:otherwise>' >> extract-nav.xsl
+            echo '      </xsl:choose>' >> extract-nav.xsl
+            echo '    </xsl:variable>' >> extract-nav.xsl
+            echo '    <xsl:variable name="title">' >> extract-nav.xsl
+            echo '      <xsl:choose>' >> extract-nav.xsl
+            echo '        <xsl:when test="@navtitle"><xsl:value-of select="@navtitle"/></xsl:when>' >> extract-nav.xsl
+            echo '        <xsl:when test="topicmeta/navtitle"><xsl:value-of select="topicmeta/navtitle"/></xsl:when>' >> extract-nav.xsl
+            echo '        <xsl:otherwise>' >> extract-nav.xsl
+            echo '          <xsl:value-of select="translate(translate($id, '\''-'\'', '\'' '\''), '\''_'\'', '\'' '\'')"/>' >> extract-nav.xsl
+            echo '        </xsl:otherwise>' >> extract-nav.xsl
+            echo '      </xsl:choose>' >> extract-nav.xsl
+            echo '    </xsl:variable>' >> extract-nav.xsl
+            echo '    {' >> extract-nav.xsl
+            echo '      "id": "<xsl:value-of select="$id"/>",' >> extract-nav.xsl
+            echo '      "title": "<xsl:value-of select="$title"/>",' >> extract-nav.xsl
+            echo '      "filename": "<xsl:value-of select="$filename"/>",' >> extract-nav.xsl
+            echo '      "href": "<xsl:value-of select="$href"/>"' >> extract-nav.xsl
+            echo '      <xsl:if test="topicref">' >> extract-nav.xsl
+            echo '        "children": [<xsl:apply-templates select="topicref"/>]' >> extract-nav.xsl
+            echo '      </xsl:if>' >> extract-nav.xsl
+            echo '    }<xsl:if test="following-sibling::topicref">,</xsl:if>' >> extract-nav.xsl
+            echo '  </xsl:template>' >> extract-nav.xsl
+            echo '</xsl:stylesheet>' >> extract-nav.xsl
             
             # Process DITAMAP
             for ditamap in dita-source/*.ditamap; do
